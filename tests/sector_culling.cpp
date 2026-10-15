@@ -48,5 +48,21 @@ int main(){
    }
   }
  }
+ // A wider projection must not cull sectors that the 16:9 view includes.
+ for(int i=0;i<count;i++){
+  Sector &s=cells[i];memset(&s,0,sizeof(s));s.x=(i%columns)*size*65536;s.y=0;s.z=-(i/columns)*size*65536;
+  int loX=s.x-g_sectorHalfSize,hiX=s.x+g_sectorHalfSize,loZ=s.z-g_sectorHalfSize,hiZ=s.z+g_sectorHalfSize;
+  int rect[4][2]={{loX,loZ},{hiX,loZ},{hiX,hiZ},{loX,hiZ}};memcpy(s.bounds,rect,sizeof(rect));g_sectors[i]=&s;
+ }
+ SceneNode node={};node.world.position={3*size*65536,0,-3*size*65536};node.world.forward={0,0,65536};
+ CGraphics::m_farPlaneFixed=50*65536;CGraphics::m_projection11=2.0f;
+ g_pGraphics->resX=1920;g_pGraphics->resY=1080;
+ Sector_CullGridAroundViewNode(&node,NULL);
+ bool visibleAt169[count]={};for(int i=0;i<g_sectorCullEnabled;i++)visibleAt169[g_visibleSectorIndices[i]]=true;
+ int countAt169=g_sectorCullEnabled;
+ g_pGraphics->resX=2560;g_pGraphics->resY=1080;
+ Sector_CullGridAroundViewNode(&node,NULL);
+ assert(g_sectorCullEnabled>countAt169);
+ for(int i=0;i<count;i++)if(visibleAt169[i])assert(g_sectorVisibleBits[i>>5]&(1u<<(i&31)));
  Test_FreeHighAddress(cells);puts("PASS 384 native culling cases, three passes each: stable bounds, full records, masks and sector lists");
 }
