@@ -130,8 +130,16 @@ struct Probe : Diagnostics::TimingObserver {
         if (CGame::GetFrontendResourceMode() == 3 && tick == frameTickStart && Crt_GetRandState() != frameRng)
             ++renderOnlyRngChanges;
     }
+    // OPENCMR2_PROBE_TIMELINE: the virtual time of every presented frame and
+    // of every simulation step, to relate an input to the frames it shows in.
+    std::vector<std::pair<char, DWORD>> timeline;
+    void BeginPresent() override {
+        TimingObserver::BeginPresent();
+        timeline.push_back({'P', virtualTime});
+    }
     void BeginTick(unsigned char value) override {
         TimingObserver::BeginTick(value);
+        timeline.push_back({value == 8 ? 'D' : 'T', virtualTime});
         state = value;
         // OPENCMR2_PROBE_RESTART: the race after the finish is the same stage
         // again (Restart in the results menu), not Finland stage 2.
@@ -233,6 +241,11 @@ struct Probe : Diagnostics::TimingObserver {
             c.field_0x1dc = c.field_0x1e0 = 0;
         } else if (state == 8) {
             c.flag0x1d0[0] = drivingTick >= 100 && drivingTick < 125 ? 32 : 0;
+            // OPENCMR2_PROBE_STEER_AT_TICK=N: full left from driving step N,
+            // where the script steers neither way (latency measurements).
+            static const int steerAt = getenv("OPENCMR2_PROBE_STEER_AT_TICK") ? atoi(getenv("OPENCMR2_PROBE_STEER_AT_TICK")) : -1;
+            if (steerAt >= 0 && drivingTick >= unsigned(steerAt) && drivingTick < unsigned(steerAt) + 12)
+                c.flag0x1d0[0] = 63;
             c.flag0x1d0[1] = drivingTick >= 150 && drivingTick < 175 ? 32 : 0;
             c.flag0x1d0[2] = drivingTick < 225 || drivingTick >= 275 ? 63 : 0;
             c.flag0x1d0[3] = drivingTick >= 225 && drivingTick < 275 ? 63 : 0;
@@ -617,6 +630,13 @@ int main(int argc, char **argv) {
     }
     Diagnostics::observer = nullptr;
     if (!probe.Write((std::string(argv[2]) + ".frames.csv").c_str())) return 1;
+    if (getenv("OPENCMR2_PROBE_TIMELINE")) {
+        FILE *timeline = fopen((std::string(argv[2]) + ".timeline.csv").c_str(), "w");
+        if (!timeline) return 1;
+        fputs("kind,virtual_ms\n", timeline);
+        for (const auto &entry : probe.timeline) fprintf(timeline, "%c,%u\n", entry.first, unsigned(entry.second));
+        fclose(timeline);
+    }
     const bool ok = probe.tick == ticks && probe.drivingTick > 0 && probe.scenarioCorrect && probe.playbackCorrect && !ferror(file) &&
         (!getenv("OPENCMR2_PROBE_EXPAND_MAP") || mapExpanded) &&
         (!getenv("OPENCMR2_PROBE_FINISH_AT_TICK") || (probe.finishInjected &&

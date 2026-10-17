@@ -141,6 +141,14 @@ driver instead of the null executor to compare renderer changes: the same
 scenario must produce the same hashes. Each hashed frame waits for the GPU, so
 measure timings in a separate run.
 
+`OPENCMR2_PROBE_TIMELINE=1` writes `<trace>.timeline.csv`: the virtual time of
+every presented frame (`P`) and every simulation step (`D` while driving, `T`
+otherwise). `OPENCMR2_PROBE_STEER_AT_TICK=N` steers fully left for 12 steps
+from driving step N, where the scripted controls steer neither way. With
+frame hashes, a race with it and one without give the first frame that shows
+the input: at 25 Hz a control is read by the next step, on average 20 ms
+after it changes, and that step's frame already shows it.
+
 GPU execution time, actual display intervals and input-to-display latency are
 not measured yet. Headless probe timings include trace overhead and no GPU;
 use a normal session on the target machine to investigate real stutter. The
