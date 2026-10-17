@@ -1,0 +1,2 @@
+# Applied byte for byte to the fetched SDL source (cmake/apply_patch.cmake).
+*.patch eol=lf
