@@ -143,7 +143,7 @@ It is created with comments on first launch.
 | `[video] car_detail` | `1` | Every car with the model and textures of the player's car (`1`), or the original's lower detail for the other cars (`0`); applies with Car Detail set to High |
 | `[video] stretch_movies` | `0` | Stretch the movies over the whole window (`1`) instead of keeping their 4:3 proportions |
 | `[video] vsync` | `1` | Wait for the display's refresh (`1`) or draw as fast as possible (`0`) |
-| `[video] frame_latency` | `auto` | Frames that may wait to be shown with vsync, `1` to `3`; fewer show the controls' effect sooner. `auto` is `1`, or `2` on Wayland; `0` keeps the driver's queue |
+| `[video] frame_latency` | `1` | Frames that may wait to be shown with vsync, `1` to `3`; fewer show the controls' effect sooner. `0` keeps the driver's queue |
 | `[install] language` | `English` | English, American, French, German, Italian, Spanish or Polish |
 | `[install] sku` | `EUROPE` | Game edition: `EUROPE`, `AMERICA`, `POLAND` or `JAPAN` |
 | `[install] menu_shortcut` | asked | Entry in the applications menu (Linux) or Start menu (Windows): `1` keeps it pointing at this copy, `0` removes it |

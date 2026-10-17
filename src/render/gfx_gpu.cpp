@@ -290,15 +290,12 @@ struct Executor : GfxExecutor {
         if (!(SDL_GetGPUShaderFormats(device) & SDL_GPU_SHADERFORMAT_SPIRV))
             shaderFormat = SDL_GPU_SHADERFORMAT_MSL;
         // [video] frame_latency: the frames that may wait to be shown with
-        // vsync. Fewer show the input sooner: each frame waits until the
-        // one before it (or the one before that) is on screen. auto is 1,
-        // and 2 on Wayland, where waiting for the last frame misses every
-        // other refresh. 0 leaves the driver's queue (2 to 4 frames). It
-        // needs OpenCMR2's SDL patch (cmake/sdl3-frame-latency.patch).
-        const char *latency = Platform_GetSetting("video.frame_latency", "auto");
-        const char *driver = SDL_GetCurrentVideoDriver();
-        frameLatency = SDL_strcasecmp(latency, "auto") == 0 ? (driver && SDL_strcmp(driver, "wayland") == 0 ? 2 : 1)
-                                                         : SDL_clamp(SDL_atoi(latency), 0, 3);
+        // vsync. Fewer show the input sooner: with 1, each frame waits until
+        // the one before it is on screen. 0 leaves the driver's queue (2 to
+        // 4 frames). It needs OpenCMR2's SDL patch
+        // (cmake/sdl3-frame-latency.patch).
+        const char *latency = Platform_GetSetting("video.frame_latency", "1");
+        frameLatency = SDL_clamp(SDL_atoi(latency), 0, 3);
         char value[8];
         SDL_snprintf(value, sizeof(value), "%d", frameLatency);
         SDL_SetHint("OPENCMR2_GPU_FRAME_LATENCY", value);
