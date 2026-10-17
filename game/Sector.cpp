@@ -632,6 +632,7 @@ void Sector_CullGridAroundViewNode(SceneNode *pNode, void *pRect)
     int tri[6];
     short iSector;
     int radius;
+    int sideRadius;
     int spread;
     int rem;
     int quo;
@@ -649,12 +650,28 @@ void Sector_CullGridAroundViewNode(SceneNode *pNode, void *pRect)
     int fz;
 
     radius = CGraphics::m_farPlaneFixed;
+    sideRadius = radius;
+    // PORT: this culling triangle was fixed at a 90-degree horizontal view.
+    // The widescreen projection can show beyond its sides, so make the sector
+    // search at least as wide as a 16:9-based view at the current aspect, and
+    // as wide as the active projection for unusually wide FOV settings. Keep
+    // the original bounds when neither requires expansion.
+    if (g_pGraphics->resY > 0) {
+        float aspectScale = (float)g_pGraphics->resX * 9.0f /
+                            ((float)g_pGraphics->resY * 16.0f);
+        float projectionScale = CGraphics::m_projection11 > 0.0f
+                                    ? 1.0f / CGraphics::m_projection11
+                                    : 1.0f;
+        float sideScale = aspectScale > projectionScale ? aspectScale : projectionScale;
+        if (sideScale > 1.0f)
+            sideRadius = FTOI(int, (double)radius * sideScale);
+    }
     memset(g_sectorVisibleBits, 0, sizeof(g_sectorVisibleBits));
     g_sectorCullEnabled = 0;
     pos.y = 0;
     pos.x = pNode->world.position.x;
     pos.z = pNode->world.position.z;
-    spread = FixMulShift32(radius, g_sectorScale);
+    spread = FixMulShift32(sideRadius, g_sectorScale);
     iSector = (short)Sector_FromPosition(&pos);
     rem = iSector % g_sectorsPerRow;
     quo = iSector / g_sectorsPerRow;
@@ -685,8 +702,8 @@ void Sector_CullGridAroundViewNode(SceneNode *pNode, void *pRect)
     tri[1] = pNode->world.position.z;
     ex = FixMul(pos.x, radius);
     ez = FixMul(pos.z, radius);
-    fz = FixMul(pos.z, FixMul(radius, 0x10000));
-    fx = -FixMul(pos.x, FixMul(radius, 0x10000));
+    fz = FixMul(pos.z, FixMul(sideRadius, 0x10000));
+    fx = -FixMul(pos.x, FixMul(sideRadius, 0x10000));
     tri[4] = tri[0] + fz + ex;
     tri[5] = tri[1] + fx + ez;
     tri[2] = tri[0] - fz + ex;
