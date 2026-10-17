@@ -61,10 +61,19 @@ if(NOT TARGET SDL3::SDL3)
     set(SDL_STATIC OFF CACHE BOOL "" FORCE)
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    # The patch lets OpenCMR2 bound the frames queued for display
+    # (OPENCMR2_GPU_FRAME_LATENCY, see src/render/gfx_gpu.cpp). Its hash is
+    # part of the command, so that a changed patch fetches SDL again.
+    set(OPENCMR2_SDL_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-frame-latency.patch)
+    file(SHA256 ${OPENCMR2_SDL_PATCH} OPENCMR2_SDL_PATCH_HASH)
     FetchContent_Declare(SDL3
         GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
         GIT_TAG release-3.4.18
-        GIT_SHALLOW TRUE)
+        GIT_SHALLOW TRUE
+        # Line endings as in the patch, also where Git converts them (Windows).
+        GIT_CONFIG core.autocrlf=false
+        PATCH_COMMAND ${CMAKE_COMMAND} -DPATCH=${OPENCMR2_SDL_PATCH} -DPATCH_HASH=${OPENCMR2_SDL_PATCH_HASH}
+                      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_patch.cmake)
     FetchContent_MakeAvailable(SDL3)
 endif()
 

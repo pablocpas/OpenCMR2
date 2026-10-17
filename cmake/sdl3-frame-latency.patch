@@ -1,0 +1,309 @@
+diff --git a/src/gpu/d3d12/SDL_gpu_d3d12.c b/src/gpu/d3d12/SDL_gpu_d3d12.c
+index 221a6f3d..c4223363 100644
+--- a/src/gpu/d3d12/SDL_gpu_d3d12.c
++++ b/src/gpu/d3d12/SDL_gpu_d3d12.c
+@@ -857,6 +857,11 @@ typedef struct D3D12WindowData
+     Uint32 width;
+     Uint32 height;
+     bool needsSwapchainRecreate;
++
++    // OpenCMR2: frames that may be queued for display, 0 for DXGI's queue
++    // (OPENCMR2_GPU_FRAME_LATENCY), and the swapchain's latency waitable.
++    int frameLatency;
++    HANDLE frameLatencyWaitable;
+ } D3D12WindowData;
+ 
+ typedef struct D3D12PresentData
+@@ -6948,7 +6953,8 @@ static bool D3D12_INTERNAL_ResizeSwapchain(
+         0, // use client window width
+         0, // use client window height
+         DXGI_FORMAT_UNKNOWN, // Keep the old format
+-        renderer->supportsTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0);
++        (renderer->supportsTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0) |
++            (windowData->frameLatencyWaitable != NULL ? DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT : 0));
+     CHECK_D3D12_ERROR_AND_RETURN("Could not resize swapchain buffers", false);
+ 
+     // Create texture object for the swapchain
+@@ -6992,6 +6998,10 @@ static void D3D12_INTERNAL_DestroySwapchain(
+ 
+     IDXGISwapChain_Release(windowData->swapchain);
+     windowData->swapchain = NULL;
++    if (windowData->frameLatencyWaitable != NULL) {
++        CloseHandle(windowData->frameLatencyWaitable);
++        windowData->frameLatencyWaitable = NULL;
++    }
+ }
+ 
+ static bool D3D12_INTERNAL_CreateSwapchain(
+@@ -7048,6 +7058,13 @@ static bool D3D12_INTERNAL_CreateSwapchain(
+         swapchainDesc.Flags = 0;
+     }
+ 
++    // OpenCMR2: bound the frames queued for display with the swapchain's
++    // latency waitable, waited for in D3D12_WaitForSwapchain.
++    windowData->frameLatency = SDL_clamp(SDL_atoi(SDL_GetHint("OPENCMR2_GPU_FRAME_LATENCY") ? SDL_GetHint("OPENCMR2_GPU_FRAME_LATENCY") : "0"), 0, 3);
++    if (windowData->frameLatency > 0) {
++        swapchainDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
++    }
++
+     if (!IsWindow(dxgiHandle)) {
+         return false;
+     }
+@@ -7070,6 +7087,12 @@ static bool D3D12_INTERNAL_CreateSwapchain(
+     IDXGISwapChain1_Release(swapchain);
+     CHECK_D3D12_ERROR_AND_RETURN("Could not create IDXGISwapChain3", false);
+ 
++    windowData->frameLatencyWaitable = NULL;
++    if (windowData->frameLatency > 0 &&
++        SUCCEEDED(IDXGISwapChain3_SetMaximumFrameLatency(swapchain3, (UINT)windowData->frameLatency))) {
++        windowData->frameLatencyWaitable = IDXGISwapChain3_GetFrameLatencyWaitableObject(swapchain3);
++    }
++
+     if (swapchainComposition != SDL_GPU_SWAPCHAINCOMPOSITION_SDR) {
+         // Support already verified if we hit this block
+         IDXGISwapChain3_SetColorSpace1(
+@@ -7588,6 +7611,15 @@ static bool D3D12_WaitForSwapchain(
+         SET_STRING_ERROR_AND_RETURN("Cannot wait for a swapchain from an unclaimed window!", false);
+     }
+ 
++#if !(defined(SDL_PLATFORM_XBOXONE) || defined(SDL_PLATFORM_XBOXSERIES))
++    // OpenCMR2: no more than frameLatency frames queued for display, so that
++    // the next frame reads its input later. A hidden window may not present:
++    // give up after 50 ms.
++    if (windowData->frameLatencyWaitable != NULL) {
++        WaitForSingleObjectEx(windowData->frameLatencyWaitable, 50, TRUE);
++    }
++#endif
++
+     if (windowData->inFlightFences[windowData->frameCounter] != NULL) {
+         if (!D3D12_WaitForFences(
+             driverData,
+diff --git a/src/gpu/metal/SDL_gpu_metal.m b/src/gpu/metal/SDL_gpu_metal.m
+index b29cad6a..89c7aecf 100644
+--- a/src/gpu/metal/SDL_gpu_metal.m
++++ b/src/gpu/metal/SDL_gpu_metal.m
+@@ -465,6 +465,14 @@ typedef struct MetalWindowData
+     MetalTextureContainer textureContainer;
+     SDL_GPUFence *inFlightFences[MAX_FRAMES_IN_FLIGHT];
+     Uint32 frameCounter;
++
++    // OpenCMR2: frames that may be queued for display with vsync, 0 for
++    // the layer's queue (OPENCMR2_GPU_FRAME_LATENCY); drawables presented
++    // so far, counted by their presented handlers (never freed: a handler
++    // can run after the window is released), and drawables committed.
++    int frameLatency;
++    SDL_AtomicInt *presented;
++    int presentCount;
+ } MetalWindowData;
+ 
+ typedef struct MetalShader
+@@ -3676,6 +3684,10 @@ static bool METAL_INTERNAL_CreateSwapchain(
+ 
+     windowData->layer = (__bridge CAMetalLayer *)(SDL_Metal_GetLayer(windowData->view));
+     windowData->layer.device = renderer->device;
++    windowData->frameLatency = SDL_clamp(SDL_atoi(SDL_GetHint("OPENCMR2_GPU_FRAME_LATENCY") ? SDL_GetHint("OPENCMR2_GPU_FRAME_LATENCY") : "0"), 0, 3);
++    if (windowData->frameLatency > 0 && windowData->presented == NULL) {
++        windowData->presented = (SDL_AtomicInt *)SDL_calloc(1, sizeof(SDL_AtomicInt));
++    }
+ #ifdef SDL_PLATFORM_MACOS
+     if (@available(macOS 10.13, *)) {
+         windowData->layer.displaySyncEnabled = (presentMode != SDL_GPU_PRESENTMODE_IMMEDIATE);
+@@ -3853,6 +3865,18 @@ static bool METAL_WaitForSwapchain(
+             SET_STRING_ERROR_AND_RETURN("Cannot wait for a swapchain from an unclaimed window!", false);
+         }
+ 
++        // OpenCMR2: with vsync, wait until no more than frameLatency frames
++        // are queued for display, so that the next frame reads its input
++        // later. A hidden window may not present: give up after 50 ms.
++        if (windowData->presented != NULL && windowData->frameLatency > 0 &&
++            windowData->presentMode == SDL_GPU_PRESENTMODE_VSYNC) {
++            int target = windowData->presentCount - (windowData->frameLatency - 1);
++            Uint64 deadline = SDL_GetTicksNS() + SDL_MS_TO_NS(50);
++            while (SDL_GetAtomicInt(windowData->presented) < target && SDL_GetTicksNS() < deadline) {
++                SDL_DelayPrecise(SDL_US_TO_NS(200));
++            }
++        }
++
+         if (windowData->inFlightFences[windowData->frameCounter] != NULL) {
+             if (!METAL_WaitForFences(
+                 driverData,
+@@ -4091,6 +4115,15 @@ static bool METAL_INTERNAL_Submit(
+         // Enqueue present requests, if applicable
+         for (Uint32 i = 0; i < metalCommandBuffer->windowDataCount; i += 1) {
+             MetalWindowData *windowData = metalCommandBuffer->windowDatas[i];
++            if (windowData->presented != NULL) {
++                if (@available(macOS 10.15.4, iOS 10.3, tvOS 10.3, *)) {
++                    SDL_AtomicInt *presented = windowData->presented;
++                    [windowData->drawable addPresentedHandler:^(id<MTLDrawable> drawable) {
++                        SDL_AddAtomicInt(presented, 1);
++                    }];
++                    windowData->presentCount += 1;
++                }
++            }
+             [metalCommandBuffer->handle presentDrawable:windowData->drawable];
+             windowData->drawable = nil;
+ 
+diff --git a/src/gpu/vulkan/SDL_gpu_vulkan.c b/src/gpu/vulkan/SDL_gpu_vulkan.c
+index 2782f41a..1f54d944 100644
+--- a/src/gpu/vulkan/SDL_gpu_vulkan.c
++++ b/src/gpu/vulkan/SDL_gpu_vulkan.c
+@@ -61,6 +61,9 @@ typedef struct VulkanExtensions
+     Uint8 MSFT_layered_driver;
+     // Only required for decoding HDR ASTC textures
+     Uint8 EXT_texture_compression_astc_hdr;
++    // Only required to bound the frame latency (OPENCMR2_GPU_FRAME_LATENCY)
++    Uint8 KHR_present_id;
++    Uint8 KHR_present_wait;
+ } VulkanExtensions;
+ 
+ // Defines
+@@ -704,6 +707,13 @@ typedef struct WindowData
+     SDL_GPUFence *inFlightFences[MAX_FRAMES_IN_FLIGHT];
+ 
+     Uint32 frameCounter;
++
++    // OpenCMR2: frames that may be queued for display with vsync, 0 for
++    // the driver's queue (OPENCMR2_GPU_FRAME_LATENCY); the id of the last
++    // present and the first of the current swapchain (VK_KHR_present_wait).
++    int frameLatency;
++    Uint64 presentId;
++    Uint64 swapchainFirstPresentId;
+ } WindowData;
+ 
+ typedef struct SwapchainSupportDetails
+@@ -1139,6 +1149,8 @@ struct VulkanRenderer
+     bool supportsPortabilityEnumeration;
+     bool supportsFillModeNonSolid;
+     bool supportsMultiDrawIndirect;
++    bool supportsPresentWait;
++    PFN_vkWaitForPresentKHR vkWaitForPresentKHR;
+ 
+     VulkanMemoryAllocator *memoryAllocator;
+     VkPhysicalDeviceMemoryProperties memoryProperties;
+@@ -4643,6 +4655,7 @@ static Uint32 VULKAN_INTERNAL_CreateSwapchain(
+     Uint32 i;
+ 
+     windowData->frameCounter = 0;
++    windowData->swapchainFirstPresentId = windowData->presentId + 1;
+ 
+     if (!VULKAN_INTERNAL_QuerySwapchainSupport(
+             renderer,
+@@ -9954,6 +9967,7 @@ static bool VULKAN_ClaimWindow(
+         windowData->refcount = 1;
+         windowData->presentMode = SDL_GPU_PRESENTMODE_VSYNC;
+         windowData->swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_SDR;
++        windowData->frameLatency = SDL_clamp(SDL_atoi(SDL_GetHint("OPENCMR2_GPU_FRAME_LATENCY") ? SDL_GetHint("OPENCMR2_GPU_FRAME_LATENCY") : "0"), 0, 3);
+ 
+         // On non-Apple platforms the swapchain capability currentExtent can be different from the window,
+         // so we have to query the window size.
+@@ -10121,6 +10135,18 @@ static bool VULKAN_WaitForSwapchain(
+         SET_STRING_ERROR_AND_RETURN("Cannot wait for a swapchain from an unclaimed window!", false);
+     }
+ 
++    // OpenCMR2: with vsync, wait until no more than frameLatency frames are
++    // queued for display, so that the next frame reads its input later. A
++    // window that is not shown does not present: give up after 50 ms.
++    if (renderer->supportsPresentWait && windowData->frameLatency > 0 &&
++        windowData->presentMode == SDL_GPU_PRESENTMODE_VSYNC && windowData->swapchain != VK_NULL_HANDLE &&
++        windowData->presentId >= (Uint64)windowData->frameLatency) {
++        Uint64 target = windowData->presentId - (Uint64)(windowData->frameLatency - 1);
++        if (target >= windowData->swapchainFirstPresentId) {
++            renderer->vkWaitForPresentKHR(renderer->logicalDevice, windowData->swapchain, target, 50000000);
++        }
++    }
++
+     if (windowData->inFlightFences[windowData->frameCounter] != NULL) {
+         if (!VULKAN_WaitForFences(
+             driverData,
+@@ -10910,6 +10936,18 @@ static bool VULKAN_Submit(
+         presentInfo.pImageIndices = &presentData->swapchainImageIndex;
+         presentInfo.pResults = NULL;
+ 
++        // OpenCMR2: number the presents to wait for them (VK_KHR_present_id).
++        VkPresentIdKHR presentIdInfo;
++        Uint64 presentId = presentData->windowData->presentId + 1;
++        if (renderer->supportsPresentWait) {
++            presentIdInfo.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
++            presentIdInfo.pNext = NULL;
++            presentIdInfo.swapchainCount = 1;
++            presentIdInfo.pPresentIds = &presentId;
++            presentInfo.pNext = &presentIdInfo;
++            presentData->windowData->presentId = presentId;
++        }
++
+         presentResult = renderer->vkQueuePresentKHR(
+             renderer->unifiedQueue,
+             &presentInfo);
+@@ -11279,7 +11317,7 @@ static inline Uint8 CheckDeviceExtensions(
+         supports->ext = 1;                   \
+     }
+         CHECK(KHR_swapchain)
+-        else CHECK(KHR_maintenance1) else CHECK(KHR_driver_properties) else CHECK(KHR_portability_subset) else CHECK(MSFT_layered_driver) else CHECK(EXT_texture_compression_astc_hdr)
++        else CHECK(KHR_maintenance1) else CHECK(KHR_driver_properties) else CHECK(KHR_portability_subset) else CHECK(MSFT_layered_driver) else CHECK(EXT_texture_compression_astc_hdr) else CHECK(KHR_present_id) else CHECK(KHR_present_wait)
+ #undef CHECK
+     }
+ 
+@@ -11295,7 +11333,9 @@ static inline Uint32 GetDeviceExtensionCount(VulkanExtensions *supports)
+         supports->KHR_driver_properties +
+         supports->KHR_portability_subset +
+         supports->MSFT_layered_driver +
+-        supports->EXT_texture_compression_astc_hdr);
++        supports->EXT_texture_compression_astc_hdr +
++        supports->KHR_present_id +
++        supports->KHR_present_wait);
+ }
+ 
+ static inline void CreateDeviceExtensionArray(
+@@ -11313,6 +11353,8 @@ static inline void CreateDeviceExtensionArray(
+     CHECK(KHR_portability_subset)
+     CHECK(MSFT_layered_driver)
+     CHECK(EXT_texture_compression_astc_hdr)
++    CHECK(KHR_present_id)
++    CHECK(KHR_present_wait)
+ #undef CHECK
+ }
+ 
+@@ -12635,6 +12677,30 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
+         deviceCreateInfo.pEnabledFeatures = &features->desiredVulkan10DeviceFeatures;
+     }
+ 
++    // OpenCMR2: present ids and waits, where the device has both features.
++    VkPhysicalDevicePresentIdFeaturesKHR presentIdFeatures;
++    VkPhysicalDevicePresentWaitFeaturesKHR presentWaitFeatures;
++    renderer->supportsPresentWait = false;
++    if (renderer->supports.KHR_present_id && renderer->supports.KHR_present_wait &&
++        renderer->vkGetPhysicalDeviceFeatures2 != NULL) {
++        VkPhysicalDeviceFeatures2 supported;
++        SDL_zero(supported);
++        SDL_zero(presentIdFeatures);
++        SDL_zero(presentWaitFeatures);
++        supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
++        supported.pNext = &presentIdFeatures;
++        presentIdFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
++        presentIdFeatures.pNext = &presentWaitFeatures;
++        presentWaitFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
++        renderer->vkGetPhysicalDeviceFeatures2(renderer->physicalDevice, &supported);
++        if (presentIdFeatures.presentId && presentWaitFeatures.presentWait) {
++            presentIdFeatures.pNext = &presentWaitFeatures;
++            presentWaitFeatures.pNext = (void *)deviceCreateInfo.pNext;
++            deviceCreateInfo.pNext = &presentIdFeatures;
++            renderer->supportsPresentWait = true;
++        }
++    }
++
+     vulkanResult = renderer->vkCreateDevice(
+         renderer->physicalDevice,
+         &deviceCreateInfo,
+@@ -12652,6 +12718,12 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
+                              #func);
+ #include "SDL_gpu_vulkan_vkfuncs.h"
+ 
++    if (renderer->supportsPresentWait) {
++        renderer->vkWaitForPresentKHR = (PFN_vkWaitForPresentKHR)renderer->vkGetDeviceProcAddr(
++            renderer->logicalDevice, "vkWaitForPresentKHR");
++        renderer->supportsPresentWait = renderer->vkWaitForPresentKHR != NULL;
++    }
++
+     renderer->vkGetDeviceQueue(
+         renderer->logicalDevice,
+         renderer->queueFamilyIndex,

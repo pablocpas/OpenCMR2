@@ -173,6 +173,7 @@ struct Executor : GfxExecutor {
     bool bcSupported = true;
     bool presentModeVsync = true;
     int anisotropy = 1, smoothScaling = 1;    // video.anisotropy, video.smooth_scaling
+    int frameLatency = 0;                       // video.frame_latency
     Uint32 presentWidth = 0, presentHeight = 0; // the window's pixels, as last logged
     // The back buffer read of the last presented frame (the lens flare test):
     // it runs with that frame, and CollectReadback waits for it only when the
@@ -288,11 +289,24 @@ struct Executor : GfxExecutor {
         }
         if (!(SDL_GetGPUShaderFormats(device) & SDL_GPU_SHADERFORMAT_SPIRV))
             shaderFormat = SDL_GPU_SHADERFORMAT_MSL;
+        // [video] frame_latency: the frames that may wait to be shown with
+        // vsync. Fewer show the input sooner: each frame waits until the
+        // one before it (or the one before that) is on screen. auto is 1,
+        // and 2 on Wayland, where waiting for the last frame misses every
+        // other refresh. 0 leaves the driver's queue (2 to 4 frames). It
+        // needs OpenCMR2's SDL patch (cmake/sdl3-frame-latency.patch).
+        const char *latency = Platform_GetSetting("video.frame_latency", "auto");
+        const char *driver = SDL_GetCurrentVideoDriver();
+        frameLatency = SDL_strcasecmp(latency, "auto") == 0 ? (driver && SDL_strcmp(driver, "wayland") == 0 ? 2 : 1)
+                                                         : SDL_clamp(SDL_atoi(latency), 0, 3);
+        char value[8];
+        SDL_snprintf(value, sizeof(value), "%d", frameLatency);
+        SDL_SetHint("OPENCMR2_GPU_FRAME_LATENCY", value);
         if (!SDL_ClaimWindowForGPUDevice(device, window)) {
             Sys_Log("gfx: SDL_ClaimWindowForGPUDevice: %s", SDL_GetError());
             return false;
         }
-        Sys_Log("gfx: SDL_GPU driver %s", SDL_GetGPUDeviceDriver(device));
+        Sys_Log("gfx: SDL_GPU driver %s, frame latency %d", SDL_GetGPUDeviceDriver(device), frameLatency);
         if (!SDL_GPUTextureSupportsFormat(device, depthFormat, SDL_GPU_TEXTURETYPE_2D,
                                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
             depthFormat = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
@@ -1250,6 +1264,10 @@ struct Executor : GfxExecutor {
             readbackFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
         else
             SDL_SubmitGPUCommandBuffer(cmd);
+        // The next frame reads its input once the queue holds fewer than
+        // frameLatency frames (see CreateDevice).
+        if (frameLatency > 0)
+            SDL_WaitForGPUSwapchain(device, window);
         HashFrame();
     }
 
