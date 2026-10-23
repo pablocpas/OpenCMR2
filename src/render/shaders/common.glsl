@@ -24,7 +24,7 @@ layout(std140, set = 1, binding = 0) uniform VertexUniforms {
     Light lights[8];
     ivec4 lightFlags;       // lighting, colour vertex, specular, local viewer
     ivec4 sources;          // diffuse, specular, ambient, emissive (0 material, 1 colour 1, 2 colour 2)
-    ivec4 fogFlags;         // vertex fog mode (3 linear) when fog is on, normalise normals, -, -
+    ivec4 fogFlags;         // vertex fog mode (3 linear) when fog is on, normalise normals, fog from specular alpha, -
     vec4 fogParams;         // start, end, -, -
     ivec4 texCoordIndex;    // stage 0, stage 1, texture transform 0, texture transform 1
     vec4 target;            // render target width, height; viewport half-pixel offset x, y (NDC)

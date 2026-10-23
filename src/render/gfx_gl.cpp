@@ -792,6 +792,10 @@ struct Executor : GfxExecutor {
         u.sources[3] = s.emissiveSource;
         u.fogFlags[0] = (s.fog && s.fogTableMode == GFX_FOG_NONE) ? s.fogVertexMode : 0;
         u.fogFlags[1] = s.normalizeNormals;
+        // Direct3D takes the fog factor from the vertex's specular alpha when
+        // fog is on with neither vertex nor table fog: the backdrop of a
+        // foggy stage is drawn so, its vertices' alpha 0 filling it with fog.
+        u.fogFlags[2] = s.fog && s.fogTableMode == GFX_FOG_NONE && s.fogVertexMode == GFX_FOG_NONE;
         u.fogParams[0] = s.fogStart;
         u.fogParams[1] = s.fogEnd;
         u.texCoordIndex[0] = (int32_t)s.stages[0].texCoordIndex;

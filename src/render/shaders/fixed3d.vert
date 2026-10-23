@@ -114,7 +114,7 @@ void main()
     outTex1 = TexCoord(1, eye.xyz, n);
     outEyeDepth = eye.z;
     outEyePosition = eye.xyz;
-    outFog = 1.0;
+    outFog = fogFlags.z != 0 ? color2.a : 1.0;
     if (fogFlags.x == 3) {
         float range = fogParams.y - fogParams.x;
         outFog = range != 0.0 ? clamp((fogParams.y - eye.z) / range, 0.0, 1.0) : 1.0;
