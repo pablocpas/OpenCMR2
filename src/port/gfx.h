@@ -272,6 +272,30 @@ void Gfx_SetRenderTarget(GfxTexture *target);
    the fade off. */
 void Gfx_CaptureBackdrop(void);
 void Gfx_SetDistanceFade(float start, float end);
+/* Distance clip: 3D draws into the back buffer leave out what lies nearer
+   the eye than distance, for a layer that only stands in for what is far
+   away. 0 turns it off. */
+void Gfx_SetDistanceClip(float distance);
+/* Billboards: 3D draws (with the world transform the identity) turn each
+   vertex to the camera about the vertical, as the game turns its
+   camera-facing objects: the vertex's position is the object's place, its
+   normal the corner's offset along the camera's right (x) and up (y), and z
+   the scale of the normal, which faces the camera. */
+void Gfx_SetBillboards(BOOL enable);
+/* Light ramp: 3D draws take each vertex's colour from the game's light ramp
+   (Scene_BuildLightTables), ambient + light x level, in 0..255 per channel,
+   with the level's step (0..49 of 49) in the specular colour's alpha and a
+   shade in its red (128 = 1); alpha 255 keeps the vertex's own colour. The
+   specular colour adds nothing then. NULL ambient turns it off. */
+void Gfx_SetLightRamp(const float *ambient, const float *light);
+/* Tests: 3D draws into the back buffer paint flat marker colours instead of
+   their own, magenta nearer the eye than distance and green beyond, to tell
+   in a frame's pixels what they drew and how near. Below 0 turns it off. */
+void Gfx_SetDistanceMarks(float distance);
+/* Tests: fn receives each presented frame's back buffer as BGRA pixels
+   (rows from the top on SDL_GPU, from the bottom on OpenGL). NULL stops. */
+typedef void (*GfxFrameCallback)(const unsigned char *bgra, int width, int height, void *context);
+void Gfx_SetFrameCallback(GfxFrameCallback fn, void *context);
 
 /* ---- fixed-function state -------------------------------------------------- */
 
@@ -341,6 +365,10 @@ GfxVertexBuffer *Gfx_CreateVertexBuffer(DWORD vertexCount);
 void Gfx_DestroyVertexBuffer(GfxVertexBuffer *buffer);
 /* The whole buffer, for writing; contents are kept between locks. */
 GfxVertex *Gfx_LockVertexBuffer(GfxVertexBuffer *buffer);
+/* The buffer is drawn from its GPU copy even right after a lock (a buffer
+   rewritten seldom and whole), and its contents go to the GPU with the next
+   frame, drawn or not, and again with the frame after each lock. */
+void Gfx_KeepVertexBuffer(GfxVertexBuffer *buffer);
 void Gfx_UnlockVertexBuffer(GfxVertexBuffer *buffer);
 
 void Gfx_DrawPrimitiveVB(int primitive, GfxVertexBuffer *buffer, DWORD firstVertex, DWORD vertexCount);

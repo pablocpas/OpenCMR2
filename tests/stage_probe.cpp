@@ -27,6 +27,10 @@
 #include "MeshVertex.h"
 #include "SceneNode.h"
 #include "LightZone.h"
+#include "RallyRouteNode.h"
+#include "FarLayer.h"
+#include "port/gfx.h"
+#include <cmath>
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL_main.h>
 #include <cstdio>
@@ -329,6 +333,181 @@ struct Probe : Diagnostics::TimingObserver {
     }
 };
 
+
+RallyRouteNode *RallyData_GetAvailableRouteNodeRecord(int index);
+int RallyData_GetRouteAvailabilityState(void);
+void ChaseCamera_Reset(BYTE index);
+void View_ResetShownFarPlane(BYTE view);
+void StageTiming_SetViewRouteDistanceLimit(BYTE player, unsigned int node, int dir);
+int Track_GetGroundHeightSurface(FixVector *pPoint, FixVector *pNormal, short *pTri, short *pSurfaceClass,
+                                 unsigned short *pSurface, int defaultY);
+
+// OPENCMR2_PROBE_SWEEP=metres: once the race runs, the car is placed along the
+// route every that many metres, facing along it and then across it, and held
+// there while the far layer (FarLayer.cpp) is checked on frames of the same
+// moment (the clock stands still): the frame as the game draws it, one
+// without the layer with the sky and backdrop keyed green, and one with the
+// layer in marker colours (green, magenta nearer than half the view
+// distance), the last two without the stage's fade. Each view writes a line
+// to OPENCMR2_PROBE_SWEEP_OUT/sweep.csv: the layer's pixels where the stage
+// was (faults: it must stay behind the stage), its near pixels where the sky
+// was (the layer close to the car, through a gap or over it), its near and
+// far pixels. Views with faults or near pixels in the sky, and every tenth,
+// save the three frames.
+struct Sweep {
+    enum { HOLD = 28 };
+    std::vector<unsigned> nodes;    // route nodes of the views
+    std::vector<int> headings;      // per view: 0 along the route, 1 or -1 across it
+    size_t view = 0;
+    int frame = -1;
+    std::string out;
+    FILE *csv = nullptr;
+    std::vector<uint32_t> shown, sky;
+    int width = 0, height = 0;
+    enum Want { NONE, SHOWN, SKY, MARKED } want = NONE;
+    bool done = false;
+
+    void Plan(float spacing) {
+        int count = RallyData_GetRouteAvailabilityState();
+        float travelled = spacing;
+        for (int i = 0; i + 1 < count; i++) {
+            const FixVector &a = RallyData_GetAvailableRouteNodeRecord(i)->position;
+            const FixVector &b = RallyData_GetAvailableRouteNodeRecord(i + 1)->position;
+            float dx = (b.x - a.x) / 65536.0f, dz = (b.z - a.z) / 65536.0f;
+            travelled += std::sqrt(dx * dx + dz * dz);
+            if (travelled >= spacing) {
+                travelled = 0;
+                nodes.push_back(unsigned(i));
+                nodes.push_back(unsigned(i));
+                headings.push_back(0);
+                headings.push_back(nodes.size() / 2 % 2 ? 1 : -1);
+            }
+        }
+        fprintf(stderr, "probe: sweep %zu views over %d route nodes\n", nodes.size(), count);
+    }
+
+    // Places the car at the view's node, facing along the route (toward a
+    // node 25 m on) or across it.
+    void Place(Car &car) {
+        int count = RallyData_GetRouteAvailabilityState();
+        unsigned node = nodes[view];
+        const FixVector &at = RallyData_GetAvailableRouteNodeRecord(int(node))->position;
+        unsigned ahead = node;
+        float dx = 0, dz = 0;
+        while (ahead + 1 < unsigned(count) && dx * dx + dz * dz < 25.0f * 25.0f) {
+            ++ahead;
+            const FixVector &b = RallyData_GetAvailableRouteNodeRecord(int(ahead))->position;
+            dx = (b.x - at.x) / 65536.0f;
+            dz = (b.z - at.z) / 65536.0f;
+        }
+        float length = std::sqrt(dx * dx + dz * dz);
+        float fx = length > 0 ? dx / length : 0, fz = length > 0 ? dz / length : 1;
+        if (headings[view]) {
+            float t = fx;
+            fx = -fz * headings[view];
+            fz = t * headings[view];
+        }
+        FixVector position = at, normal;
+        short triangle, surfaceClass;
+        unsigned short surface;
+        position.y = Track_GetGroundHeightSurface(&position, &normal, &triangle, &surfaceClass, &surface, at.y) + 0x9000;
+        FixMatrix m = {};
+        m.forward = { int(fx * 65536), 0, int(fz * 65536) };
+        m.up = { 0, 0x10000, 0 };
+        m.right = { m.forward.z, 0, -m.forward.x };
+        m.position = position;
+        m.pw = 0x10000;
+        car.physicsMatrix = m;
+        car.bodyMatrix = m;
+        car.position = car.positionPrev = car.positionPrev2 = position;
+        car.right = car.targetRight = m.right;
+        car.up = car.targetUp = m.up;
+        car.forward = car.targetForward = m.forward;
+        car.velocity = car.velocityNext = car.angularVelocity = FixVector{};
+    }
+
+    // The captured frames show the same moment: the clock stands still
+    // through them, so nothing moves but what the layer changes.
+    bool Frozen() const { return !done && frame >= HOLD - 4; }
+
+    // Before a frame of the race.
+    void Frame(Car &car) {
+        if (done)
+            return;
+        if (++frame >= HOLD) {
+            frame = 0;
+            if (++view >= nodes.size()) {
+                done = true;
+                FarLayer_SetTest(1, 1, 0, 0);
+                return;
+            }
+        }
+        Place(car);
+        if (frame == 0) {
+            StageTiming_SetViewRouteDistanceLimit(0, nodes[view], 1);
+            View_ResetShownFarPlane(0);
+            ChaseCamera_Reset(0);
+        }
+        want = frame == HOLD - 3 ? SHOWN : frame == HOLD - 2 ? SKY : frame == HOLD - 1 ? MARKED : NONE;
+        FarLayer_SetTest(want != SKY, want == SHOWN || want == NONE, want == MARKED, want == SKY);
+    }
+
+    void Save(const char *name, const uint32_t *pixels) {
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s-%04zu.bmp", out.c_str(), name, view);
+        SDL_Surface *surface = SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_ARGB8888, (void *)pixels, width * 4);
+        if (surface) {
+            SDL_SaveBMP(surface, path);
+            SDL_DestroySurface(surface);
+        }
+    }
+
+    // A presented frame's pixels.
+    void Present(const unsigned char *bgra, int w, int h) {
+        const uint32_t *p = (const uint32_t *)bgra;
+        width = w;
+        height = h;
+        if (want == SHOWN)
+            shown.assign(p, p + size_t(w) * h);
+        else if (want == SKY)
+            sky.assign(p, p + size_t(w) * h);
+        else if (want == MARKED && sky.size() == size_t(w) * h) {
+            unsigned faults = 0, nearSky = 0, near = 0, far = 0;
+            for (size_t i = 0; i < sky.size(); i++) {
+                uint32_t c = p[i] & 0xffffff;
+                // Sky, keyed green; the sun's glare (its strength read back
+                // from the frame, so not the same with the layer) may tint it.
+                int r = (sky[i] >> 16) & 0xff, g = (sky[i] >> 8) & 0xff, b = sky[i] & 0xff;
+                bool wasSky = r <= 24 && b <= 24 && g >= 230;
+                if (c == 0xff00ff) {
+                    ++near;
+                    nearSky += wasSky;
+                } else if (c == 0x00ff00) {
+                    ++far;
+                } else {
+                    continue;
+                }
+                faults += !wasSky;
+            }
+            const RallyRouteNode *node = RallyData_GetAvailableRouteNodeRecord(int(nodes[view]));
+            fprintf(csv, "%zu,%u,%d,%d,%d,%u,%u,%u,%u,%d\n", view, nodes[view], headings[view], node->position.x >> 16,
+                    node->position.z >> 16, faults, nearSky, near, far, w * h);
+            fflush(csv);
+            if (faults > 50 || nearSky > 500 || view % 10 == 0) {
+                if (shown.size() == sky.size())
+                    Save("shown", shown.data());
+                Save("marked", p);
+                Save("sky", sky.data());
+            }
+        }
+        want = NONE;
+    }
+
+    static void Callback(const unsigned char *bgra, int w, int h, void *context) {
+        static_cast<Sweep *>(context)->Present(bgra, w, h);
+    }
+};
+
 // OPENCMR2_PROBE_CURSORS="id:cursor,..." forces the cursor of the menus with
 // those ids (as printed by "probe: menu"), to reach other game modes.
 static int ForcedCursor(int id) {
@@ -479,6 +658,20 @@ int main(int argc, char **argv) {
     const char *lanRole = getenv("OPENCMR2_PROBE_LAN_ROLE");
     const Uint64 lanOrigin = SDL_GetTicks();
     bool lanReady = false;
+    // OPENCMR2_PROBE_FRAME_TIMES=1: the wall time of each frame while the car
+    // drives (the GPU's included: frames wait for it), summed up at the end.
+    // For measuring drawing costs, with vsync off in the profile.
+    const bool frameTimes = getenv("OPENCMR2_PROBE_FRAME_TIMES") != nullptr;
+    std::vector<double> frameMs;
+    Uint64 lastFrame = 0;
+    Sweep sweep;
+    const float sweepSpacing = getenv("OPENCMR2_PROBE_SWEEP") ? float(atof(getenv("OPENCMR2_PROBE_SWEEP"))) : 0.0f;
+    if (sweepSpacing > 0) {
+        sweep.out = getenv("OPENCMR2_PROBE_SWEEP_OUT") ? getenv("OPENCMR2_PROBE_SWEEP_OUT") : ".";
+        sweep.csv = fopen((sweep.out + "/sweep.csv").c_str(), "w");
+        if (!sweep.csv) { perror("sweep.csv"); return 2; }
+        fprintf(sweep.csv, "view,node,heading,x,z,faults,near_sky,near,far,pixels\n");
+    }
     for (unsigned frame = 0; frame < 200000 && probe.tick < ticks && !CGame::m_shouldExit; ++frame) {
         // Socket threads use wall time, even when the simulation clock is
         // controlled. Give both independent game processes time to exchange
@@ -616,11 +809,27 @@ int main(int argc, char **argv) {
                 SDL_PushEvent(&event);
             }
         }
+        if (sweepSpacing > 0 && mode == 3 && probe.drivingTick > 0) {
+            if (sweep.nodes.empty() && !sweep.done) {
+                sweep.Plan(sweepSpacing);
+                Gfx_SetFrameCallback(Sweep::Callback, &sweep);
+            }
+            sweep.Frame(g_carBuffer[g_carOrder[0]]);
+            if (sweep.done)
+                break;
+        }
+        if (frameTimes && mode == 3 && probe.drivingTick > 0) {
+            Uint64 now = SDL_GetPerformanceCounter();
+            if (lastFrame)
+                frameMs.push_back(double(now - lastFrame) * 1000.0 / double(SDL_GetPerformanceFrequency()));
+            lastFrame = now;
+        }
         CGame::UpdateActiveSoundSlots();
         probe.BeginFrame();
         CGame::DispatchFrontendResourceState();
         probe.EndFrame();
-        if (mode == 3) {
+        if (mode == 3 && sweepSpacing > 0 && sweep.Frozen()) {
+        } else if (mode == 3) {
             if (!raceOrigin) raceOrigin = virtualTime;
             ++raceFrame;
             if (variable) {
@@ -632,6 +841,15 @@ int main(int argc, char **argv) {
                 virtualFraction = double(micros % 1000) / 1000.0;
             }
         } else virtualTime += 33;
+    }
+    if (frameTimes && !frameMs.empty()) {
+        std::vector<double> sorted = frameMs;
+        qsort(sorted.data(), sorted.size(), sizeof(double), [](const void *a, const void *b) {
+            double x = *(const double *)a, y = *(const double *)b;
+            return x < y ? -1 : x > y;
+        });
+        fprintf(stderr, "probe: %zu driving frames, median %.2f ms, p90 %.2f ms, p99 %.2f ms\n", sorted.size(),
+                sorted[sorted.size() / 2], sorted[sorted.size() * 9 / 10], sorted[sorted.size() * 99 / 100]);
     }
     Diagnostics::observer = nullptr;
     if (!probe.Write((std::string(argv[2]) + ".frames.csv").c_str())) return 1;

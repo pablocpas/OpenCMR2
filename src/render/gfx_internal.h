@@ -44,7 +44,9 @@ struct GfxVertexBuffer {
     std::vector<GfxVertex> vertices;
     uint32_t version = 1;           // bumped by every lock
     uint32_t lastLockFrame = 0;     // presented frame of the last lock
-    uint32_t referencedRecord = 0;  // recording that last drew from it
+    uint32_t referencedRecord = 0;  // recording that lists it for upload
+    uint32_t drawnRecord = 0;       // recording that last drew from it
+    bool kept = false;              // Gfx_KeepVertexBuffer
     void *gpu = nullptr;            // executor's copy
 };
 
@@ -87,6 +89,11 @@ struct GfxDrawState {
     int fogVertexMode = GFX_FOG_NONE, fogTableMode = GFX_FOG_NONE;
     float fogStart = 0.0f, fogEnd = 1.0f;
     float fadeStart = 0.0f, fadeEnd = 0.0f;   // Gfx_SetDistanceFade (end <= start: off)
+    float clipDistance = 0.0f;                // Gfx_SetDistanceClip (0: off)
+    bool billboards = false;                  // Gfx_SetBillboards
+    bool lightRamp = false;                   // Gfx_SetLightRamp
+    float rampAmbient[3] = {}, rampLight[3] = {};
+    float markDistance = -1.0f;               // Gfx_SetDistanceMarks (below 0: off)
     bool depthTest = true, depthWrite = true;
     int depthFunc = GFX_CMP_LESSEQUAL;
     int cull = GFX_CULL_CCW;

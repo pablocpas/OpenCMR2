@@ -44,6 +44,8 @@ struct VertexUniforms {
     float fogParams[4];
     int32_t texCoordIndex[4];
     float target[4];
+    float rampAmbient[4];   // Gfx_SetLightRamp, w: on
+    float rampLight[4];
 };
 
 struct FragmentUniforms {
@@ -57,6 +59,7 @@ struct FragmentUniforms {
     float bumpMatrix[4];
     float bumpLuminance[4];
     float distanceFade[4];
+    float distanceMarks[4];
 };
 
 struct ClearUniforms {
@@ -740,6 +743,9 @@ struct Executor : GfxExecutor {
                a.localViewer == b.localViewer && a.normalizeNormals == b.normalizeNormals &&
                a.diffuseSource == b.diffuseSource && a.specularSource == b.specularSource &&
                a.ambientSource == b.ambientSource && a.emissiveSource == b.emissiveSource && a.fog == b.fog &&
+               a.billboards == b.billboards && a.lightRamp == b.lightRamp &&
+               memcmp(a.rampAmbient, b.rampAmbient, sizeof(a.rampAmbient)) == 0 &&
+               memcmp(a.rampLight, b.rampLight, sizeof(a.rampLight)) == 0 &&
                a.fogTableMode == b.fogTableMode && a.fogVertexMode == b.fogVertexMode &&
                a.fogStart == b.fogStart && a.fogEnd == b.fogEnd && a.ambient == b.ambient &&
                memcmp(&a.world, &b.world, sizeof(a.world)) == 0 && memcmp(&a.view, &b.view, sizeof(a.view)) == 0 &&
@@ -816,6 +822,12 @@ struct Executor : GfxExecutor {
         // fog is on with neither vertex nor table fog: the backdrop of a
         // foggy stage is drawn so, its vertices' alpha 0 filling it with fog.
         u.fogFlags[2] = s.fog && s.fogTableMode == GFX_FOG_NONE && s.fogVertexMode == GFX_FOG_NONE;
+        u.fogFlags[3] = s.billboards;
+        if (s.lightRamp) {
+            memcpy(u.rampAmbient, s.rampAmbient, sizeof(s.rampAmbient));
+            memcpy(u.rampLight, s.rampLight, sizeof(s.rampLight));
+            u.rampAmbient[3] = 1.0f;
+        }
         u.fogParams[0] = s.fogStart;
         u.fogParams[1] = s.fogEnd;
         u.texCoordIndex[0] = (int32_t)s.stages[0].texCoordIndex;
@@ -895,6 +907,12 @@ struct Executor : GfxExecutor {
             u.distanceFade[0] = s.fadeStart;
             u.distanceFade[1] = s.fadeEnd;
             u.distanceFade[2] = 1.0f;
+        }
+        if (fade)
+            u.distanceFade[3] = s.clipDistance;
+        if (fade && s.markDistance >= 0.0f) {
+            u.distanceMarks[0] = 1.0f;
+            u.distanceMarks[1] = s.markDistance;
         }
     }
 

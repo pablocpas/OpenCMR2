@@ -61,6 +61,24 @@ checks selecting subfolders or parent folders, ambiguous installations and
 symlink cycles on every CI platform, without original assets or a display
 server.
 
+## Far layer sweep
+
+The far layer (`game/FarLayer.cpp`) draws the stage beyond its view distance
+behind the stage itself. `tools/far_layer_sweep.py` checks it on every stage
+with your game data: the probe places the car along each route, facing along
+and across it, and compares the frame without the layer (sky keyed green) with
+the frame with the layer in marker colours, at the same moment.
+
+```sh
+tools/far_layer_sweep.py --probe build/linux/tests/stage_probe --data "$HOME/cmr2game" --out sweep
+```
+
+A view has a fault when layer pixels show where the stage was; there must be
+none, and the script exits with an error if there are. Layer pixels nearer
+than half the view distance where the sky was mean the layer fills a gap close
+to the car, which is worth a look. `sweep/index.html` lists the stages and
+shows those views and one view of each stage, as drawn and marked.
+
 ## Sanitizers
 
 The `linux-debug` preset builds with AddressSanitizer and UBSan. With the

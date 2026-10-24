@@ -28,6 +28,7 @@
 #include "Glow.h"
 #include "LayoutChecks.h"
 #include "CameraRecord.h"
+#include "FarLayer.h"
 
 BOOL CGame::m_shouldExit = FALSE;
 BOOL CGame::m_isActive = FALSE;
@@ -2588,6 +2589,8 @@ GfxMatrix *FixMatrix_ToFloat(GfxMatrix *pOut, FixMatrix *pIn);
 // triangles).
 static void Game_BeginDistanceFade(void)
 {
+    if (!FarLayer_StageFades())
+        return;
     int end = CGraphics::m_farPlaneFixed;
     int start = FixMul(end, 0xd99a);
 
@@ -2679,7 +2682,10 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
             CGraphics::SetProjection(0, 0, 0x960000, 0);
             Game_DrawUnsortedNodes(bit);
             CGraphics::SetProjection(0, 0, farPlane, 0);
-            // PORT: the scenery fades into the backdrop (Game_BeginDistanceFade).
+            // PORT: the stage beyond its view distance at low detail
+            // (FarLayer.cpp), and the scenery fades into it and the backdrop
+            // (Game_BeginDistanceFade).
+            FarLayer_Draw(pCamera);
             Game_BeginDistanceFade();
             Graphics_EnableFog();
             Graphics_SetLightingMode(0);

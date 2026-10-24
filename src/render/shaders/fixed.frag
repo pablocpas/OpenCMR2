@@ -29,7 +29,8 @@ layout(std140, set = 3, binding = 0) uniform FragmentUniforms {
     vec4 fogParams;     // start, end
     vec4 bumpMatrix;    // m00, m01, m10, m11 (of the bump stage)
     vec4 bumpLuminance; // scale, offset
-    vec4 distanceFade;  // distance where the fade into the backdrop starts, ends; on (z != 0)
+    vec4 distanceFade;  // distance where the fade into the backdrop starts, ends; on (z != 0); clip distance (w)
+    vec4 distanceMarks; // tests (Gfx_SetDistanceMarks): on (x != 0), distance (y)
 };
 
 const int TOP_DISABLE = 1, TOP_SELECTARG1 = 2, TOP_SELECTARG2 = 3, TOP_MODULATE = 4, TOP_MODULATE2X = 5,
@@ -126,6 +127,10 @@ bool Compare(int func, float a, float b)
 
 void main()
 {
+    // A layer standing in for what is far away leaves out what is near
+    // (Gfx_SetDistanceClip).
+    if (distanceFade.w > 0.0 && length(inEyePosition) < distanceFade.w)
+        discard;
     vec4 current = inDiffuse;
     vec2 bumpOffset = vec2(0.0);
     float luminance = 1.0;
@@ -181,5 +186,7 @@ void main()
         if (f > 0.0)
             current.rgb = mix(current.rgb, texelFetch(backdrop, ivec2(gl_FragCoord.xy), 0).rgb, f);
     }
+    if (distanceMarks.x != 0.0)
+        current = length(inEyePosition) < distanceMarks.y ? vec4(1.0, 0.0, 1.0, 1.0) : vec4(0.0, 1.0, 0.0, 1.0);
     outColor = current;
 }

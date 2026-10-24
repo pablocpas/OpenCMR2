@@ -148,9 +148,10 @@ void RecordDraw(int primitive, bool transformed, const void *vertices, DWORD ver
     cmd.primitive = primitive;
     cmd.transformed = transformed;
     cmd.vertexCount = vertexCount;
-    if (buffer != NULL && s_presentedFrames - buffer->lastLockFrame >= kStaticAfterFrames) {
+    if (buffer != NULL && (buffer->kept || s_presentedFrames - buffer->lastLockFrame >= kStaticAfterFrames)) {
         cmd.buffer = buffer;
         cmd.firstVertexByte = firstVertex * (uint32_t)sizeof(GfxVertex);
+        buffer->drawnRecord = s_record;
         if (buffer->referencedRecord != s_record) {
             buffer->referencedRecord = s_record;
             s_frame.buffers.push_back(buffer);
@@ -538,6 +539,27 @@ extern "C" void Gfx_SetDistanceFade(float start, float end)
     Touch();
 }
 
+extern "C" void Gfx_SetDistanceClip(float distance)
+{
+    s_state.clipDistance = distance;
+    Touch();
+}
+
+extern "C" void Gfx_SetDistanceMarks(float distance)
+{
+    s_state.markDistance = distance;
+    Touch();
+}
+
+static GfxFrameCallback s_frameCallback;
+static void *s_frameCallbackContext;
+
+extern "C" void Gfx_SetFrameCallback(GfxFrameCallback fn, void *context)
+{
+    s_frameCallback = fn;
+    s_frameCallbackContext = context;
+}
+
 // ---- fixed-function state --------------------------------------------------------------
 
 extern "C" void Gfx_SetTransform(int type, const GfxMatrix *matrix)
@@ -630,6 +652,17 @@ BOOL_SETTER(Gfx_SetLocalViewer, localViewer)
 BOOL_SETTER(Gfx_SetNormalizeNormals, normalizeNormals)
 BOOL_SETTER(Gfx_SetColorVertex, colorVertex)
 BOOL_SETTER(Gfx_SetFog, fog)
+BOOL_SETTER(Gfx_SetBillboards, billboards)
+
+extern "C" void Gfx_SetLightRamp(const float *ambient, const float *light)
+{
+    s_state.lightRamp = ambient != NULL && light != NULL;
+    for (int k = 0; k < 3; k++) {
+        s_state.rampAmbient[k] = s_state.lightRamp ? ambient[k] : 0.0f;
+        s_state.rampLight[k] = s_state.lightRamp ? light[k] : 0.0f;
+    }
+    Touch();
+}
 BOOL_SETTER(Gfx_SetDepthTest, depthTest)
 BOOL_SETTER(Gfx_SetDepthWrite, depthWrite)
 BOOL_SETTER(Gfx_SetAlphaBlend, alphaBlend)
@@ -686,11 +719,28 @@ extern "C" void Gfx_DestroyVertexBuffer(GfxVertexBuffer *buffer)
     if (buffer == NULL)
         return;
     // Draws recorded this frame may still use it.
-    if (buffer->referencedRecord == s_record)
+    if (buffer->referencedRecord == s_record || buffer->drawnRecord == s_record)
         Flush();
     if (s_executor != NULL)
         s_executor->DestroyVertexBuffer(buffer);
     delete buffer;
+}
+
+// Puts the buffer in the frame's list of buffers to upload.
+static void ReferenceBuffer(GfxVertexBuffer *buffer)
+{
+    if (buffer->referencedRecord != s_record) {
+        buffer->referencedRecord = s_record;
+        s_frame.buffers.push_back(buffer);
+    }
+}
+
+extern "C" void Gfx_KeepVertexBuffer(GfxVertexBuffer *buffer)
+{
+    if (buffer == NULL)
+        return;
+    buffer->kept = true;
+    ReferenceBuffer(buffer);
 }
 
 extern "C" GfxVertex *Gfx_LockVertexBuffer(GfxVertexBuffer *buffer)
@@ -699,10 +749,12 @@ extern "C" GfxVertex *Gfx_LockVertexBuffer(GfxVertexBuffer *buffer)
         return NULL;
     // Draws recorded this frame refer to the contents before this lock: run
     // them first. It is rare: buffers drawn by reference are rarely locked.
-    if (buffer->referencedRecord == s_record)
+    if (buffer->drawnRecord == s_record)
         Flush();
     buffer->version++;
     buffer->lastLockFrame = s_presentedFrames;
+    if (buffer->kept)
+        ReferenceBuffer(buffer);
     return buffer->vertices.data();
 }
 
@@ -1142,7 +1194,7 @@ void Gfx_SetWindowMode(SDL_Window *window, bool fullscreen, int width, int heigh
 
 bool Gfx_FrameHashWanted(void)
 {
-    return getenv("OPENCMR2_FRAME_HASH") != NULL;
+    return getenv("OPENCMR2_FRAME_HASH") != NULL || s_frameCallback != NULL;
 }
 
 void Gfx_HashFrame(const uint8_t *bgra, int width, int height)
@@ -1151,6 +1203,8 @@ void Gfx_HashFrame(const uint8_t *bgra, int width, int height)
     static const char *dump = getenv("OPENCMR2_FRAME_DUMP");
     static int every = getenv("OPENCMR2_FRAME_DUMP_EVERY") ? atoi(getenv("OPENCMR2_FRAME_DUMP_EVERY")) : 600;
     static unsigned frame;
+    if (s_frameCallback != NULL)
+        s_frameCallback(bgra, width, height, s_frameCallbackContext);
     if (file == NULL)
         return;
     const size_t bytes = (size_t)width * height * 4;

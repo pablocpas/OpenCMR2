@@ -1490,6 +1490,8 @@ private:
     // the register allocation of CreateSelectedDisplayAndRenderDevice (87.9% -> 86.8%).
     friend void Game_DrawWorldMeshNodesAnd2DLayer(void);
     friend void Game_DrawCulledSectorMeshes(void);
+    friend void FarLayer_Draw(SceneNode *pCamera);
+    friend void FarLayer_ApplyTexture(Texture *pTexture);
     friend void Game_DrawCulledSectorShadows(void);
     friend void Game_DrawViewMaskNodes(SceneNode *pNode, int bit);
     friend void Game_DrawViewMaskNode(SceneNode *pNode, int bit);

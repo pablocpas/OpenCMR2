@@ -52,8 +52,27 @@ void main()
 {
     vec4 color1 = inDiffuse.zyxw;
     vec4 color2 = inSpecular.zyxw;
-    vec4 eye = worldView * vec4(inPosition, 1.0);
-    vec3 n = mat3(worldView) * inNormal;
+    if (rampAmbient.w != 0.0 && inSpecular.w < 1.0) {
+        // The light ramp (Gfx_SetLightRamp): the step in the specular
+        // colour's alpha, the shade in its red (128 = 1). As
+        // Scene_BuildLightTables makes it: in whole units, 0..255.
+        float level = floor(inSpecular.w * 255.0 + 0.5) / 49.0;
+        vec3 lit = clamp(floor(rampAmbient.rgb + rampLight.rgb * level), 0.0, 255.0) / 255.0;
+        color1 = vec4(min(lit * (color2.r * 255.0 / 128.0), vec3(1.0)), color1.a);
+        color2 = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    vec3 position = inPosition;
+    vec3 normal = inNormal;
+    if (fogFlags.w != 0) {
+        // Billboards (Gfx_SetBillboards): the camera's right and forward in
+        // the world, level, are the view's first and third columns.
+        vec3 right = normalize(vec3(worldView[0][0], 0.0, worldView[2][0]));
+        vec3 forward = normalize(vec3(worldView[0][2], 0.0, worldView[2][2]));
+        position = inPosition + right * inNormal.x + vec3(0.0, inNormal.y, 0.0);
+        normal = -forward * inNormal.z;
+    }
+    vec4 eye = worldView * vec4(position, 1.0);
+    vec3 n = mat3(worldView) * normal;
     if (fogFlags.y != 0 && dot(n, n) > 0.0)
         n = normalize(n);
 
