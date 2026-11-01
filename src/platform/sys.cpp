@@ -339,10 +339,7 @@ const char s_defaultSettings[] =
     "; Milliseconds before a key held in the menus repeats, and between repeats.\n"
     "; key_repeat_delay = 750\n"
     "; key_repeat_interval = 100\n"
-    "; Player 1 uses the first controller connected (a wheel before others),\n"
-    "; or the keyboard without one (1). The controls menu sets 0 when another\n"
-    "; device is chosen for player 1 there.\n"
-    "; auto_player1 = 1\n"
+    "; The bindings of keys and controllers are in controls.ini.\n"
     "\n"
     "[net]\n"
     "; Network play (see docs/NETWORK.md). UDP port games are hosted on.\n"
@@ -799,6 +796,7 @@ extern "C" unsigned int Sys_GetUnixTime(void)
 
 void Platform_SetTestClock(const PlatformTestClock *clock) { s_testClock = clock; }
 void Platform_SetTestDialogs(const PlatformTestDialogs *dialogs) { s_testDialogs = dialogs; }
+void Platform_SetTestUserDir(const char *dir) { s_userDir = dir ? dir : ""; }
 
 extern "C" void Sys_Sleep(DWORD ms)
 {

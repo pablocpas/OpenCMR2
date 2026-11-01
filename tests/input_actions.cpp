@@ -1,0 +1,496 @@
+// The players' actions (src/input) and the device records the game reads
+// them through (game/Input.cpp). Uses SDL virtual devices, so no hardware or
+// display is needed. The game window never has the keyboard focus here, as
+// under gamescope: controllers must still be read.
+
+#include "port/types.h"
+#include "port/input.h"
+#include "GameInfo.h"
+#include "Input.h"
+#include "Menu.h"
+#include "platform/platform.h"
+#include "platform/testing.h"
+#include "main.h"
+#include "Car.h"
+
+#include <SDL3/SDL.h>
+
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <string>
+
+extern void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *out);
+extern void Input_RescanChangedJoysticks();
+extern BYTE g_carSimulationClockFlags;
+extern int Car_UpdateEngineNoteFalloff(int *);
+extern unsigned int g_selectedRallyData;
+bool Input_ApplyGamepadMapping(SDL_JoystickID id, const char *overrides);
+
+namespace {
+
+int s_failures;
+BYTE s_keys[256];
+
+void Check(bool ok, const char *what)
+{
+    if (!ok) {
+        fprintf(stderr, "FAIL: %s\n", what);
+        s_failures++;
+    }
+}
+
+const BYTE kRightBracket = 0x1b, kLeftBracket = 0x1a, kC = 0x2e;
+
+struct Pad {
+    SDL_JoystickID id;
+    SDL_Joystick *joystick;
+};
+
+Pad AttachPad(const char *name, Uint16 product)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x045e;
+    desc.product_id = product;
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.name = name;
+    Pad pad;
+    pad.id = SDL_AttachVirtualJoystick(&desc);
+    pad.joystick = SDL_OpenJoystick(pad.id);
+    // Released triggers rest at their minimum, as on real controllers.
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+    SDL_UpdateJoysticks();
+    return pad;
+}
+
+void Detach(Pad &pad)
+{
+    SDL_CloseJoystick(pad.joystick);
+    SDL_DetachVirtualJoystick(pad.id);
+}
+
+void Release(Pad &pad)
+{
+    for (int i = 0; i < SDL_GAMEPAD_AXIS_COUNT; ++i)
+        SDL_SetJoystickVirtualAxis(pad.joystick, i, i >= SDL_GAMEPAD_AXIS_LEFT_TRIGGER ? SDL_JOYSTICK_AXIS_MIN : 0);
+    for (int i = 0; i < SDL_GAMEPAD_BUTTON_COUNT; ++i)
+        SDL_SetJoystickVirtualButton(pad.joystick, i, false);
+}
+
+// The game's input setup (CGameInfo::SetupInputs without the mouse, which
+// needs the renderer) and its configurations.
+void SetupGameInput()
+{
+    CInput::m_deviceCounts.nextDevice = 0;
+    CInput::m_deviceCounts.keyboardCount = 2;
+    CInput::m_deviceCounts.joystickCount = 0;
+    for (DeviceInfo &device : CInput::m_availableDevices) {
+        device.type = (DWORD)-1;
+        device.joystickIndex = -1;
+    }
+    CInput::SetupKeyboard();
+    CInput::GetAttachedJoysticks();
+    CInput::RefreshControllerConfigurations();
+}
+
+DeviceInfo &Device(int index)
+{
+    return CInput::m_availableDevices[index];
+}
+
+void MenuFrame()
+{
+    CGameInfo::m_fixedMenuKeys = 1;
+    CInput::UpdateAllAvailableDevices();
+}
+
+void RaceFrame()
+{
+    CGameInfo::m_fixedMenuKeys = 0;
+    CInput::UpdateAllAvailableDevices();
+}
+
+void CheckGamepadActions(Pad &pad)
+{
+    Release(pad);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == 0 && Input_GetAction(0, INPUT_BRAKE) == 0, "released triggers");
+    Check(Input_GetAction(0, INPUT_STEER_LEFT) == 0 && Input_GetAction(0, INPUT_STEER_RIGHT) == 0, "centred stick");
+
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL && Input_GetAction(0, INPUT_BRAKE) == 0,
+          "the right trigger is the throttle alone");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL && Input_GetAction(0, INPUT_BRAKE) == INPUT_FULL,
+          "throttle and brake held together");
+
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, SDL_JOYSTICK_AXIS_MIN);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_LEFT) == INPUT_FULL && Input_GetAction(0, INPUT_STEER_RIGHT) == 0,
+          "full left");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 16384);
+    Input_Update();
+    int right = Input_GetAction(0, INPUT_STEER_RIGHT);
+    Check(right > INPUT_FULL * 45 / 100 && right < INPUT_FULL * 50 / 100, "half right, less the deadzone");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 300);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_RIGHT) == 0, "inside the deadzone");
+
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_START, true);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_HANDBRAKE) == INPUT_FULL, "A is the handbrake");
+    Check(Input_GetAction(0, INPUT_MENU_CONFIRM) == INPUT_FULL, "A confirms");
+    Check(Input_GetAction(0, INPUT_PAUSE) == INPUT_FULL, "Start pauses");
+    Release(pad);
+    Input_Update();
+}
+
+// The records the game reads: menu bits in the menus, actions on a stage,
+// the axes of the player's joystick.
+void CheckRecords(Pad &pad)
+{
+    Release(pad);
+    MenuFrame();
+    Check(CInput::m_playerControllers[0] == 2 && CInput::m_playerControllers[1] == 3, "players drive with records 2, 3");
+    Check(Device(2).type == 3, "a player with a stick drives with a joystick");
+
+    const struct { SDL_GamepadButton button; unsigned bit; } buttons[] = {
+        {SDL_GAMEPAD_BUTTON_DPAD_UP, 4}, {SDL_GAMEPAD_BUTTON_DPAD_DOWN, 8}, {SDL_GAMEPAD_BUTTON_DPAD_LEFT, 1},
+        {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 2}, {SDL_GAMEPAD_BUTTON_SOUTH, 0x10}, {SDL_GAMEPAD_BUTTON_EAST, 0x20},
+    };
+    for (const auto &press : buttons) {
+        SDL_SetJoystickVirtualButton(pad.joystick, press.button, true);
+        MenuFrame();
+        Check((Device(0).pressed & 0x3f) == press.bit, "menu buttons reach player 1's menus");
+        SDL_SetJoystickVirtualButton(pad.joystick, press.button, false);
+        MenuFrame();
+    }
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, SDL_JOYSTICK_AXIS_MIN);
+    MenuFrame();
+    Check((Device(0).pressed & 0xf) == 4, "the stick navigates");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, 0);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    MenuFrame();
+    Check((Device(0).pressed & 0x3f) == 0, "a trigger does not navigate");
+    Release(pad);
+    MenuFrame();
+
+    // A real menu follows them.
+    Menu menu{};
+    Menu_Init(&menu, nullptr, 0, 0, nullptr, nullptr, 1, 1, 1);
+    for (int i = 0; i < 3; ++i)
+        Menu_AddItemType1(&menu, nullptr, -1, nullptr, short(i));
+    Menu_SetInputStateFlag(0); // no audio resources in this test
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, SDL_JOYSTICK_AXIS_MIN);
+    MenuFrame();
+    Menu_Update(&menu, Device(0).pressed);
+    Check(menu.cursor == 0, "the stick moves a menu's cursor up");
+    Release(pad);
+    MenuFrame();
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
+    MenuFrame();
+    Menu_Update(&menu, Device(0).pressed);
+    Check(menu.cursor == 1, "the D-pad moves it down");
+    Release(pad);
+    MenuFrame();
+
+    // On a stage: bit 1 << action, the pause with Escape's bit.
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true);
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_START, true);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    RaceFrame();
+    Check((Device(0).held & 0x620) == 0x620, "shift up and pause on a stage");
+    Check((Device(2).held & 0x620) == 0x620, "the joystick record has the buttons too");
+    Check(Device(2).joystick.bindings[0].position == -0x10000, "steering on X");
+    Check(Device(2).joystick.bindings[5].position == -0x10000, "throttle on Rz, pressed fully at the minimum");
+    Check(Device(2).joystick.bindings[2].position == 0x10000, "brake on Z, released at the maximum");
+    Check(CInput::GetEnabledControllerAxisBinding(0, 0) == 0 && CInput::GetEnabledControllerAxisBinding(0, 2) == 5 &&
+          CInput::GetEnabledControllerAxisBinding(0, 3) == 2, "the configuration names those axes");
+    Check((unsigned short)CInput::GetButtonMapping(0, 5) == 0x20, "the configuration names bit 1 << action");
+    Release(pad);
+    RaceFrame();
+
+    // Keys switch the player to driving as with a keyboard; the stick back.
+    s_keys[INPUT_KEY_LEFT] = 0x80;
+    RaceFrame();
+    Check(Device(2).type == 1, "keys drive as a keyboard");
+    Check((Device(2).held & 1) != 0, "and steer with bit 1");
+    s_keys[INPUT_KEY_LEFT] = 0;
+    RaceFrame();
+    Check(Device(2).type == 1, "until an axis is used");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, SDL_JOYSTICK_AXIS_MAX);
+    RaceFrame();
+    Check(Device(2).type == 3, "the stick drives as a joystick again");
+    Release(pad);
+    RaceFrame();
+}
+
+void CheckRacePresses(Pad &pad)
+{
+    const unsigned actionBits = 0x20 | 0x40 | 0x80 | 0x400;
+    const unsigned padBit = 1u << 2;
+    memset(s_keys, 0, sizeof(s_keys));
+    Release(pad);
+    CGameInfo::m_fixedMenuKeys = 0;
+    CInput::UpdateAllAvailableDevices();
+
+    // The real mixed-rate scheduler supplies opponent-only steps, as on a
+    // super special. Inject input exactly on those steps at common frame rates.
+    Car cars[2] = {};
+    Car *oldBuffer = g_carBuffer;
+    const short oldCount = g_carOrderCount;
+    short oldOrder[2] = {g_carOrder[0], g_carOrder[1]};
+    g_carBuffer = cars;
+    g_carOrderCount = 2;
+    g_carOrder[0] = 0; g_carOrder[1] = 1;
+    for (unsigned fps : {30u, 60u, 120u, 144u, 240u}) {
+        memset(cars, 0, sizeof(cars));
+        cars[0].simulationRateHz = 25.f;
+        cars[1].simulationRateHz = 50.f;
+        g_carSimulationClockFlags = 0;
+        CMain::m_frameTime = 1000;
+        int phase;
+        Car_UpdateEngineNoteFalloff(&phase);
+        memset(s_keys, 0, sizeof(s_keys));
+        SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, false);
+        CInput::UpdateAllAvailableDevices();
+        int injected = 0, delivered = 0;
+        bool armed = true, pending = false;
+        for (unsigned frame = 1; frame <= fps * 3; ++frame) {
+            CMain::m_frameTime = 1000 + frame * 1000 / fps;
+            int steps = Car_UpdateEngineNoteFalloff(&phase);
+            for (int step = 0; step < steps; ++step) {
+                bool playerStep = cars[0].simulationStepsRemaining > 0;
+                bool press = !playerStep && armed;
+                s_keys[kRightBracket] = s_keys[kLeftBracket] = s_keys[kC] = s_keys[INPUT_KEY_ESCAPE] = press ? 0x80 : 0;
+                SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, press);
+                if (press) { ++injected; armed = false; pending = true; }
+                CInput::UpdateRaceDevices(playerStep ? 1u | padBit : 0u);
+                unsigned keyboard = Device(0).pressed & actionBits;
+                unsigned joystick = Device(2).pressed & 0x20;
+                if (!playerStep) Check(keyboard == 0 && joystick == 0, "opponent does not consume player presses");
+                else {
+                    Check(keyboard == (pending ? actionBits : 0), "gear/camera/pause edges reach player exactly once");
+                    Check(joystick == (pending ? 0x20u : 0), "joystick edge reaches player after release");
+                    if (pending) { ++delivered; pending = false; }
+                    armed = true;
+                }
+                for (Car &car : cars) if (car.simulationStepsRemaining > 0) --car.simulationStepsRemaining;
+            }
+        }
+        Check(injected > 0 && delivered >= injected - 1, "mixed-rate scheduler exercises lost-input path");
+    }
+    // Holding a button must not repeatedly shift gears.
+    memset(s_keys, 0, sizeof(s_keys));
+    Release(pad);
+    CInput::UpdateAllAvailableDevices();
+    s_keys[kRightBracket] = 0x80;
+    CInput::UpdateRaceDevices(1);
+    Check((Device(0).pressed & 0x20) != 0, "a held gear key shifts once");
+    for (int i = 0; i < 10; ++i) {
+        CInput::UpdateRaceDevices(1);
+        Check((Device(0).pressed & 0x20) == 0, "held gear keys never repeat");
+    }
+    // Pending actions cannot leak out of a race into a frontend/pause menu.
+    memset(s_keys, 0, sizeof(s_keys));
+    CInput::UpdateAllAvailableDevices();
+    s_keys[kRightBracket] = 0x80;
+    CInput::UpdateRaceDevices(0);
+    CInput::UpdateAllAvailableDevices();
+    s_keys[kRightBracket] = 0;
+    CInput::UpdateRaceDevices(1);
+    Check((Device(0).pressed & 0x20) == 0, "frontend clears pending race actions");
+    g_carBuffer = oldBuffer;
+    g_carOrderCount = oldCount;
+    g_carOrder[0] = oldOrder[0]; g_carOrder[1] = oldOrder[1];
+}
+
+// The second controller is player 2's when two players race; with one, any
+// controller drives player 1.
+void CheckTwoPlayers(Pad &first)
+{
+    Pad second = AttachPad("Virtual Pad B", 0x02ea);
+    Release(first);
+    SDL_SetJoystickVirtualButton(second.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    MenuFrame();
+    Check((Device(0).held & 0x10) != 0, "with one player, the second pad works in player 1's menus");
+    g_selectedRallyData = 2 << 14;
+    MenuFrame();
+    Check((Device(0).held & 0x10) == 0 && (Device(1).held & 0x10) != 0, "with two players, it is player 2's");
+    SDL_SetJoystickVirtualButton(second.joystick, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    SDL_SetJoystickVirtualButton(first.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    MenuFrame();
+    Check((Device(0).held & 0x10) != 0 && (Device(1).held & 0x10) == 0, "the first pad stays player 1's");
+    s_keys[0x4b] = 0x80;   // keypad 4: player 2's keyboard
+    RaceFrame();
+    Check((Device(1).held & 1) != 0 && (Device(0).held & 1) == 0, "the keypad steers player 2");
+    s_keys[0x4b] = 0;
+    g_selectedRallyData = 0;
+    Release(first);
+    Detach(second);
+    MenuFrame();
+}
+
+// A controller SDL has no layout for gets one from a manual profile.
+void CheckManualMapping()
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_UNKNOWN;
+    desc.name = "Unmapped handheld";
+    desc.naxes = 2;
+    desc.nbuttons = 36;
+    SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    SDL_Joystick *virt = SDL_OpenJoystick(id);
+    Check(virt && !SDL_IsGamepad(id), "unknown handheld initially has no SDL gamepad layout");
+    Check(Input_ApplyGamepadMapping(id, "a:b20,b:b21,leftx:a0,lefty:a1,lefttrigger:b15,righttrigger:b16"),
+          "a manual profile adds an unknown controller");
+    SDL_SetJoystickVirtualButton(virt, 20, true);
+    SDL_SetJoystickVirtualButton(virt, 16, true);
+    SDL_SetJoystickVirtualAxis(virt, 0, SDL_JOYSTICK_AXIS_MIN);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_HANDBRAKE) == INPUT_FULL, "its mapped A is the handbrake");
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL, "a digital trigger is the throttle");
+    Check(Input_GetAction(0, INPUT_STEER_LEFT) == INPUT_FULL, "its stick steers");
+    SDL_CloseJoystick(virt);
+    SDL_DetachVirtualJoystick(id);
+    Input_Update();
+}
+
+// A wheel's pedals are found from where its axes rest.
+void CheckWheel()
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_WHEEL;
+    desc.name = "Virtual Wheel";
+    desc.vendor_id = 0x046d;
+    desc.product_id = 0xc24f;
+    desc.naxes = 4;
+    desc.nbuttons = 12;
+    desc.nhats = 1;
+    SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    SDL_Joystick *virt = SDL_OpenJoystick(id);
+    SDL_SetJoystickVirtualAxis(virt, 0, 0);
+    SDL_SetJoystickVirtualAxis(virt, 1, SDL_JOYSTICK_AXIS_MIN);   // clutch: not a pedal used
+    SDL_SetJoystickVirtualAxis(virt, 2, SDL_JOYSTICK_AXIS_MAX);
+    SDL_SetJoystickVirtualAxis(virt, 3, SDL_JOYSTICK_AXIS_MAX);
+    SDL_UpdateJoysticks();
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == 0 && Input_GetAction(0, INPUT_BRAKE) == 0, "released pedals");
+    SDL_SetJoystickVirtualAxis(virt, 1, SDL_JOYSTICK_AXIS_MAX);
+    SDL_SetJoystickVirtualAxis(virt, 0, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL, "the first pedal is the throttle");
+    Check(Input_GetAction(0, INPUT_STEER_RIGHT) == INPUT_FULL, "the wheel steers on X, without deadzone");
+    SDL_SetJoystickVirtualAxis(virt, 2, SDL_JOYSTICK_AXIS_MIN);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_BRAKE) == INPUT_FULL, "a pedal resting at the maximum is the brake");
+    SDL_SetJoystickVirtualHat(virt, 0, SDL_HAT_DOWN);
+    SDL_SetJoystickVirtualButton(virt, 0, true);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_MENU_DOWN) == INPUT_FULL && Input_GetAction(0, INPUT_MENU_CONFIRM) == INPUT_FULL,
+          "the hat and first button work in the menus");
+    SDL_CloseJoystick(virt);
+    SDL_DetachVirtualJoystick(id);
+    Input_Update();
+}
+
+// controls.ini is written with the defaults and read back; an edited file
+// rebinds the actions.
+void CheckBindingsFile(Pad &pad)
+{
+    std::filesystem::path dir = std::filesystem::temp_directory_path() / ("opencmr2-input-" + std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(dir);
+    std::string dirText = dir.string() + "/";
+    Platform_SetTestUserDir(dirText.c_str());
+    Input_ReloadBindings();
+    Input_SaveBindings();
+    std::filesystem::path file = dir / "controls.ini";
+    Check(std::filesystem::exists(file), "controls.ini is written with the defaults");
+
+    char *text = (char *)SDL_LoadFile(file.string().c_str(), nullptr);
+    std::string content = text ? text : "";
+    SDL_free(text);
+    Check(content.find("handbrake = a\n") != std::string::npos, "the gamepad's handbrake is written");
+    size_t at = content.find("handbrake = a\n");
+    content.replace(at, strlen("handbrake = a\n"), "handbrake = x | leftstick\n");
+    SDL_SaveFile(file.string().c_str(), content.data(), content.size());
+    Input_ReloadBindings();
+    Release(pad);
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_HANDBRAKE) == 0, "A is no longer the handbrake");
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_LEFT_STICK, true);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_HANDBRAKE) == INPUT_FULL, "the second input of the list is");
+
+    // An older Controller.rcf only gives the keys while controls.ini is
+    // missing.
+    BYTE keys[9] = {0x1e, 0x20, 0x11, 0x1f, 0x39, 0x1b, 0x1a, 0x2e, 0x13};   // A D W S
+    Input_ImportKeyboardKeys(0, keys);
+    memset(s_keys, 0, sizeof(s_keys));
+    s_keys[0x1e] = 0x80;
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_LEFT) == 0, "the import does not replace controls.ini");
+    std::filesystem::remove(file);
+    Input_ReloadBindings();
+    Input_ImportKeyboardKeys(0, keys);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_LEFT) == INPUT_FULL, "without it, the old keys are taken");
+    s_keys[0x1e] = 0;
+    Release(pad);
+
+    Platform_SetTestUserDir("");
+    Input_ReloadBindings();
+    std::filesystem::remove_all(dir);
+}
+
+} // namespace
+
+int main()
+{
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD)) {
+        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+        return 1;
+    }
+    SDL_Window *window = SDL_CreateWindow("unfocused", 64, 64, SDL_WINDOW_HIDDEN);
+    Check(window != NULL && SDL_GetKeyboardFocus() == NULL, "a game window without the keyboard focus");
+    Platform_SetTestKeyboard(s_keys);
+
+    // An Xbox 360 controller: SDL knows its layout, as for a real one.
+    Pad pad = AttachPad("Virtual Xbox 360 Controller", 0x028e);
+    if (pad.joystick == NULL) {
+        fprintf(stderr, "virtual joystick: %s\n", SDL_GetError());
+        return 1;
+    }
+    SetupGameInput();
+
+    CheckGamepadActions(pad);
+    CheckRecords(pad);
+    CheckRacePresses(pad);
+    CheckTwoPlayers(pad);
+    CheckManualMapping();
+    CheckWheel();
+    CheckBindingsFile(pad);
+
+    Detach(pad);
+    Platform_SetTestKeyboard(nullptr);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    if (s_failures != 0) {
+        fprintf(stderr, "%d failures\n", s_failures);
+        return 1;
+    }
+    printf("input actions: ok\n");
+    return 0;
+}

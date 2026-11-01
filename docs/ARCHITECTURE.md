@@ -127,21 +127,34 @@ ACM).
 
 ## Input
 
-Key codes stay DirectInput scan codes (`DIK_*` values): the game stores them
-in its binding tables and save files. `src/input` maps SDL scancodes to them.
-Joysticks are read through SDL3 into a `DIJOYSTATE2`-like structure of our
-own (axes, sliders, POVs, buttons). Controllers SDL knows the layout of are
-presented as DirectInput showed an Xbox controller: sticks on X/Y and Rx/Ry,
-buttons A, B, X, Y, LB, RB, Back, Start and the stick clicks, the D-pad as
-POV 0. The triggers are Z and Rz, each read as DirectInput wheels report a
-pedal: the maximum when released, the minimum when pressed fully, which is
-what the game expects of a throttle and a brake on separate axes (DirectInput
-put both triggers on Z, which kept them from being pressed together). Raw
-axes that rest at their minimum, such as some wheels' pedals, are turned the
-same way. A gamepad starts with throttle on the right trigger and brake on
-the left (`PORT:` in `CInput::InitDetectedControllerSlot`). Force-feedback effects (constant, spring,
-damper, friction, inertia) map to SDL haptic effects, with rumble as the
-fallback on gamepads.
+`src/input` reads the keyboard and the controllers through SDL3 as actions of
+the two local players: steering left and right, throttle, brake, handbrake,
+gears, camera, look back and pause with an analogue value, and the menu
+directions, confirm and back. Each action is bound to keys, gamepad buttons,
+axis halves, whole axes (pedals) or hat directions in `controls.ini`, by
+kind of device: the two keyboard players, controllers SDL knows the layout
+of, and joysticks and wheels by model. A wheel's pedals are found from where
+its axes rest when it is first connected. Every controller belongs to a
+player: the second one connected to player 2 when two players race, unless
+`controls.ini` says otherwise. Disconnected devices are kept, so their
+force-feedback effects stay valid and they get them back on reconnection.
+
+The game still reads the device records it was written for (`game/Input.cpp`,
+marked `PORT:`). Records 0 and 1 are players 1 and 2 as keyboards, with the
+original keyboard's bits: the cursor keys, Return, Escape, F1 and F2 in the
+menus, bit 1 << action and Escape's bit for the pause on a stage. Records 2
+and 3 are the same players as joysticks: steering on X, the throttle on Rz
+and the brake on Z, each read as DirectInput wheels report a pedal (the
+maximum when released), with fixed configurations that name those axes. The
+players drive with records 2 and 3, which read as keyboards while the
+player's last steering, throttle or brake input came from a key or button,
+so that keys steer as they did in the original. Everything after the game's
+conversion of these values to its 0..63 controls, which replays and network
+races record, is unchanged.
+
+Key codes stay DirectInput scan codes (`DIK_*` values) for text entry: the
+game stores them and names them. Force-feedback effects (constant, spring,
+damper, friction, inertia) map to SDL haptic effects.
 
 ## Determinism and the golden tests
 

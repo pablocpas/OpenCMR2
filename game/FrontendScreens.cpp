@@ -1584,7 +1584,6 @@ void FrontendMenu_ResetActiveMenu(void)
 extern int g_frontendOverlayMode;
 void Input_TranslatePedalsToMenuKeys(void);
 void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *pOut);
-void FrontendControls_MergeConfiguredDevice(DeviceInfo *pOut, BOOL padOnly);
 unsigned short Input_GetControllerSlotMapping(unsigned short slot);
 void Sound_UpdateMusicStreaming(void);
 
@@ -1606,17 +1605,8 @@ void FrontendMenu_UpdateAndSwitchActive(void)
     CInput::UpdateAllAvailableDevices();
     Input_TranslatePedalsToMenuKeys();
     Sound_UpdateMusicStreaming();
-    // PORT: the original left the bindings and calibration pages to the
-    // keyboard. The controller they set up works there too: on the
-    // calibration page only with its buttons and D-pad, as its stick and
-    // pedals are being tested.
-    if (g_pMenu0x00818abc == FrontendMenu_GetDeviceCalibration()) {
-        FrontendControls_MergeConfiguredDevice(pDevice, TRUE);
-    } else {
+    if (g_pMenu0x00818abc != FrontendMenu_GetDeviceBindings() && g_pMenu0x00818abc != FrontendMenu_GetDeviceCalibration())
         Input_MergeAssignedJoystickButtons(g_frontendOverlayMode, pDevice);
-        if (g_pMenu0x00818abc == FrontendMenu_GetDeviceBindings())
-            FrontendControls_MergeConfiguredDevice(pDevice, FALSE);
-    }
     input = pDevice->pressed;
     if (g_frontendOverlayMode == 1)
         input |= CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(0))->pressed & 0x20;

@@ -6,6 +6,7 @@
 #include "Frontend.h"
 #include "FileBuffer.h"
 #include "Game.h"
+#include "RallyData.h"
 
 #include "port/sys.h"
 
@@ -16,6 +17,83 @@
 // PORT: the DirectInput 7 data formats (c_dfDIMouse2, c_dfDIKeyboard,
 // c_dfDIJoystick2 and their descriptor arrays) are gone: the input layer
 // returns the state structures directly.
+
+// PORT: the game reads the players of src/input through four device
+// records. Records 0 and 1 are players 1 and 2 as keyboards: the buttons of
+// every device of the player. Records 2 and 3 are the same players as
+// joysticks, with their steering, throttle and brake as axes; the player
+// drives with it (CInput::m_playerControllers) and it reads as a keyboard
+// while the player's last driving input came from keys or buttons, so that
+// the game steers as it did with keys. The bits follow the original's
+// keyboard: in the menus (CGameInfo::m_fixedMenuKeys) the cursor keys,
+// Return, Escape, F1 and F2; on a stage bit 1 << action for the actions,
+// Escape's bit for the pause as well, and F1, F2 and F4.
+static int Input_PlayerOfDevice(int index)
+{
+    return index < 2 ? index : index - 2;
+}
+
+static BOOL Input_IsPressed(int player, int action)
+{
+    // An axis counts as pressed past 0.6 of its travel, as the original
+    // turned a joystick's stick into directions.
+    return Input_GetAction(player, action) > INPUT_FULL * 3 / 5;
+}
+
+static unsigned int Input_PlayerButtons(int player)
+{
+    static const unsigned int menuBits[6] = { 0x1, 0x2, 0x4, 0x8, 0x10, 0x20 };
+    unsigned int buttons = 0;
+    int i;
+
+    if (CGameInfo::m_fixedMenuKeys != 0) {
+        for (i = 0; i < 6; i++)
+            if (Input_IsPressed(player, INPUT_MENU_LEFT + i))
+                buttons |= menuBits[i];
+    } else {
+        for (i = 0; i <= INPUT_PAUSE; i++)
+            if (Input_IsPressed(player, i))
+                buttons |= 1u << i;
+        if (buttons & (1u << INPUT_PAUSE))
+            buttons |= 0x400;
+        if (CInput::m_keyboardState[INPUT_KEY_F4] & 0x80)
+            buttons |= 0x4000;
+    }
+    if (CInput::m_keyboardState[INPUT_KEY_F1] & 0x80)
+        buttons |= 0x1000;
+    if (CInput::m_keyboardState[INPUT_KEY_F2] & 0x80)
+        buttons |= 0x2000;
+    return buttons;
+}
+
+// The configuration of a player's joystick (records 2 and 3): its axes,
+// and bit 1 << action for every action, as the keyboard records give them.
+static void Input_InitPlayerConfiguration(int index)
+{
+    static const BYTE axes[4] = { 0, 0, 5, 2 };   // steering left, right, throttle, brake
+    ControllerData *pController;
+    DeviceInfo *pDevice;
+    int i;
+
+    pController = &CInput::m_controllerInfo[index];
+    pDevice = &CInput::m_availableDevices[index];
+    memset(pController, 0, sizeof(*pController));
+    pController->index = (BYTE)index;
+    strcpy(pController->name, pDevice->deviceInstanceName);
+    pController->field_0x0 = 0x8000;
+    pController->field_0x4 = 0x8000;
+    pController->hasAxes = 1;
+    pController->analogSteering = 1;
+    pController->analogPedals = 1;
+    pController->forceFeedback = pDevice->supportsForceFeedback;
+    pController->smoothSteering = Input_IsSmoothSteering(index - 2);
+    for (i = 0; i < 10; i++)
+        pController->actionMasks[i] = (unsigned short)(1 << i);
+    for (i = 0; i < 4; i++) {
+        pController->axisBindings[i] = *(ControllerDataUnk0x210 *)&pDevice->joystick.bindings[axes[i]];
+        pController->axisIndices[i] = axes[i];
+    }
+}
 
 // GLOBAL: CMR2 0x00511758
 // IID_IDirectInput7A
@@ -96,8 +174,8 @@ BOOL CInput::DInputCreate(void) {
 }
 
 // FUNCTION: CMR2 0x0049fe30
-// PORT: type 0 keyboard, 1 mouse, 2 joystick (index); the cooperative
-// levels become the mouse capture below.
+// PORT: type 0 keyboard, 1 mouse; the cooperative levels become the mouse
+// capture below. Joysticks are the players' devices of src/input.
 InputDevice *CInput::DInputCreateDevice(int type, int index) {
     InputDevice *pDevice;
 
@@ -109,7 +187,7 @@ InputDevice *CInput::DInputCreateDevice(int type, int index) {
             Input_SetMouseExclusive(pDevice, g_pGraphics->isFullscreen);
         return pDevice;
     }
-    return Input_OpenJoystick(index);
+    return NULL;
 }
 
 // FUNCTION: CMR2 0x0049fd60
@@ -135,24 +213,18 @@ void CInput::DInputReleaseDevices(void) {
 
     CountAttachedInputDevices();
 
-    // PORT: every open joystick. The original closed as many as were attached
-    // now, which leaves one open after it was disconnected.
-    for (i = 0; i < 4; i++) {
-        if (m_joysticks[i] != NULL) {
-            Input_CloseDevice(m_joysticks[i]);
-            m_joysticks[i] = NULL;
-        }
-    }
+    // PORT: the force-feedback devices of the players belong to src/input.
+    for (i = 0; i < 4; i++)
+        m_joysticks[i] = NULL;
 }
 
 // FUNCTION: CMR2 0x0049ef90
 int CInput::CountAttachedInputDevices(void) {
   int i;
-  int count;
 
   m_deviceCounts.attachedJoystickCount = 0;
-  count = Input_GetJoystickCount();
-  for (i = 0; i < count; i++)
+  // PORT: one joystick per player (see SetupJoystick).
+  for (i = 0; i < INPUT_PLAYERS; i++)
       CountJoystickEnumerationCallback();
   return m_deviceCounts.keyboardCount + m_deviceCounts.attachedJoystickCount;
 }
@@ -246,12 +318,13 @@ void CInput::SetMouseCoopLevel(BOOL param1) {
 }
 
 // FUNCTION: CMR2 0x0049f690
+// PORT: the players' joysticks, once the connected devices are known.
 BOOL CInput::GetAttachedJoysticks(void) {
-    int count;
     int i;
 
-    count = Input_GetJoystickCount();
-    for (i = 0; i < count; i++)
+    Input_Update();
+    Input_DevicesChanged();
+    for (i = 0; i < INPUT_PLAYERS; i++)
         SetupJoystick(i);
     return TRUE;
 }
@@ -259,107 +332,43 @@ BOOL CInput::GetAttachedJoysticks(void) {
 // DirectInput enumeration callback for one joystick: creates the device, names
 // its buttons (DIJOFS_BUTTON) and the four directions of its first POV hat
 // (DIJOFS_POV(0)), and enables autocentre-off force feedback when present.
-// match 86%: the axis loop keeps two counters in the original (i, axisID).
 // FUNCTION: CMR2 0x0049f6d0
-// PORT: called for each joystick SDL reports.
+// PORT: sets up the joystick of player joystickIndex: its steering, brake
+// and throttle axes (SetupJoystickDeviceInfo), no buttons of its own, and
+// the force feedback of a device of the player that has it.
 BOOL CInput::SetupJoystick(int joystickIndex) {
-    unsigned int uVar2;
     DeviceInfo *pDeviceInfo;
-    InputDevice *pDevice;
-    BYTE iVar6[4];
-    int i, iVar11;
-    int count;
-    int offset;
-    InputCaps devCaps;
-    char objectName[260];
+    InputDevice *pFeedback;
+    int i;
 
-    uVar2 = m_deviceCounts.nextDevice;
     pDeviceInfo = &m_availableDevices[m_deviceCounts.nextDevice];
-    {
-        pDeviceInfo->type = 3;
-        pDevice = DInputCreateDevice(2, joystickIndex);
-        m_joysticks[m_deviceCounts.joystickCount] = pDevice;
+    pDeviceInfo->type = 3;
+    sprintf(pDeviceInfo->deviceInstanceName, "Player %d", joystickIndex + 1);
+    strcpy(pDeviceInfo->deviceProductName, pDeviceInfo->deviceInstanceName);
+    pDeviceInfo->joystickIndex = m_deviceCounts.joystickCount;
+    pFeedback = Input_GetFeedbackDevice(joystickIndex);
+    m_joysticks[m_deviceCounts.joystickCount] = pFeedback;
 
-        if (pDevice != NULL) {
-            strncpy(pDeviceInfo->deviceInstanceName, Input_GetInstanceName(pDevice), sizeof(pDeviceInfo->deviceInstanceName));
-            strncpy(pDeviceInfo->deviceProductName, Input_GetProductName(pDevice), sizeof(pDeviceInfo->deviceProductName));
-        
-            pDeviceInfo->joystickIndex = m_deviceCounts.joystickCount;
-
-            SetupJoystickDeviceInfo(pDeviceInfo);
-
-            for (i = 0; i < pDeviceInfo->joystick.controlCount; i++) {
-                if (pDeviceInfo->joystick.bindings[i].present != FALSE) {
-                    SetJoystickAxisRange(m_deviceCounts.nextDevice, i, pDeviceInfo->joystick.bindings[i].range);
-                    SetJoystickAxisDeadzone(m_deviceCounts.nextDevice, i, pDeviceInfo->joystick.bindings[i].deadzone);
-                    SetJoystickAxisSaturation(m_deviceCounts.nextDevice, i, pDeviceInfo->joystick.bindings[i].saturation);
-                }
-            }
-
-            Input_GetCaps(m_joysticks[m_deviceCounts.joystickCount], &devCaps);
-
-            {
-                if (devCaps.forceFeedback) {
-                    pDeviceInfo->supportsForceFeedback = TRUE;
-
-                    Input_SetAutocenter(m_joysticks[m_deviceCounts.joystickCount], FALSE);
-                    InitializeForceFeedbackDevice(m_deviceCounts.nextDevice, m_joysticks[m_deviceCounts.joystickCount]);
-                } else {
-                    pDeviceInfo->supportsForceFeedback = FALSE;
-                }
-
-                // Button names (DIJOFS_BUTTON(i) = 0x30 + i).
-                count = devCaps.buttons;
-                pDeviceInfo->buttonCount = 0;
-                for (i = 0; i < count; i++) {
-                    if (Input_GetObjectName(m_joysticks[m_deviceCounts.joystickCount], i + 0x30, objectName, sizeof(objectName))) {
-                        strncpy(pDeviceInfo->field_0x284[i], objectName, 20);
-                        pDeviceInfo->buttonCount++;
-                    }
-                }
-
-                // The first POV hat (DIJOFS_POV(0) = 0x20) gives four direction names.
-                count = devCaps.povs;
-                i = 0;
-                if (count > 0) {
-                    offset = 0x20;
-                    do {
-                        if (offset > 0x20)
-                            break;
-                        if (Input_GetObjectName(m_joysticks[m_deviceCounts.joystickCount], offset, objectName, sizeof(objectName))) {
-                            strncpy(pDeviceInfo->field_0x414, objectName, 0x11);
-                            strcat(pDeviceInfo->field_0x414, m_strL);
-
-                            strncpy(pDeviceInfo->field_0x425, objectName, 0x11);
-                            strcat(pDeviceInfo->field_0x425, m_strR);
-
-                            strncpy(pDeviceInfo->field_0x436, objectName, 0x11);
-                            strcat(pDeviceInfo->field_0x436, m_strU);
-
-                            strncpy(pDeviceInfo->field_0x447, objectName, 0x11);
-                            strcat(pDeviceInfo->field_0x447, m_strD);
-                        }
-                        i++;
-                        offset += 4;
-                    } while (i < count);
-                }
-
-                i = 0;
-
-                if (pDeviceInfo->buttonCount > 0) {
-                    int * pUnk0x1c = &pDeviceInfo->field_0x1c;
-                    do {
-                        *pUnk0x1c++ = 1u << i;
-                        i++;
-                    } while (i < pDeviceInfo->buttonCount);
-                }
-
-                m_deviceCounts.joystickCount++;
-                m_deviceCounts.nextDevice++;
-            }
+    SetupJoystickDeviceInfo(pDeviceInfo);
+    for (i = 0; i < pDeviceInfo->joystick.controlCount; i++) {
+        if (pDeviceInfo->joystick.bindings[i].present != FALSE) {
+            SetJoystickAxisRange(m_deviceCounts.nextDevice, i, pDeviceInfo->joystick.bindings[i].range);
+            SetJoystickAxisDeadzone(m_deviceCounts.nextDevice, i, pDeviceInfo->joystick.bindings[i].deadzone);
+            SetJoystickAxisSaturation(m_deviceCounts.nextDevice, i, pDeviceInfo->joystick.bindings[i].saturation);
         }
     }
 
+    if (pFeedback != NULL) {
+        pDeviceInfo->supportsForceFeedback = TRUE;
+        Input_SetAutocenter(pFeedback, FALSE);
+        InitializeForceFeedbackDevice(m_deviceCounts.nextDevice, pFeedback);
+    } else {
+        pDeviceInfo->supportsForceFeedback = FALSE;
+    }
+    pDeviceInfo->buttonCount = 0;
+
+    m_deviceCounts.joystickCount++;
+    m_deviceCounts.nextDevice++;
     return TRUE;
 }
 
@@ -369,8 +378,9 @@ void CInput::SetupJoystickDeviceInfo(DeviceInfo *deviceInfo) {
 
     deviceInfo->joystick.controlCount = 0;
     for (i = 0; i < 8; i++) {
-        // PORT: the axis exists when it has a range (DIPROP_RANGE succeeded).
-        if (Input_HasAxis(m_joysticks[deviceInfo->joystickIndex], m_axisOffsets[i])) {
+        // PORT: a player's joystick has steering (X), brake (Z) and
+        // throttle (Rz), see ReadJoystick.
+        if (i == 0 || i == 2 || i == 5) {
             deviceInfo->joystick.bindings[i].present = TRUE;
             deviceInfo->joystick.bindings[i].deadzone = 0xc8;
             deviceInfo->joystick.bindings[i].range = 0x10000;
@@ -385,26 +395,29 @@ void CInput::SetupJoystickDeviceInfo(DeviceInfo *deviceInfo) {
 }
 
 // FUNCTION: CMR2 0x0049ee10
+// PORT: kept for the controls pages; the axes are scaled by their bindings
+// (src/input, controls.ini).
 void CInput::SetJoystickAxisRange(int deviceID, int axisID, DWORD range) {
     DeviceInfo * pDeviceInfo = &m_availableDevices[deviceID];
 
-    Input_SetAxisRange(m_joysticks[pDeviceInfo->joystickIndex], m_axisOffsets[axisID], -(LONG)range, range);
     pDeviceInfo->joystick.bindings[axisID].range = range;
 }
 
 // FUNCTION: CMR2 0x0049ee90
+// PORT: kept for the controls pages; the axes are scaled by their bindings
+// (src/input, controls.ini).
 void CInput::SetJoystickAxisDeadzone(int deviceID, int axisID, DWORD deadzone) {
     DeviceInfo * pDeviceInfo = &m_availableDevices[deviceID];
 
-    Input_SetAxisDeadzone(m_joysticks[pDeviceInfo->joystickIndex], m_axisOffsets[axisID], deadzone);
     pDeviceInfo->joystick.bindings[axisID].deadzone = deadzone;
 }
 
 // FUNCTION: CMR2 0x0049ef10
+// PORT: kept for the controls pages; the axes are scaled by their bindings
+// (src/input, controls.ini).
 void CInput::SetJoystickAxisSaturation(int deviceID, int axisID, DWORD saturation) {
     DeviceInfo * pDeviceInfo = &m_availableDevices[deviceID];
 
-    Input_SetAxisSaturation(m_joysticks[pDeviceInfo->joystickIndex], m_axisOffsets[axisID], saturation);
     pDeviceInfo->joystick.bindings[axisID].saturation = saturation;
 }
 
@@ -489,6 +502,10 @@ BOOL CInput::ResetForceFeedbackEffectsAlt(void) {
 }
 
 // FUNCTION: CMR2 0x0040bf70
+// PORT: the configurations follow the players' devices
+// (RefreshControllerConfigurations). The keys of an older Controller.rcf
+// become the keyboard bindings when controls.ini does not exist yet, and
+// controls.ini is written.
 void CInput::LoadControllerInfo(void) {
     ControllerData *fileBuffer;
 
@@ -498,18 +515,13 @@ void CInput::LoadControllerInfo(void) {
     fileBuffer = (ControllerData*)CFileBuffer::GetGenericFileBuffer(CFrontend::m_stringDest, TRUE);
     if (fileBuffer != NULL) {
         if (CGenericFileLoader::GetGenericFileSize() == 0x11a4) {
-            memcpy(&m_controllerInfo, fileBuffer, sizeof(m_controllerInfo));
-
-            // write the first two elements of the array
-            memcpy(m_playerControllers, &((unsigned int*)fileBuffer)[0x468], 4);
-
-            CFileBuffer::FreeGenericFileBuffer(fileBuffer);
-            m_hasLoadedControllerInfo = TRUE;
-
-            ApplyControllerButtonBindings(0);
-            ApplyControllerButtonBindings(1);
+            Input_ImportKeyboardKeys(0, fileBuffer[0].keys);
+            Input_ImportKeyboardKeys(1, fileBuffer[1].keys);
         }
+        CFileBuffer::FreeGenericFileBuffer(fileBuffer);
     }
+    RefreshControllerConfigurations();
+    Input_SaveBindings();
 }
 
 // FUNCTION: CMR2 0x0040be90
@@ -681,17 +693,17 @@ void CInput::RebuildAvailableInputDevices(void)
     GetAttachedJoysticks();
 }
 
-// PORT: the original enumerated joysticks once, at startup. Rebuilds the
-// devices when one was connected or disconnected since, so a wheel that
-// switches out of its generic USB mode, or a controller connected later,
-// can be chosen. Called on entering the controls menu.
+// PORT: the original enumerated joysticks once, at startup. Sets up the
+// players' joysticks again when a device was connected or disconnected, for
+// the force feedback of the device that came or went. Called in the menus.
 void Input_RescanChangedJoysticks(void)
 {
-    if (!Input_JoysticksChanged())
+    if (!Input_DevicesChanged())
         return;
     CInput::ResetForceFeedbackEffectsAlt();
     CInput::RebuildAvailableInputDevices();
     CInput::RefreshControllerConfigurations();
+    Input_SaveBindings();   // the profile of a new joystick or wheel
 }
 
 // FUNCTION: CMR2 0x0049edd0
@@ -862,115 +874,25 @@ void CInput::ReadMouse(DeviceInfo *pDevice)
 }
 
 // FUNCTION: CMR2 0x0049f480
+// PORT: the buttons of a player (Input_PlayerButtons).
 void CInput::ReadKeyboardDevice(DeviceInfo *pDevice)
 {
-    pDevice->held = 0;
-    if (CGameInfo::m_fixedMenuKeys != 0) {
-        if (m_keyboardState[INPUT_KEY_LEFT] & 0x80)
-            pDevice->held = 1;
-        if (m_keyboardState[INPUT_KEY_RIGHT] & 0x80)
-            pDevice->held |= 0x2;
-        if (m_keyboardState[INPUT_KEY_UP] & 0x80)
-            pDevice->held |= 0x4;
-        if (m_keyboardState[INPUT_KEY_DOWN] & 0x80)
-            pDevice->held |= 0x8;
-        if (m_keyboardState[INPUT_KEY_RETURN] & 0x80)
-            pDevice->held |= 0x10;
-        if (m_keyboardState[INPUT_KEY_ESCAPE] & 0x80)
-            pDevice->held |= 0x20;
-        if (m_keyboardState[INPUT_KEY_F1] & 0x80)
-            pDevice->held |= 0x1000;
-        if (m_keyboardState[INPUT_KEY_F2] & 0x80)
-            pDevice->held |= 0x2000;
-    } else {
-        if (m_keyboardState[pDevice->keyboard.steerLeftKey] & 0x80)
-            pDevice->held = 1;
-        if (m_keyboardState[pDevice->keyboard.steerRightKey] & 0x80)
-            pDevice->held |= 0x2;
-        if (m_keyboardState[pDevice->keyboard.throttleKey] & 0x80)
-            pDevice->held |= 0x4;
-        if (m_keyboardState[pDevice->keyboard.brakeKey] & 0x80)
-            pDevice->held |= 0x8;
-        if (m_keyboardState[pDevice->keyboard.handbrakeKey] & 0x80)
-            pDevice->held |= 0x10;
-        if (m_keyboardState[pDevice->keyboard.shiftUpKey] & 0x80)
-            pDevice->held |= 0x20;
-        if (m_keyboardState[pDevice->keyboard.shiftDownKey] & 0x80)
-            pDevice->held |= 0x40;
-        if (m_keyboardState[pDevice->keyboard.cameraCycleKey] & 0x80)
-            pDevice->held |= 0x80;
-        if (m_keyboardState[pDevice->keyboard.driverCycleKey] & 0x80)
-            pDevice->held |= 0x100;
-        if (m_keyboardState[pDevice->keyboard.backKey] & 0x80)
-            pDevice->held |= 0x200;
-        if (m_keyboardState[pDevice->keyboard.field_0x472] & 0x80)
-            pDevice->held |= 0x400;
-        if (m_keyboardState[pDevice->keyboard.field_0x473] & 0x80)
-            pDevice->held |= 0x800;
-        if (m_keyboardState[pDevice->keyboard.field_0x474] & 0x80)
-            pDevice->held |= 0x1000;
-        if (m_keyboardState[pDevice->keyboard.field_0x475] & 0x80)
-            pDevice->held |= 0x2000;
-        if (m_keyboardState[pDevice->keyboard.field_0x476] & 0x80)
-            pDevice->held |= 0x4000;
-        if (m_keyboardState[pDevice->keyboard.field_0x477] & 0x80)
-            pDevice->held |= 0x8000;
-    }
+    pDevice->held = Input_PlayerButtons(Input_PlayerOfDevice(pDevice - m_availableDevices));
 }
 
-// PORT: the directions of each device's first POV hat (the D-pad of a
-// gamepad), apart from its stick's: see Input_MergeConfiguredDeviceButtons.
-static unsigned int s_hatDirections[8];
-
 // FUNCTION: CMR2 0x0049fb70
+// PORT: a player's joystick: steering on X, the throttle on Rz and the brake
+// on Z, each read as a wheel's pedal (the maximum when released), and the
+// player's buttons.
 void CInput::ReadJoystick(DeviceInfo *pDevice)
 {
-    InputJoystickState joyState;
-    InputDevice *pJoystick;
-    int i;
+    int player;
 
-    pJoystick = m_joysticks[pDevice->joystickIndex];
-    pDevice->held = 0;
-    s_hatDirections[pDevice - m_availableDevices] = 0;
-    if (pJoystick == NULL || !Input_ReadJoystick(pJoystick, &joyState))
-        return;
-
-    pDevice->joystick.bindings[0].position = joyState.lX;
-    pDevice->joystick.bindings[1].position = joyState.lY;
-    pDevice->joystick.bindings[2].position = joyState.lZ;
-    pDevice->joystick.bindings[3].position = joyState.lRx;
-    pDevice->joystick.bindings[4].position = joyState.lRy;
-    pDevice->joystick.bindings[5].position = joyState.lRz;
-    pDevice->joystick.bindings[6].position = joyState.rglSlider[0];
-    pDevice->joystick.bindings[7].position = joyState.rglSlider[1];
-
-    if (joyState.lX < -39321)
-        pDevice->held |= 0x1;
-    else if (joyState.lX > 39321)
-        pDevice->held |= 0x2;
-    if (joyState.lY < -39321)
-        pDevice->held |= 0x4;
-    else if (joyState.lY > 39321)
-        pDevice->held |= 0x8;
-
-    if ((joyState.rgdwPOV[0] & 0xffff) != 0xffff) {
-        unsigned int hat = 0;
-        if (joyState.rgdwPOV[0] >= 4500 && joyState.rgdwPOV[0] <= 13500)
-            hat |= 0x2;
-        if (joyState.rgdwPOV[0] >= 13500 && joyState.rgdwPOV[0] <= 22500)
-            hat |= 0x8;
-        if (joyState.rgdwPOV[0] >= 22500 && joyState.rgdwPOV[0] <= 31500)
-            hat |= 0x1;
-        if (joyState.rgdwPOV[0] >= 31500 || joyState.rgdwPOV[0] <= 4500)
-            hat |= 0x4;
-        pDevice->held |= hat;
-        s_hatDirections[pDevice - m_availableDevices] = hat;
-    }
-
-    for (i = 0; i < pDevice->buttonCount; i++) {
-        if (i < 24 && (joyState.rgbButtons[i] & 0x80))
-            pDevice->held |= m_buttonMasks[i];
-    }
+    player = Input_PlayerOfDevice(pDevice - m_availableDevices);
+    pDevice->joystick.bindings[0].position = Input_GetAction(player, INPUT_STEER_RIGHT) - Input_GetAction(player, INPUT_STEER_LEFT);
+    pDevice->joystick.bindings[2].position = INPUT_FULL - 2 * Input_GetAction(player, INPUT_BRAKE);
+    pDevice->joystick.bindings[5].position = INPUT_FULL - 2 * Input_GetAction(player, INPUT_THROTTLE);
+    pDevice->held = Input_PlayerButtons(player);
 }
 
 // FUNCTION: CMR2 0x0040c130
@@ -1024,6 +946,15 @@ DeviceInfo *CInput::UpdateDevice(int index)
         if (pDevice->joystickIndex < 0 || pDevice->joystickIndex > 3)
             return NULL;
     }
+
+    // PORT: the devices are read once, with record 0. A player's joystick
+    // reads as a keyboard while the player drives with keys or buttons.
+    if (index == 0) {
+        Input_SetLocalPlayers(RallyDataState());
+        Input_Update();
+    }
+    if (index == 2 || index == 3)
+        pDevice->type = Input_IsAnalog(index - 2) ? 3 : 1;
 
     switch (pDevice->type) {
     case 1:
@@ -1111,7 +1042,7 @@ int CInput::CreateForceFeedbackEffect(int effectType, DWORD duration, LONG coeff
     pParams->deadBand = 0;
     pParams->duration = duration;
     pParams->gain = 10000;
-    pParams->triggerButton = triggerButton == -1 ? INPUT_EFFECT_NO_TRIGGER : INPUT_OFFSET_BUTTON(triggerButton);
+    pParams->triggerButton = triggerButton == -1 ? INPUT_EFFECT_NO_TRIGGER : 0x30 + triggerButton;
 
     pDevice->effects[i] = Input_CreateEffect(pDevice->device, pParams);
     return i;
@@ -1245,7 +1176,7 @@ int CInput::CreateConstantForceEffect(DWORD duration, LONG direction, LONG magni
     pParams->direction = direction;
     pParams->gain = 10000;
     pParams->duration = duration;
-    pParams->triggerButton = triggerButton == -1 ? INPUT_EFFECT_NO_TRIGGER : INPUT_OFFSET_BUTTON(triggerButton);
+    pParams->triggerButton = triggerButton == -1 ? INPUT_EFFECT_NO_TRIGGER : 0x30 + triggerButton;
 
     pDevice->effects[i] = Input_CreateEffect(pDevice->device, pParams);
     return i;
@@ -1271,16 +1202,10 @@ HRESULT CInput::SetConditionCoefficient(int effectIndex, LONG coefficient, int d
 }
 
 // FUNCTION: CMR2 0x0040bff0
+// PORT: the bindings are saved in controls.ini.
 void CInput::SaveControllerInfo(void)
 {
-    unsigned int *buffer;
-
-    buffer = (unsigned int *)CFileBuffer::AllocateLockedBuffer(0x11a4);
-    memcpy(buffer, m_controllerInfo, sizeof(m_controllerInfo));
-    buffer[0x468] = *(unsigned int *)m_playerControllers;
-    sprintf(CFrontend::m_stringDest, m_strControllerInfoDir, CInstallInfo::GetGameHDPath());
-    CInstallInfo::WriteFileToDisk(CFrontend::m_stringDest, 2, buffer, 0x11a4);
-    CFileBuffer::FreeGenericFileBuffer(buffer);
+    Input_SaveBindings();
 }
 
 // Key labels of the keyboard controls: the first keyboard uses text for the
@@ -1397,35 +1322,6 @@ void CInput::InitDetectedControllerSlot(DeviceInfo *pDevice, int index)
         strcpy(pController->keyNames[8], CFrontend::GetTextString(0x1fe));
         return;
     }
-    // PORT: a gamepad (Xbox layout, src/input) starts with the right trigger
-    // (Rz) as throttle and the left (Z) as brake, each read as a pedal, rather
-    // than both on the left stick's Y axis as for other joysticks.
-    if (pController->hasAxes != 0 && Input_IsGamepad(m_joysticks[pDevice->joystickIndex]) &&
-        pDevice->joystick.bindings[0].present != 0 && pDevice->joystick.bindings[2].present != 0 &&
-        pDevice->joystick.bindings[5].present != 0) {
-        pController->steerLeftMask = 1;
-        pController->steerRightMask = 2;
-        pController->axisBindings[0] = *(ControllerDataUnk0x210 *)&pDevice->joystick.bindings[0];
-        pController->axisIndices[0] = 0;
-        pController->axisBindings[1] = *(ControllerDataUnk0x210 *)&pDevice->joystick.bindings[0];
-        pController->axisIndices[1] = 0;
-        pController->throttleMask = 4;
-        pController->axisBindings[2] = *(ControllerDataUnk0x210 *)&pDevice->joystick.bindings[5];
-        pController->axisIndices[2] = 5;
-        pController->brakeMask = 8;
-        pController->axisBindings[3] = *(ControllerDataUnk0x210 *)&pDevice->joystick.bindings[2];
-        pController->axisIndices[3] = 2;
-        pController->handbrakeMask = 0x10;
-        pController->shiftUpMask = 0x20;
-        pController->shiftDownMask = 0x40;
-        pController->cameraCycleMask = 0x80;
-        pController->driverCycleMask = 0x100;
-        pController->backMask = 0x200;
-#ifdef __ANDROID__
-        pController->backMask = 0x800; // Start pauses on handhelds.
-#endif
-        return;
-    }
     if (pController->hasAxes != 0) {
         pController->steerLeftMask = 1;
         pController->steerRightMask = 2;
@@ -1468,124 +1364,29 @@ void CInput::InitDetectedControllerSlot(DeviceInfo *pDevice, int index)
     pController->backMask = 0x400;
 }
 
-// PORT: whether player 1's device follows the controllers connected (the
-// first one, or the keyboard without any) rather than a choice made in the
-// controls menu ([input] auto_player1 in opencmr2.ini). The original kept
-// player 1 on the keyboard until it was changed there, with the keyboard.
-static BOOL Input_Player1Automatic(void)
-{
-    return Sys_GetOption("input.auto_player1", 1) != 0;
-}
-
-// The device player 1 follows automatically: of the controllers player 2
-// does not use, the first wheel, else the first gamepad, else the first
-// other joystick; the keyboard without any. Android lists some built-in
-// devices of phones as joysticks: only gamepads and wheels count there.
-unsigned short Input_GetAutomaticPlayer1Device(void)
-{
-    int best = 0;
-    int bestRank = 0;
-    int rank;
-    int i;
-
-    for (i = 2; i < CInput::m_controllerCount && i < 8; i++) {
-        int joystick = CInput::m_availableDevices[i].joystickIndex;
-        if (i == CInput::m_playerControllers[1] || CInput::m_availableDevices[i].type != 3 || joystick < 0 || joystick > 3)
-            continue;
-        if (Input_IsWheel(CInput::m_joysticks[joystick]))
-            rank = 3;
-        else if (Input_IsGamepad(CInput::m_joysticks[joystick]))
-            rank = 2;
-        else
-#ifdef __ANDROID__
-            continue;
-#else
-            rank = 1;
-#endif
-        if (rank > bestRank) {
-            best = i;
-            bestRank = rank;
-        }
-    }
-    return (unsigned short)best;
-}
-
-// Called when the controls menu stores player 1's device: choosing another
-// than the automatic one keeps that choice; choosing it again follows the
-// controllers again.
-void Input_StorePlayer1Choice(void)
-{
-    BOOL automatic = CInput::m_playerControllers[0] == Input_GetAutomaticPlayer1Device();
-
-    if (Input_Player1Automatic() != automatic)
-        Sys_SetOption("input.auto_player1", automatic);
-}
-
 // FUNCTION: CMR2 0x0040c050
+// PORT: the configurations of the four device records, made afresh: the
+// keyboards of players 1 and 2, then the players' joysticks, which they
+// drive with. The bindings themselves are in controls.ini (src/input).
 void CInput::RefreshControllerConfigurations(void)
 {
     DeviceInfo *pDevice;
     int i;
-    // PORT: a controller keeps its configuration, and the players theirs,
-    // when the controllers are listed in another order than when it was
-    // saved, as they can be from one start to the next. The original matched
-    // configuration i with device i by name only, and reset it otherwise.
-    static ControllerData saved[6];
-    int moved[6];
-    BOOL taken[6];
-    int j;
-    int slot;
-    BOOL lost;
 
-    memcpy(saved, m_controllerInfo, sizeof(saved));
-    for (j = 0; j < 6; j++) {
-        moved[j] = -1;
-        taken[j] = FALSE;
-    }
     m_controllerCount = CountAttachedInputDevices();
     for (i = 0; i < m_controllerCount && i < 6; i++) {
         pDevice = UpdateDevice(i);
-        j = -1;
-        if (m_hasLoadedControllerInfo != 0) {
-            if (strcmp(saved[i].name, pDevice->deviceInstanceName) == 0 && !taken[i])
-                j = i;
-            for (slot = 2; j < 0 && i >= 2 && slot < 6; slot++)
-                if (!taken[slot] && strcmp(saved[slot].name, pDevice->deviceInstanceName) == 0)
-                    j = slot;
-        }
-        if (j < 0) {
+        if (i < 2) {
             memset(&m_controllerInfo[i], 0, sizeof(m_controllerInfo[i]));
             InitDetectedControllerSlot(pDevice, i);
-            continue;
-        }
-        taken[j] = TRUE;
-        moved[j] = i;
-        if (j != i) {
-            m_controllerInfo[i] = saved[j];
-            m_controllerInfo[i].index = (BYTE)i;
+        } else {
+            Input_InitPlayerConfiguration(i);
         }
     }
     if (m_controllerCount < 6)
         memset(&m_controllerInfo[m_controllerCount], 0, (6 - m_controllerCount) * sizeof(ControllerData));
-    // A player whose controller is gone goes back to the keyboard.
-    lost = FALSE;
-    for (slot = 0; slot < 8; slot++) {
-        j = m_playerControllers[slot];
-        if (j < 2 && j < m_controllerCount)
-            continue;
-        if (j < 6 && moved[j] >= 0) {
-            m_playerControllers[slot] = (unsigned short)moved[j];
-            continue;
-        }
-        m_playerControllers[slot] = (unsigned short)(slot < 2 ? slot : 0);
-        if (slot == 0)
-            lost = TRUE;
-    }
-    // PORT: player 1 starts on the first controller connected, so one works
-    // before the controls menu is reached (Steam Deck, Android handhelds),
-    // until another device is chosen for player 1 there.
-    if (Input_Player1Automatic() || lost)
-        m_playerControllers[0] = Input_GetAutomaticPlayer1Device();
+    for (i = 0; i < INPUT_PLAYERS; i++)
+        m_playerControllers[i] = (unsigned short)(2 + i);
     ApplyControllerButtonBindings(0);
     ApplyControllerButtonBindings(1);
     m_hasLoadedControllerInfo = TRUE;
@@ -1683,8 +1484,8 @@ void CInput::UpdateAllAvailableDevices(void)
 {
     // Frontend/pause transitions must not replay unconsumed driving actions.
     memset(s_pendingRacePresses, 0, sizeof(s_pendingRacePresses));
-    // PORT: controllers connected or disconnected since are taken in the
-    // menus, so one can be used without a keyboard to open the controls menu.
+    // PORT: the force feedback of controllers connected or disconnected
+    // since is taken in the menus.
     Input_RescanChangedJoysticks();
     int i;
 
@@ -1761,43 +1562,11 @@ int Input_PopQueuedKeyPress(int *pOut)
 int g_latchedThrottleAxes[8][2];
 
 // Turns separate joystick/wheel pedals into one-shot up/down menu presses
-// (bits 2 and 3). Gamepads use their stick and POV for menu navigation.
+// (bits 2 and 3).
 // FUNCTION: CMR2 0x0040bad0
+// PORT: the menus take the inputs bound to the menu actions (controls.ini).
 void Input_TranslatePedalsToMenuKeys(void)
 {
-    unsigned int i;
-    DeviceInfo *pDev;
-
-    for (i = 0; i < 8; i++) {
-        pDev = CInput::GetAvailableDeviceRecord(i);
-        // PORT: gamepads navigate with the stick and POV already read by
-        // ReadJoystick. Their separate driving triggers must not replace
-        // those menu presses. Keep pedal navigation for wheels/joysticks.
-        if (pDev->type == 3 && pDev->joystickIndex >= 0 && pDev->joystickIndex < 8 &&
-            Input_IsGamepad(CInput::m_joysticks[pDev->joystickIndex])) {
-            g_latchedThrottleAxes[i][0] = g_latchedThrottleAxes[i][1] = 0;
-            continue;
-        }
-        if (pDev->type == 3 && CInput::GetEnabledControllerAxisBinding(0, 2) != CInput::GetEnabledControllerAxisBinding(0, 3)) {
-            pDev->pressed &= 0xfffffff3;
-            if (((int *)pDev)[CInput::GetEnabledControllerAxisBinding(0, 2) * 5 + 0x11f] < 0x3333) {
-                if (g_latchedThrottleAxes[i][0] == 0) {
-                    pDev->pressed |= 4;
-                    g_latchedThrottleAxes[i][0] = 1;
-                }
-            } else {
-                g_latchedThrottleAxes[i][0] = 0;
-            }
-            if (((int *)pDev)[CInput::GetEnabledControllerAxisBinding(0, 3) * 5 + 0x11f] < 0x3333) {
-                if (g_latchedThrottleAxes[i][1] == 0) {
-                    pDev->pressed |= 8;
-                    g_latchedThrottleAxes[i][1] = 1;
-                }
-            } else {
-                g_latchedThrottleAxes[i][1] = 0;
-            }
-        }
-    }
 }
 
 // Controller slots are mapped to entries of m_controllerInfo through m_playerControllers.
@@ -1866,7 +1635,6 @@ DWORD Input_GetControllerField118(unsigned short slot)
 void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *pOut)
 {
     DeviceInfo *pDev;
-    int i;
 
     if ((short)Input_GetControllerSlotMapping(slot) != 0 && (short)Input_GetControllerSlotMapping(slot) != 1) {
         pDev = CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(slot));
@@ -1876,47 +1644,8 @@ void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *pOut)
             pOut->repeated |= pDev->repeated;
         }
     }
-    // PORT: player 1's menus also take every controller player 2 does not
-    // use, so any connected controller works in them, also one not chosen in
-    // the controls menu yet. Only the chosen one drives.
-    if (slot != 0)
-        return;
-    for (i = 2; i < 8; i++) {
-        pDev = CInput::GetAvailableDeviceRecord(i);
-        if (i == (short)Input_GetControllerSlotMapping(0) || i == (short)Input_GetControllerSlotMapping(1) ||
-            (pDev->type != 0 && pDev->type != 3) || pDev->joystickIndex < 0 || pDev->joystickIndex > 3)
-            continue;
-        pOut->pressed |= pDev->pressed;
-        pOut->held |= pDev->held;
-        pOut->repeated |= pDev->repeated;
-    }
 }
 
-// PORT: menu input of the controller a page of the controls menu sets up,
-// which the original left to the keyboard. On the calibration page its
-// stick and pedals are being tested: only its buttons and its D-pad count.
-void Input_MergeConfiguredDeviceButtons(int index, DeviceInfo *pOut, BOOL padOnly)
-{
-    static unsigned int previousHat[8];
-    DeviceInfo *pDev;
-    unsigned int hat;
-
-    if (index < 2 || index >= 8)
-        return;
-    pDev = CInput::GetAvailableDeviceRecord(index);
-    if ((pDev->type != 0 && pDev->type != 3) || pDev->joystickIndex < 0 || pDev->joystickIndex > 3)
-        return;
-    hat = s_hatDirections[index];
-    if (!padOnly) {
-        pOut->pressed |= pDev->pressed;
-        pOut->held |= pDev->held;
-        pOut->repeated |= pDev->repeated;
-    } else {
-        pOut->pressed |= (pDev->pressed & ~CInput::m_directionButtonMask) | (hat & ~previousHat[index]);
-        pOut->held |= (pDev->held & ~CInput::m_directionButtonMask) | hat;
-    }
-    previousHat[index] = hat;
-}
 
 // FUNCTION: CMR2 0x0040bdd0
 DWORD Input_GetControllerField110(unsigned short slot)

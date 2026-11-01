@@ -395,8 +395,6 @@ void Input_RescanChangedJoysticks(void);
 void Input_SetControllerSlotMapping(unsigned short slot, unsigned short index);
 unsigned short Input_GetControllerSlotMapping(unsigned short slot);
 unsigned short Input_GetAssignedController(void);
-void Input_StorePlayer1Choice(void);
-void Input_MergeConfiguredDeviceButtons(int index, DeviceInfo *pOut, BOOL padOnly);
 
 // Separator line under the rows of the controls pages.
 // GLOBAL: CMR2 0x0082af70
@@ -425,13 +423,6 @@ int g_controlsSelectedSlot;
 short FrontendControls_GetSelectedSlot(void)
 {
     return (short)g_controlsSelectedSlot;
-}
-
-// PORT: the menu input of the controller the bindings or the calibration
-// page sets up (FrontendMenu_UpdateAndSwitchActive).
-void FrontendControls_MergeConfiguredDevice(DeviceInfo *pOut, BOOL padOnly)
-{
-    Input_MergeConfiguredDeviceButtons(CONTROLS_SEL, pOut, padOnly);
 }
 
 // Item callback of the controls list: selects the device of this entry.
@@ -786,7 +777,6 @@ void FrontendControls_LeaveDeviceConfiguration(Menu *pMenu, char back)
             i++;
         } while ((INT_PTR)pSlot < (INT_PTR)(g_controlsDeviceSelection.slots + 8));
         memcpy(Input_GetControllerTable(), g_controlsCopy, sizeof(g_controlsCopy));
-        Input_StorePlayer1Choice();   // PORT
     }
 }
 

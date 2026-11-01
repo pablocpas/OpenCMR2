@@ -109,18 +109,28 @@ If you have the CD or an ISO, install the game or extract it first: OpenCMR2
 reads the installed folders `Game`, `FrontEnd`, `Sounds`, `CountrySpecific`
 and `SetupRep`, and does not start when one of them is missing.
 
-Keyboards, gamepads and wheels work in the menus and on the stages. Player 1
-drives with the first controller connected (a wheel before a gamepad), or the
-keyboard without one, until another device is chosen for player 1 in
-**Options > Controls**. Any controller that player 2 does not use also works
-in player 1's menus. Controllers connected or disconnected while the game runs
-are taken in the menus (pause first during a stage). In the controls menu, the
-page that assigns a button to each action and the axis calibration after it
-work with the controller being set up: confirm starts waiting for a button or
-axis, and on the calibration page the D-pad selects an axis, Left and Right set
-its saturation and Up and Down its deadzone. A controller keeps its bindings
-when the controllers are listed in another order. Without a physical keyboard
-(Steam Deck Game Mode), the on-screen keyboard opens only to type a name.
+Keyboards, gamepads and wheels work in the menus and on the stages. Every
+connected controller drives player 1, together with the keyboard; when two
+players race, the second controller connected is player 2's, with the
+numeric keypad. Controllers connected or disconnected while the game runs
+are taken at once. A player switches between keys and an axis freely: the
+game steers as with a keyboard after a key, and follows the stick or wheel
+after it moves. Without a physical keyboard (Steam Deck Game Mode), the
+on-screen keyboard opens only to type a name.
+
+The default controls are the original's keys (cursor keys, Space for the
+handbrake, `]` and `[` for the gears, C for the camera, R to look back,
+Escape to pause) and, on a gamepad, the left stick to steer, the right and
+left triggers for throttle and brake, A for the handbrake, the shoulder
+buttons for the gears, Y for the camera, B to look back and Start to pause.
+Wheels steer with their first axis, and their pedals are found from where
+their axes rest. All of them are set in `controls.ini` in the user directory,
+written with the defaults and an explanation on first launch: each action
+lists the keys, buttons and axes bound to it, with a section for each
+keyboard player, for gamepads, for other joysticks, and for each model of
+wheel or joystick connected, which also sets its deadzone, its saturation
+and the player it belongs to. The keys of an older `Controller.rcf` are
+taken when `controls.ini` does not exist yet.
 
 On Android, install the APK and copy the installation folder to the
 device first. On first launch, choose it in the system's folder picker: the
@@ -199,7 +209,6 @@ the game.
 | `[video] stretch_movies` | `0` | Stretch the movies over the whole window (`1`) instead of keeping their 4:3 proportions |
 | `[input] key_repeat_delay` | `750` | Milliseconds before a key held in the menus repeats |
 | `[input] key_repeat_interval` | `100` | Milliseconds between the repeats of a held key |
-| `[input] auto_player1` | `1` | Player 1 uses the first controller connected, a wheel before others, or the keyboard without one (`1`); the controls menu sets `0` when another device is chosen for player 1 there |
 | `[install] language` | `English` | English, American, French, German, Italian, Spanish or Polish |
 | `[install] sku` | `EUROPE` | Game edition: `EUROPE`, `AMERICA`, `POLAND` or `JAPAN` |
 | `[install] menu_shortcut` | asked | Entry in the applications menu (Linux) or Start menu (Windows): `1` keeps it pointing at this copy, `0` removes it |

@@ -1,8 +1,8 @@
 // Input on SDL3: see port/input.h.
 
+#include "input/input_internal.h"
 #include "platform/platform.h"
 #include "platform/testing.h"
-#include "port/input.h"
 #include "port/sys.h"
 
 #include <math.h>
@@ -10,8 +10,6 @@
 #include <string.h>
 
 #include <algorithm>
-#include <vector>
-#include <string>
 #include <sstream>
 #ifdef __ANDROID__
 #include <jni.h>
@@ -19,38 +17,40 @@
 
 namespace {
 
-enum DeviceType { DEVICE_KEYBOARD, DEVICE_MOUSE, DEVICE_JOYSTICK };
-
-struct Axis {
-    LONG min = -32768;
-    LONG max = 32767;
-    DWORD deadzone = 0;         // 0..10000
-    DWORD saturation = 10000;   // 0..10000
-};
+enum DeviceKind { DEVICE_KEYBOARD, DEVICE_MOUSE, DEVICE_JOYSTICK };
 
 }
 
+// A joystick, gamepad or wheel, kept after it is disconnected so that its
+// effects stay valid and it gets them back when it returns.
 struct InputDevice {
-    DeviceType type;
+    DeviceKind kind;
+    SDL_JoystickID id = 0;              // 0 while disconnected
     SDL_Joystick *joystick = nullptr;
     SDL_Gamepad *gamepad = nullptr;     // controllers SDL knows the layout of
     SDL_Haptic *haptic = nullptr;
-    char name[260] = {};
-    Axis axes[8];               // X, Y, Z, Rx, Ry, Rz, slider 0, slider 1
-    int sdlAxisCount = 0;
+    std::string identity;               // GUID, plus the serial or path
+    std::string name;
+    Profile *profile = nullptr;
+    int order = 0;                      // connection order
+    bool wheel = false;
     std::vector<InputEffect *> effects;
 };
 
 struct InputEffect {
     InputDevice *device;
-    int id;
+    int id;                             // SDL's effect, -1 until created on the device
     InputEffectParams params;
+    bool playing;
 };
 
 namespace {
 
-// The game's controller table: two keyboard configurations, four devices.
-const int kMaxJoysticks = 4;
+struct Player {
+    int values[INPUT_ACTION_COUNT];
+    bool analog;
+    bool decided;                       // analog was set by an input, not assumed
+};
 
 bool s_initialised;
 #ifdef __ANDROID__
@@ -76,27 +76,31 @@ bool AndroidTouchOnly()
 #endif
 const BYTE *s_testKeyboard;
 bool s_heldBack[SDL_SCANCODE_COUNT];
-std::vector<SDL_JoystickID> s_openJoysticks;
+std::deque<InputDevice> s_devices;
+int s_nextOrder;
+bool s_devicesChanged;
+int s_localPlayers = 1;
+Player s_players[INPUT_PLAYERS];
 
 void EnsureInit()
 {
-    if (!s_initialised) {
-        // The game opened joysticks with DISCL_BACKGROUND. SDL otherwise
-        // drops joystick input while no window has the keyboard focus, which
-        // under gamescope (Steam Deck Game Mode) can be the whole session.
-        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-        SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC);
-        s_initialised = true;
+    if (s_initialised)
+        return;
+    // The game opened joysticks with DISCL_BACKGROUND. SDL otherwise drops
+    // joystick input while no window has the keyboard focus, which under
+    // gamescope (Steam Deck Game Mode) can be the whole session.
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC);
+    s_initialised = true;
 #ifdef __ANDROID__
-        s_touchOnly = AndroidTouchOnly();
+    s_touchOnly = AndroidTouchOnly();
 #endif
-        // Steam replaces the controllers it handles with virtual gamepads and
-        // hides the real ones through these: log them with the controllers.
-        for (const char *name : {"SteamVirtualGamepadInfo", "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD",
-                                 "SDL_GAMECONTROLLER_IGNORE_DEVICES", "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"})
-            if (const char *value = SDL_getenv(name))
-                Sys_Log("controllers: %s=%s", name, value);
-    }
+    // Steam replaces the controllers it handles with virtual gamepads and
+    // hides the real ones through these: log them with the controllers.
+    for (const char *name : {"SteamVirtualGamepadInfo", "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD",
+                             "SDL_GAMECONTROLLER_IGNORE_DEVICES", "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"})
+        if (const char *value = SDL_getenv(name))
+            Sys_Log("controllers: %s=%s", name, value);
 }
 
 const char *JoystickKind(SDL_Joystick *joystick, bool gamepad)
@@ -110,103 +114,300 @@ const char *JoystickKind(SDL_Joystick *joystick, bool gamepad)
     }
 }
 
-// Axis index (0..7) of a DirectInput data-format offset, or -1.
-int AxisOfOffset(DWORD offset)
+std::string Identity(SDL_JoystickID id)
 {
-    if (offset <= 0x1c && (offset & 3) == 0)
-        return (int)(offset / 4);
-    return -1;
+    char guid[33];
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(id), guid, sizeof(guid));
+    const char *path = SDL_GetJoystickPathForID(id);
+    return std::string(guid) + "/" + (path ? path : "");
 }
 
-// DirectInput's axis transform: dead zone and saturation around the centre,
-// then the range.
-LONG ScaleAxis(const Axis &axis, Sint16 raw)
-{
-    double v = raw < 0 ? raw / 32768.0 : raw / 32767.0;
-    double magnitude = fabs(v);
-    double dz = axis.deadzone / 10000.0;
-    double sat = axis.saturation / 10000.0;
-    double out;
+// ---- keyboard ------------------------------------------------------------------
 
-    if (magnitude <= dz)
-        out = 0.0;
-    else if (magnitude >= sat || sat <= dz)
-        out = 1.0;
+bool KeyDown(SDL_Scancode scancode)
+{
+    if (s_testKeyboard) {
+        int dik = Keys_FromScancode(scancode);
+        return dik != 0 && (s_testKeyboard[dik] & 0x80);
+    }
+    int count = 0;
+    const bool *state = SDL_GetKeyboardState(&count);
+    if (scancode <= SDL_SCANCODE_UNKNOWN || scancode >= count || !state[scancode])
+        return false;
+    return scancode >= SDL_SCANCODE_COUNT || !s_heldBack[scancode];
+}
+
+void ReleaseHeldBackKeys()
+{
+    int count = 0;
+    const bool *state = SDL_GetKeyboardState(&count);
+    for (int scancode = 0; scancode < count && scancode < SDL_SCANCODE_COUNT; scancode++)
+        if (s_heldBack[scancode] && !state[scancode])
+            s_heldBack[scancode] = false;
+}
+
+// ---- joysticks -----------------------------------------------------------------
+
+#ifdef __ANDROID__
+void ApplyAndroidControllerProfile(SDL_JoystickID id)
+{
+    // The launcher captures Android events and stores SDL bindings. Ask the
+    // activity once when opening a device; polling remains entirely in SDL.
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jobject activity = (jobject)SDL_GetAndroidActivity();
+    if (env == NULL || activity == NULL)
+        return;
+    jclass type = env->GetObjectClass(activity);
+    jmethodID method = env->GetMethodID(type, "getControllerMapping", "(Ljava/lang/String;II)Ljava/lang/String;");
+    if (method != NULL) {
+        const char *name = SDL_GetJoystickNameForID(id);
+        jstring jname = env->NewStringUTF(name ? name : "");
+        jstring result = (jstring)env->CallObjectMethod(activity, method, jname,
+            (jint)SDL_GetJoystickVendorForID(id), (jint)SDL_GetJoystickProductForID(id));
+        if (!env->ExceptionCheck() && result != NULL) {
+            const char *mapping = env->GetStringUTFChars(result, NULL);
+            if (mapping != NULL) {
+                if (!Input_ApplyGamepadMapping(id, mapping))
+                    Sys_Log("controller profile: %s", SDL_GetError());
+                env->ReleaseStringUTFChars(result, mapping);
+            }
+            env->DeleteLocalRef(result);
+        }
+        env->DeleteLocalRef(jname);
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        Sys_Log("controller profile: could not read Android settings");
+    }
+    env->DeleteLocalRef(type);
+    env->DeleteLocalRef(activity);
+}
+#endif
+
+void CreateEffectOnDevice(InputEffect *effect);
+
+void Open(SDL_JoystickID id)
+{
+#ifdef __ANDROID__
+    ApplyAndroidControllerProfile(id);
+#endif
+    SDL_Gamepad *gamepad = SDL_IsGamepad(id) ? SDL_OpenGamepad(id) : NULL;
+    SDL_Joystick *joystick = gamepad ? SDL_GetGamepadJoystick(gamepad) : SDL_OpenJoystick(id);
+    if (joystick == NULL) {
+        Sys_Log("controller: cannot open %s: %s", SDL_GetJoystickNameForID(id), SDL_GetError());
+        SDL_CloseGamepad(gamepad);
+        return;
+    }
+#ifdef __ANDROID__
+    // Android lists some built-in devices of phones as joysticks: only
+    // gamepads and wheels are controllers there.
+    if (gamepad == NULL && SDL_GetJoystickType(joystick) != SDL_JOYSTICK_TYPE_WHEEL) {
+        SDL_CloseJoystick(joystick);
+        return;
+    }
+#endif
+    std::string identity = Identity(id);
+    InputDevice *device = NULL;
+    for (InputDevice &known : s_devices)
+        if (known.id == 0 && known.identity == identity)
+            device = &known;
+    if (device == NULL) {
+        s_devices.emplace_back();
+        device = &s_devices.back();
+        device->kind = DEVICE_JOYSTICK;
+        device->identity = identity;
+    }
+    device->id = id;
+    device->joystick = joystick;
+    device->gamepad = gamepad;
+    device->order = s_nextOrder++;
+    device->wheel = SDL_GetJoystickType(joystick) == SDL_JOYSTICK_TYPE_WHEEL;
+    const char *name = gamepad ? SDL_GetGamepadName(gamepad) : SDL_GetJoystickName(joystick);
+    device->name = name ? name : "Joystick";
+    device->profile = Bindings_ForJoystick(joystick, gamepad != NULL);
+    if (SDL_IsJoystickHaptic(joystick)) {
+        device->haptic = SDL_OpenHapticFromJoystick(joystick);
+        if (device->haptic != NULL)
+            SDL_SetHapticAutocenter(device->haptic, 0);
+    }
+    for (InputEffect *effect : device->effects)
+        CreateEffectOnDevice(effect);
+
+    char guid[33];
+    SDL_GUIDToString(SDL_GetJoystickGUID(joystick), guid, sizeof(guid));
+    const char *path = SDL_GetJoystickPath(joystick);
+    Sys_Log("controller: %s (%04x:%04x), %s, %d axes, %d buttons, %d hats%s%s; GUID %s, %s; [%s]", device->name.c_str(),
+            SDL_GetJoystickVendor(joystick), SDL_GetJoystickProduct(joystick), JoystickKind(joystick, gamepad != NULL),
+            SDL_GetNumJoystickAxes(joystick), SDL_GetNumJoystickButtons(joystick), SDL_GetNumJoystickHats(joystick),
+            device->haptic != NULL ? ", force feedback" : "",
+            (SDL_GetJoystickVendor(joystick) == 0x28de && SDL_GetJoystickProduct(joystick) == 0x11ff) ||
+                    (gamepad && SDL_GetGamepadSteamHandle(gamepad)) ? ", Steam virtual gamepad" : "",
+            guid, path ? path : "no path", device->profile->section.c_str());
+    s_devicesChanged = true;
+}
+
+void Close(InputDevice &device)
+{
+    Sys_Log("controller: %s disconnected", device.name.c_str());
+    for (InputEffect *effect : device.effects)
+        effect->id = -1;
+    if (device.haptic != NULL)
+        SDL_CloseHaptic(device.haptic);
+    if (device.gamepad != NULL)
+        SDL_CloseGamepad(device.gamepad);   // and its joystick
     else
-        out = (magnitude - dz) / (sat - dz);
-    if (v < 0)
-        out = -out;
-    double centre = (axis.min + (double)axis.max) / 2.0;
-    double half = (axis.max - (double)axis.min) / 2.0;
-    return (LONG)lround(centre + out * half);
+        SDL_CloseJoystick(device.joystick);
+    device.haptic = NULL;
+    device.gamepad = NULL;
+    device.joystick = NULL;
+    device.id = 0;
+    s_devicesChanged = true;
 }
 
-// Gamepads are presented as DirectInput showed an Xbox controller, which the
-// game was made for: left stick X and Y, right stick Rx and Ry, buttons A, B,
-// X, Y, LB, RB, Back, Start and the stick clicks, the D-pad as POV 0. The
-// triggers are Z (left) and Rz (right), each read as a wheel's pedal:
-// DirectInput drivers combined the triggers on Z, but separate axes let
-// throttle and brake be held together. See RawAxis.
-const SDL_GamepadAxis s_gamepadAxes[6] = {
-    SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
-    SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
-};
-const SDL_GamepadButton s_gamepadButtons[10] = {
-    SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH,
-    SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, SDL_GAMEPAD_BUTTON_BACK,
-    SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_LEFT_STICK, SDL_GAMEPAD_BUTTON_RIGHT_STICK,
-};
-
-Uint8 HatOfGamepad(SDL_Gamepad *gamepad)
+void ScanJoysticks()
 {
-    Uint8 hat = SDL_HAT_CENTERED;
-    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP))
-        hat |= SDL_HAT_UP;
-    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN))
-        hat |= SDL_HAT_DOWN;
-    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT))
-        hat |= SDL_HAT_LEFT;
-    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT))
-        hat |= SDL_HAT_RIGHT;
-    return hat;
-}
-
-// The game reads a throttle or brake on an axis of its own as DirectInput
-// wheels report their pedals: the maximum when released, the minimum when
-// pressed fully (a centred axis is half pressed). Returns axis i so: SDL's
-// triggers go from 0 released to the maximum, and a raw axis that rested at
-// its minimum when the device connected (SDL's initial state) is a pedal
-// that goes the other way.
-Sint16 RawAxis(const InputDevice *device, int i)
-{
-    if (device->gamepad != NULL) {
-        Sint16 raw = SDL_GetGamepadAxis(device->gamepad, s_gamepadAxes[i]);
-        if (s_gamepadAxes[i] != SDL_GAMEPAD_AXIS_LEFT_TRIGGER && s_gamepadAxes[i] != SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
-            return raw;
-        return (Sint16)(SDL_JOYSTICK_AXIS_MAX - 2 * SDL_max(raw, 0));
-    }
-    const Sint16 pedalRest = 30000;
-    Sint16 raw = SDL_GetJoystickAxis(device->joystick, i);
-    Sint16 rest = 0;
-    if (SDL_GetJoystickAxisInitialState(device->joystick, i, &rest) && rest <= -pedalRest)
-        return (Sint16)(-1 - raw);   // a pedal resting at the minimum
-    return raw;
-}
-
-DWORD PovOfHat(Uint8 hat)
-{
-    switch (hat) {
-    case SDL_HAT_UP: return 0;
-    case SDL_HAT_RIGHTUP: return 4500;
-    case SDL_HAT_RIGHT: return 9000;
-    case SDL_HAT_RIGHTDOWN: return 13500;
-    case SDL_HAT_DOWN: return 18000;
-    case SDL_HAT_LEFTDOWN: return 22500;
-    case SDL_HAT_LEFT: return 27000;
-    case SDL_HAT_LEFTUP: return 31500;
-    default: return INPUT_POV_CENTERED;
+    int count = 0;
+    SDL_JoystickID *ids = SDL_GetJoysticks(&count);
+#ifdef __ANDROID__
+    if (s_touchOnly)
+        count = 0;
+#endif
+    std::vector<SDL_JoystickID> present(ids, ids + count);
+    SDL_free(ids);
+    for (InputDevice &device : s_devices)
+        if (device.id != 0 && std::find(present.begin(), present.end(), device.id) == present.end())
+            Close(device);
+    for (SDL_JoystickID id : present) {
+        bool open = false;
+        for (const InputDevice &device : s_devices)
+            open = open || device.id == id;
+        if (!open)
+            Open(id);
     }
 }
+
+// ---- actions -------------------------------------------------------------------
+
+// The player a connected device belongs to (0 or 1): its profile's, else
+// player 2 for the second controller connected.
+int Owner(const InputDevice &device)
+{
+    if (device.profile->player != 0)
+        return device.profile->player - 1;
+    int earlier = 0;
+    for (const InputDevice &other : s_devices)
+        if (other.id != 0 && other.profile->player == 0 && other.order < device.order)
+            earlier++;
+    return earlier == 1 ? 1 : 0;
+}
+
+bool Plays(int owner, int player)
+{
+    return owner == player || (player == 0 && s_localPlayers < 2);
+}
+
+int Scale(const Profile &profile, int value)
+{
+    int deadzone = profile.deadzone * INPUT_FULL / 100;
+    int saturation = profile.saturation * INPUT_FULL / 100;
+    if (value <= deadzone)
+        return 0;
+    if (value >= saturation || saturation <= deadzone)
+        return INPUT_FULL;
+    return (int)((long long)(value - deadzone) * INPUT_FULL / (saturation - deadzone));
+}
+
+int AxisValue(Sint16 raw, int range)
+{
+    switch (range) {
+    case AXIS_NEGATIVE: return raw < 0 ? (int)(-(long long)raw * INPUT_FULL / 32768) : 0;
+    case AXIS_POSITIVE: return raw > 0 ? (int)((long long)raw * INPUT_FULL / 32767) : 0;
+    case AXIS_RISING: return (int)(((long long)raw + 32768) * INPUT_FULL / 65535);
+    default: return (int)((32767 - (long long)raw) * INPUT_FULL / 65535);
+    }
+}
+
+int SourceValue(const InputDevice *device, const Profile &profile, const Source &source)
+{
+    switch (source.kind) {
+    case SOURCE_KEY:
+        return KeyDown((SDL_Scancode)source.index) ? INPUT_FULL : 0;
+    case SOURCE_BUTTON:
+        return device->gamepad && SDL_GetGamepadButton(device->gamepad, (SDL_GamepadButton)source.index) ? INPUT_FULL : 0;
+    case SOURCE_AXIS:
+        if (device->gamepad == NULL)
+            return 0;
+        return Scale(profile, AxisValue(SDL_GetGamepadAxis(device->gamepad, (SDL_GamepadAxis)source.index), source.direction));
+    case SOURCE_JOY_BUTTON:
+        return source.index < SDL_GetNumJoystickButtons(device->joystick) &&
+               SDL_GetJoystickButton(device->joystick, source.index) ? INPUT_FULL : 0;
+    case SOURCE_JOY_HAT:
+        return source.index < SDL_GetNumJoystickHats(device->joystick) &&
+               (SDL_GetJoystickHat(device->joystick, source.index) & source.direction) ? INPUT_FULL : 0;
+    case SOURCE_JOY_AXIS:
+        if (source.index >= SDL_GetNumJoystickAxes(device->joystick))
+            return 0;
+        return Scale(profile, AxisValue(SDL_GetJoystickAxis(device->joystick, source.index), source.direction));
+    }
+    return 0;
+}
+
+// Takes the larger value of each action from one profile into the player's,
+// and notes whether a driving action came from a key or button or an axis.
+void Accumulate(Player &player, const InputDevice *device, const Profile &profile, bool *digital, bool *analog)
+{
+    for (int action = 0; action < INPUT_ACTION_COUNT; action++) {
+        for (const Source &source : profile.actions[action]) {
+            int value = SourceValue(device, profile, source);
+            player.values[action] = std::max(player.values[action], value);
+            if (action > INPUT_BRAKE)
+                continue;
+            if (IsAnalog(source) && value > INPUT_FULL / 4)
+                *analog = true;
+            else if (!IsAnalog(source) && value != 0)
+                *digital = true;
+        }
+    }
+}
+
+bool SteersWithAxis(const Profile &profile)
+{
+    for (int action = INPUT_STEER_LEFT; action <= INPUT_STEER_RIGHT; action++)
+        for (const Source &source : profile.actions[action])
+            if (IsAnalog(source))
+                return true;
+    return false;
+}
+
+void UpdatePlayer(int index)
+{
+    Player &player = s_players[index];
+    std::deque<Profile> &profiles = Bindings_Get();
+    bool digital = false;
+    bool analog = false;
+    bool hasAxis = false;
+
+    memset(player.values, 0, sizeof(player.values));
+    for (Profile &profile : profiles)
+        if ((profile.section == "keyboard" && Plays(0, index)) || (profile.section == "keyboard2" && Plays(1, index)))
+            Accumulate(player, NULL, profile, &digital, &analog);
+    for (const InputDevice &device : s_devices) {
+        if (device.id == 0 || !Plays(Owner(device), index))
+            continue;
+        Accumulate(player, &device, *device.profile, &digital, &analog);
+        hasAxis = hasAxis || SteersWithAxis(*device.profile);
+    }
+    // The device kind last used decides; before any input, an axis if the
+    // player has one.
+    if (analog != digital) {
+        player.analog = analog;
+        player.decided = true;
+    } else if (!player.decided || (player.analog && !hasAxis)) {
+        player.analog = hasAxis;
+    }
+}
+
+// ---- force feedback --------------------------------------------------------------
 
 Sint16 ClampLevel(LONG value, DWORD gain)
 {
@@ -229,6 +430,9 @@ Uint32 Milliseconds(DWORD microseconds)
     return microseconds == INPUT_EFFECT_INFINITE ? SDL_HAPTIC_INFINITY : microseconds / 1000;
 }
 
+// DIJOFS_BUTTON(n) of the trigger button.
+const DWORD kFirstButtonOffset = 0x30;
+
 void BuildEffect(const InputEffectParams &p, SDL_HapticEffect *e)
 {
     SDL_zerop(e);
@@ -243,7 +447,7 @@ void BuildEffect(const InputEffectParams &p, SDL_HapticEffect *e)
         e->constant.fade_length = (Uint16)(p.fadeTime / 1000);
         e->constant.fade_level = ClampUnsigned(p.fadeLevel);
         if (p.triggerButton != INPUT_EFFECT_NO_TRIGGER)
-            e->constant.button = (Uint16)(p.triggerButton - INPUT_OFFSET_BUTTON(0) + 1);
+            e->constant.button = (Uint16)(p.triggerButton - kFirstButtonOffset + 1);
         return;
     }
     switch (p.type) {
@@ -263,7 +467,19 @@ void BuildEffect(const InputEffectParams &p, SDL_HapticEffect *e)
     e->condition.deadband[0] = ClampUnsigned((DWORD)(p.deadBand < 0 ? 0 : p.deadBand));
     e->condition.center[0] = ClampLevel(p.offset, 10000);
     if (p.triggerButton != INPUT_EFFECT_NO_TRIGGER)
-        e->condition.button = (Uint16)(p.triggerButton - INPUT_OFFSET_BUTTON(0) + 1);
+        e->condition.button = (Uint16)(p.triggerButton - kFirstButtonOffset + 1);
+}
+
+void CreateEffectOnDevice(InputEffect *effect)
+{
+    SDL_Haptic *haptic = effect->device->haptic;
+    if (haptic == NULL)
+        return;
+    SDL_HapticEffect e;
+    BuildEffect(effect->params, &e);
+    effect->id = SDL_CreateHapticEffect(haptic, &e);
+    if (effect->id >= 0 && effect->playing)
+        SDL_RunHapticEffect(haptic, effect->id, 1);
 }
 
 } // namespace
@@ -315,264 +531,119 @@ bool Input_ApplyGamepadMapping(SDL_JoystickID id, const char *overrides)
     return SDL_SetGamepadMapping(id, mapping.c_str());
 }
 
-#ifdef __ANDROID__
-namespace {
-void ApplyAndroidControllerProfile(SDL_JoystickID id)
-{
-    // The launcher captures Android events and stores SDL bindings. Ask the
-    // activity once when opening a device; polling remains entirely in SDL.
-    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
-    jobject activity = (jobject)SDL_GetAndroidActivity();
-    if (env == NULL || activity == NULL)
-        return;
-    jclass type = env->GetObjectClass(activity);
-    jmethodID method = env->GetMethodID(type, "getControllerMapping", "(Ljava/lang/String;II)Ljava/lang/String;");
-    if (method != NULL) {
-        const char *name = SDL_GetJoystickNameForID(id);
-        jstring jname = env->NewStringUTF(name ? name : "");
-        jstring result = (jstring)env->CallObjectMethod(activity, method, jname,
-            (jint)SDL_GetJoystickVendorForID(id), (jint)SDL_GetJoystickProductForID(id));
-        if (!env->ExceptionCheck() && result != NULL) {
-            const char *mapping = env->GetStringUTFChars(result, NULL);
-            if (mapping != NULL) {
-                if (!Input_ApplyGamepadMapping(id, mapping))
-                    Sys_Log("controller profile: %s", SDL_GetError());
-                env->ReleaseStringUTFChars(result, mapping);
-            }
-            env->DeleteLocalRef(result);
-        }
-        env->DeleteLocalRef(jname);
-    }
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        Sys_Log("controller profile: could not read Android settings");
-    }
-    env->DeleteLocalRef(type);
-    env->DeleteLocalRef(activity);
-}
-}
-#endif
-
-// ---- devices -------------------------------------------------------------------
-
-extern "C" int Input_GetJoystickCount(void)
-{
-    EnsureInit();
-#ifdef __ANDROID__
-    if (s_touchOnly) return 0;
-#endif
-    int count = 0;
-    SDL_JoystickID *ids = SDL_GetJoysticks(&count);
-    SDL_free(ids);
-    return count > kMaxJoysticks ? kMaxJoysticks : count;
-}
-
-extern "C" BOOL Input_JoysticksChanged(void)
-{
-    EnsureInit();
-#ifdef __ANDROID__
-    if (s_touchOnly) return !s_openJoysticks.empty();
-#endif
-    int count = 0;
-    SDL_JoystickID *ids = SDL_GetJoysticks(&count);
-    std::vector<SDL_JoystickID> present(ids, ids + (count > kMaxJoysticks ? kMaxJoysticks : count));
-    SDL_free(ids);
-    std::vector<SDL_JoystickID> open = s_openJoysticks;
-    std::sort(present.begin(), present.end());
-    std::sort(open.begin(), open.end());
-    return present != open;
-}
-
-extern "C" InputDevice *Input_OpenKeyboard(void)
-{
-    InputDevice *device = new InputDevice;
-    device->type = DEVICE_KEYBOARD;
-    snprintf(device->name, sizeof(device->name), "Keyboard");
-    return device;
-}
-
-extern "C" InputDevice *Input_OpenMouse(void)
-{
-    InputDevice *device = new InputDevice;
-    device->type = DEVICE_MOUSE;
-    snprintf(device->name, sizeof(device->name), "Mouse");
-    SDL_GetRelativeMouseState(NULL, NULL);
-    return device;
-}
-
-extern "C" InputDevice *Input_OpenJoystick(int index)
-{
-    EnsureInit();
-    int count = 0;
-    SDL_JoystickID *ids = SDL_GetJoysticks(&count);
-    if (ids == NULL || index < 0 || index >= count) {
-        SDL_free(ids);
-        return NULL;
-    }
-    SDL_JoystickID id = ids[index];
-    SDL_free(ids);
-#ifdef __ANDROID__
-    ApplyAndroidControllerProfile(id);
-#endif
-    SDL_Gamepad *gamepad = SDL_IsGamepad(id) ? SDL_OpenGamepad(id) : NULL;
-    SDL_Joystick *joystick = gamepad ? SDL_GetGamepadJoystick(gamepad) : SDL_OpenJoystick(id);
-    if (joystick == NULL) {
-        Sys_Log("controller %d: cannot open %s: %s", index, SDL_GetJoystickNameForID(id), SDL_GetError());
-        SDL_CloseGamepad(gamepad);
-        return NULL;
-    }
-
-    InputDevice *device = new InputDevice;
-    device->type = DEVICE_JOYSTICK;
-    device->joystick = joystick;
-    device->gamepad = gamepad;
-    device->sdlAxisCount = gamepad ? 6 : SDL_GetNumJoystickAxes(joystick);
-    const char *name = gamepad ? SDL_GetGamepadName(gamepad) : SDL_GetJoystickName(joystick);
-    snprintf(device->name, sizeof(device->name), "%s", name ? name : "Joystick");
-    if (SDL_IsJoystickHaptic(joystick))
-        device->haptic = SDL_OpenHapticFromJoystick(joystick);
-    s_openJoysticks.push_back(id);
-    char guid[33];
-    SDL_GUIDToString(SDL_GetJoystickGUID(joystick), guid, sizeof(guid));
-    const char *path = SDL_GetJoystickPath(joystick);
-    Sys_Log("controller %d: %s (%04x:%04x), %s, %d axes, %d buttons, %d hats%s%s; GUID %s, %s", index, device->name,
-            SDL_GetJoystickVendor(joystick), SDL_GetJoystickProduct(joystick), JoystickKind(joystick, gamepad != NULL),
-            SDL_GetNumJoystickAxes(joystick), SDL_GetNumJoystickButtons(joystick), SDL_GetNumJoystickHats(joystick),
-            device->haptic != NULL ? ", force feedback" : "",
-            (SDL_GetJoystickVendor(joystick) == 0x28de && SDL_GetJoystickProduct(joystick) == 0x11ff) ||
-                    (gamepad && SDL_GetGamepadSteamHandle(gamepad)) ? ", Steam virtual gamepad" : "",
-            guid, path ? path : "no path");
-    return device;
-}
-
-extern "C" void Input_CloseDevice(InputDevice *device)
-{
-    if (device == NULL)
-        return;
-    while (!device->effects.empty())
-        Input_DestroyEffect(device->effects.back());
-    if (device->haptic != NULL)
-        SDL_CloseHaptic(device->haptic);
-    if (device->joystick != NULL) {
-        auto open = std::find(s_openJoysticks.begin(), s_openJoysticks.end(), SDL_GetJoystickID(device->joystick));
-        if (open != s_openJoysticks.end())
-            s_openJoysticks.erase(open);
-    }
-    if (device->gamepad != NULL)
-        SDL_CloseGamepad(device->gamepad);   // and its joystick
-    else if (device->joystick != NULL)
-        SDL_CloseJoystick(device->joystick);
-    if (device->type == DEVICE_MOUSE && Platform_GetWindow() != NULL)
-        SDL_SetWindowRelativeMouseMode(Platform_GetWindow(), false);
-    delete device;
-}
-
-extern "C" const char *Input_GetInstanceName(InputDevice *device)
-{
-    return device->name;
-}
-
-extern "C" const char *Input_GetProductName(InputDevice *device)
-{
-    return device->name;
-}
-
-extern "C" void Input_GetCaps(InputDevice *device, InputCaps *caps)
-{
-    memset(caps, 0, sizeof(*caps));
-    if (device->joystick != NULL) {
-        caps->axes = device->sdlAxisCount > 8 ? 8 : device->sdlAxisCount;
-        caps->buttons = device->gamepad ? SDL_arraysize(s_gamepadButtons) : SDL_GetNumJoystickButtons(device->joystick);
-        if (caps->buttons > 128)
-            caps->buttons = 128;
-        caps->povs = device->gamepad ? 1 : SDL_GetNumJoystickHats(device->joystick);
-        if (caps->povs > 4)
-            caps->povs = 4;
-        caps->forceFeedback = device->haptic != NULL;
-    }
-}
-
-extern "C" BOOL Input_GetObjectName(InputDevice *device, DWORD offset, char *name, size_t size)
-{
-    InputCaps caps;
-    static const char *axisNames[8] = { "X Axis", "Y Axis", "Z Axis", "X Rotation", "Y Rotation", "Z Rotation",
-                                        "Slider", "Slider" };
-
-    Input_GetCaps(device, &caps);
-    if (offset >= INPUT_OFFSET_BUTTON(0)) {
-        DWORD button = offset - INPUT_OFFSET_BUTTON(0);
-        if (button >= caps.buttons)
-            return FALSE;
-        snprintf(name, size, "Button %u", (unsigned)button + 1);
-        return TRUE;
-    }
-    if (offset >= INPUT_OFFSET_POV(0)) {
-        DWORD pov = (offset - INPUT_OFFSET_POV(0)) / 4;
-        if (pov >= caps.povs)
-            return FALSE;
-        snprintf(name, size, "POV %u", (unsigned)pov + 1);
-        return TRUE;
-    }
-    int axis = AxisOfOffset(offset);
-    if (axis < 0 || axis >= (int)caps.axes)
-        return FALSE;
-    snprintf(name, size, "%s", axisNames[axis]);
-    return TRUE;
-}
-
-extern "C" BOOL Input_IsGamepad(InputDevice *device)
-{
-    return device != NULL && device->gamepad != NULL;
-}
-
-extern "C" BOOL Input_IsWheel(InputDevice *device)
-{
-    return device != NULL && device->joystick != NULL && SDL_GetJoystickType(device->joystick) == SDL_JOYSTICK_TYPE_WHEEL;
-}
-
-extern "C" BOOL Input_HasAxis(InputDevice *device, DWORD offset)
-{
-    int axis = AxisOfOffset(offset);
-    return device->joystick != NULL && axis >= 0 && axis < device->sdlAxisCount;
-}
-
-extern "C" void Input_SetAxisRange(InputDevice *device, DWORD offset, LONG min, LONG max)
-{
-    int axis = AxisOfOffset(offset);
-    if (axis >= 0) {
-        device->axes[axis].min = min;
-        device->axes[axis].max = max;
-    }
-}
-
-extern "C" void Input_SetAxisDeadzone(InputDevice *device, DWORD offset, DWORD deadzone)
-{
-    int axis = AxisOfOffset(offset);
-    if (axis >= 0)
-        device->axes[axis].deadzone = deadzone > 10000 ? 10000 : deadzone;
-}
-
-extern "C" void Input_SetAxisSaturation(InputDevice *device, DWORD offset, DWORD saturation)
-{
-    int axis = AxisOfOffset(offset);
-    if (axis >= 0)
-        device->axes[axis].saturation = saturation > 10000 ? 10000 : saturation;
-}
-
 void Input_HoldBackKey(SDL_Scancode scancode)
 {
     if (scancode > SDL_SCANCODE_UNKNOWN && scancode < SDL_SCANCODE_COUNT)
         s_heldBack[scancode] = true;
 }
 
+void Platform_SetTestKeyboard(const BYTE *keys) { s_testKeyboard = keys; }
+
+void Input_ReloadBindings(void)
+{
+    Bindings_Load();
+    for (InputDevice &device : s_devices)
+        device.profile = device.id != 0 ? Bindings_ForJoystick(device.joystick, device.gamepad != NULL) : NULL;
+}
+
+// ---- players and actions -------------------------------------------------------
+
+extern "C" void Input_Update(void)
+{
+    EnsureInit();
+    SDL_UpdateJoysticks();
+    ScanJoysticks();
+    ReleaseHeldBackKeys();
+    for (int player = 0; player < INPUT_PLAYERS; player++)
+        UpdatePlayer(player);
+}
+
+extern "C" void Input_SetLocalPlayers(int count)
+{
+    s_localPlayers = count < 2 ? 1 : 2;
+}
+
+extern "C" int Input_GetAction(int player, int action)
+{
+    if (player < 0 || player >= INPUT_PLAYERS || action < 0 || action >= INPUT_ACTION_COUNT)
+        return 0;
+    return s_players[player].values[action];
+}
+
+extern "C" BOOL Input_IsAnalog(int player)
+{
+    return player >= 0 && player < INPUT_PLAYERS && s_players[player].analog;
+}
+
+extern "C" BOOL Input_IsSmoothSteering(int player)
+{
+    for (const InputDevice &device : s_devices)
+        if (device.id != 0 && Plays(Owner(device), player) && SteersWithAxis(*device.profile))
+            return device.profile->smoothSteering;
+    return FALSE;
+}
+
+extern "C" BOOL Input_DevicesChanged(void)
+{
+    bool changed = s_devicesChanged;
+    s_devicesChanged = false;
+    return changed;
+}
+
+extern "C" InputDevice *Input_GetFeedbackDevice(int player)
+{
+    InputDevice *best = NULL;
+    for (InputDevice &device : s_devices) {
+        if (device.id == 0 || device.haptic == NULL || !Plays(Owner(device), player))
+            continue;
+        if (best == NULL || (device.wheel && !best->wheel) || (device.wheel == best->wheel && device.order < best->order))
+            best = &device;
+    }
+    return best;
+}
+
+extern "C" BOOL Input_HasFeedback(int player)
+{
+    return Input_GetFeedbackDevice(player) != NULL;
+}
+
+// ---- raw keyboard and mouse ------------------------------------------------------
+
+extern "C" InputDevice *Input_OpenKeyboard(void)
+{
+    InputDevice *device = new InputDevice;
+    device->kind = DEVICE_KEYBOARD;
+    device->name = "Keyboard";
+    return device;
+}
+
+extern "C" InputDevice *Input_OpenMouse(void)
+{
+    InputDevice *device = new InputDevice;
+    device->kind = DEVICE_MOUSE;
+    device->name = "Mouse";
+    SDL_GetRelativeMouseState(NULL, NULL);
+    return device;
+}
+
+extern "C" void Input_CloseDevice(InputDevice *device)
+{
+    if (device == NULL || device->kind == DEVICE_JOYSTICK)
+        return;
+    if (device->kind == DEVICE_MOUSE && Platform_GetWindow() != NULL)
+        SDL_SetWindowRelativeMouseMode(Platform_GetWindow(), false);
+    delete device;
+}
+
 extern "C" void Input_SetMouseExclusive(InputDevice *device, BOOL exclusive)
 {
-    if (device->type == DEVICE_MOUSE && Platform_GetWindow() != NULL)
+    if (device->kind == DEVICE_MOUSE && Platform_GetWindow() != NULL)
         SDL_SetWindowRelativeMouseMode(Platform_GetWindow(), exclusive != 0);
 }
 
 extern "C" BOOL Input_ReadKeyboard(InputDevice *device, BYTE keys[256])
 {
+    (void)device;
     if (s_testKeyboard) {
         memcpy(keys, s_testKeyboard, 256);
         return TRUE;
@@ -581,13 +652,9 @@ extern "C" BOOL Input_ReadKeyboard(InputDevice *device, BYTE keys[256])
     const bool *state = SDL_GetKeyboardState(&count);
 
     memset(keys, 0, 256);
+    ReleaseHeldBackKeys();
     for (int scancode = 0; scancode < count; scancode++) {
-        if (scancode < SDL_SCANCODE_COUNT && s_heldBack[scancode]) {
-            if (state[scancode])
-                continue;
-            s_heldBack[scancode] = false;
-        }
-        if (state[scancode]) {
+        if (state[scancode] && !(scancode < SDL_SCANCODE_COUNT && s_heldBack[scancode])) {
             int dik = Keys_FromScancode((SDL_Scancode)scancode);
             if (dik != 0)
                 keys[dik] = 0x80;
@@ -596,10 +663,9 @@ extern "C" BOOL Input_ReadKeyboard(InputDevice *device, BYTE keys[256])
     return TRUE;
 }
 
-void Platform_SetTestKeyboard(const BYTE *keys) { s_testKeyboard = keys; }
-
 extern "C" BOOL Input_ReadMouse(InputDevice *device, InputMouseState *state)
 {
+    (void)device;
     float dx = 0.0f, dy = 0.0f;
     SDL_MouseButtonFlags buttons = SDL_GetRelativeMouseState(&dx, &dy);
 
@@ -609,48 +675,6 @@ extern "C" BOOL Input_ReadMouse(InputDevice *device, InputMouseState *state)
     state->lZ = 0;
     for (int i = 0; i < 5; i++)
         if (buttons & SDL_BUTTON_MASK(i + 1))
-            state->rgbButtons[i] = 0x80;
-    return TRUE;
-}
-
-extern "C" BOOL Input_ReadJoystick(InputDevice *device, InputJoystickState *state)
-{
-    LONG values[8];
-
-    memset(state, 0, sizeof(*state));
-    if (device->joystick == NULL || !SDL_JoystickConnected(device->joystick))
-        return FALSE;
-    SDL_UpdateJoysticks();
-    for (int i = 0; i < 8; i++) {
-        if (i >= device->sdlAxisCount) {
-            values[i] = (device->axes[i].min + device->axes[i].max) / 2;
-            continue;
-        }
-        values[i] = ScaleAxis(device->axes[i], RawAxis(device, i));
-    }
-    state->lX = values[0];
-    state->lY = values[1];
-    state->lZ = values[2];
-    state->lRx = values[3];
-    state->lRy = values[4];
-    state->lRz = values[5];
-    state->rglSlider[0] = values[6];
-    state->rglSlider[1] = values[7];
-    if (device->gamepad != NULL) {
-        state->rgdwPOV[0] = PovOfHat(HatOfGamepad(device->gamepad));
-        for (int i = 1; i < 4; i++)
-            state->rgdwPOV[i] = INPUT_POV_CENTERED;
-        for (size_t i = 0; i < SDL_arraysize(s_gamepadButtons); i++)
-            if (SDL_GetGamepadButton(device->gamepad, s_gamepadButtons[i]))
-                state->rgbButtons[i] = 0x80;
-        return TRUE;
-    }
-    int hats = SDL_GetNumJoystickHats(device->joystick);
-    for (int i = 0; i < 4; i++)
-        state->rgdwPOV[i] = i < hats ? PovOfHat(SDL_GetJoystickHat(device->joystick, i)) : INPUT_POV_CENTERED;
-    int buttons = SDL_GetNumJoystickButtons(device->joystick);
-    for (int i = 0; i < buttons && i < 128; i++)
-        if (SDL_GetJoystickButton(device->joystick, i))
             state->rgbButtons[i] = 0x80;
     return TRUE;
 }
@@ -682,19 +706,16 @@ extern "C" const char *Input_GetKeyName(int key)
 
 extern "C" InputEffect *Input_CreateEffect(InputDevice *device, const InputEffectParams *params)
 {
-    if (device == NULL || device->haptic == NULL)
+    if (device == NULL || device->kind != DEVICE_JOYSTICK)
         return NULL;
-    SDL_HapticEffect effect;
-    BuildEffect(*params, &effect);
-    int id = SDL_CreateHapticEffect(device->haptic, &effect);
-    if (id < 0)
-        return NULL;
-    InputEffect *e = new InputEffect;
-    e->device = device;
-    e->id = id;
-    e->params = *params;
-    device->effects.push_back(e);
-    return e;
+    InputEffect *effect = new InputEffect;
+    effect->device = device;
+    effect->id = -1;
+    effect->params = *params;
+    effect->playing = false;
+    CreateEffectOnDevice(effect);
+    device->effects.push_back(effect);
+    return effect;
 }
 
 extern "C" void Input_UpdateEffect(InputEffect *effect, const InputEffectParams *params)
@@ -702,6 +723,8 @@ extern "C" void Input_UpdateEffect(InputEffect *effect, const InputEffectParams 
     if (effect == NULL)
         return;
     effect->params = *params;
+    if (effect->id < 0 || effect->device->haptic == NULL)
+        return;
     SDL_HapticEffect e;
     BuildEffect(*params, &e);
     SDL_UpdateHapticEffect(effect->device->haptic, effect->id, &e);
@@ -709,13 +732,20 @@ extern "C" void Input_UpdateEffect(InputEffect *effect, const InputEffectParams 
 
 extern "C" void Input_StartEffect(InputEffect *effect)
 {
-    if (effect != NULL)
+    if (effect == NULL)
+        return;
+    effect->playing = true;
+    if (effect->id >= 0 && effect->device->haptic != NULL)
         SDL_RunHapticEffect(effect->device->haptic, effect->id, 1);
 }
 
 extern "C" BOOL Input_IsEffectPlaying(InputEffect *effect)
 {
-    return effect != NULL && SDL_GetHapticEffectStatus(effect->device->haptic, effect->id);
+    if (effect == NULL)
+        return FALSE;
+    if (effect->id < 0 || effect->device->haptic == NULL)
+        return effect->playing;
+    return SDL_GetHapticEffectStatus(effect->device->haptic, effect->id);
 }
 
 extern "C" void Input_DestroyEffect(InputEffect *effect)
@@ -723,19 +753,19 @@ extern "C" void Input_DestroyEffect(InputEffect *effect)
     if (effect == NULL)
         return;
     InputDevice *device = effect->device;
-    SDL_DestroyHapticEffect(device->haptic, effect->id);
-    for (size_t i = 0; i < device->effects.size(); i++) {
-        if (device->effects[i] == effect) {
-            device->effects.erase(device->effects.begin() + i);
-            break;
-        }
-    }
+    if (effect->id >= 0 && device->haptic != NULL)
+        SDL_DestroyHapticEffect(device->haptic, effect->id);
+    device->effects.erase(std::remove(device->effects.begin(), device->effects.end(), effect), device->effects.end());
     delete effect;
 }
 
 extern "C" void Input_StopAllEffects(InputDevice *device)
 {
-    if (device != NULL && device->haptic != NULL)
+    if (device == NULL)
+        return;
+    for (InputEffect *effect : device->effects)
+        effect->playing = false;
+    if (device->haptic != NULL)
         SDL_StopHapticEffects(device->haptic);
 }
 
