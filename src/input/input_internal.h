@@ -60,5 +60,7 @@ Profile *Bindings_Find(const std::string &section);
 Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad);
 void Bindings_Load(void);
 void Bindings_MarkChanged(void);
+// The defaults of a profile, from the device for a joystick's.
+void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick);
 
 #endif

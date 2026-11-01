@@ -152,6 +152,13 @@ so that keys steer as they did in the original. Everything after the game's
 conversion of these values to its 0..63 controls, which replays and network
 races record, is unchanged.
 
+The original's controls pages, built on its per-device configurations, are
+replaced by the port's (`PORT:` in `FrontendScreens.cpp`), which edit the
+bindings of `src/input` through `Input_GetBindingText`, `Input_BeginCapture`
+and the settings calls; their texts are the game's own where it has them
+(action names, OK, Default) and the port's in the game's five languages
+otherwise.
+
 Key codes stay DirectInput scan codes (`DIK_*` values) for text entry: the
 game stores them and names them. Force-feedback effects (constant, spring,
 damper, friction, inertia) map to SDL haptic effects on devices that support

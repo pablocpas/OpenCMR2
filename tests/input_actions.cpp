@@ -26,6 +26,11 @@ extern void Input_RescanChangedJoysticks();
 extern BYTE g_carSimulationClockFlags;
 extern int Car_UpdateEngineNoteFalloff(int *);
 extern unsigned int g_selectedRallyData;
+extern Menu *g_pMenu0x00818ac0;
+extern void FrontendMenu_UpdateAndSwitchActive();
+extern void FrontendMenu_BuildInputControls();
+extern Menu *FrontendMenu_GetInputControls();
+extern void FrontendMenu_EnterControls(Menu *, int);
 bool Input_ApplyGamepadMapping(SDL_JoystickID id, const char *overrides);
 
 namespace {
@@ -495,6 +500,110 @@ void CheckRumble(Pad &first)
     Input_Update();
 }
 
+// The controls pages, driven with a gamepad as the frontend runs them:
+// choosing the gamepad's bindings, binding two actions (the second trades
+// places), Back dropping the changes and OK saving them.
+void CheckControlsPages(Pad &pad)
+{
+    std::filesystem::path dir = std::filesystem::temp_directory_path() / ("opencmr2-pages-" + std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(dir);
+    std::string dirText = dir.string() + "/";
+    Platform_SetTestUserDir(dirText.c_str());
+    Input_ReloadBindings();
+    Input_SaveBindings();
+    Release(pad);
+    Menu_SetInputStateFlag(0);
+    FrontendMenu_BuildInputControls();
+    Menu *controls = FrontendMenu_GetInputControls();
+    auto frame = [&](SDL_GamepadButton button, bool down) {
+        if (button != SDL_GAMEPAD_BUTTON_INVALID)
+            SDL_SetJoystickVirtualButton(pad.joystick, button, down);
+        CMain::m_frameTime += 16;
+        CGameInfo::m_fixedMenuKeys = 1;
+        FrontendMenu_UpdateAndSwitchActive();
+    };
+    auto press = [&](SDL_GamepadButton button) {
+        frame(button, true);
+        frame(button, false);
+    };
+    auto active = []() { return g_pMenu0x00818ac0; };
+    char text[64];
+
+    g_pMenu0x00818ac0 = controls;
+    FrontendMenu_EnterControls(controls, 0);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Check(controls->cursor == 0 && Menu_GetItem(controls, 0)->min >= 3, "the device row lists keys and gamepads");
+    Check(!Menu_GetItem(controls, 2)->visible, "keys have no deadzone");
+    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    Check(Menu_GetItem(controls, 0)->max == 2 && Input_GetProfileKind(2) == INPUT_PROFILE_GAMEPAD, "the gamepad chosen");
+    Check(Menu_GetItem(controls, 2)->visible && Menu_GetItem(controls, 4)->visible, "with deadzone and rumble");
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    press(SDL_GAMEPAD_BUTTON_SOUTH);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Menu *bindings = active();
+    Check(bindings != controls && bindings != NULL, "Configuration opens the bindings");
+
+    for (int i = 0; i < INPUT_HANDBRAKE; i++)
+        press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    Check(bindings->cursor == INPUT_HANDBRAKE, "on the handbrake");
+    frame(SDL_GAMEPAD_BUTTON_SOUTH, true);
+    frame(SDL_GAMEPAD_BUTTON_SOUTH, true);
+    frame(SDL_GAMEPAD_BUTTON_SOUTH, false);
+    s_keys[INPUT_KEY_DOWN] = 0x80;
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    s_keys[INPUT_KEY_DOWN] = 0;
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Check(bindings->cursor == INPUT_HANDBRAKE, "the menu waits while an input is awaited");
+    frame(SDL_GAMEPAD_BUTTON_WEST, true);
+    frame(SDL_GAMEPAD_BUTTON_WEST, false);
+    Input_GetBindingText(2, INPUT_HANDBRAKE, text, sizeof(text));
+    Check(strcmp(text, "X") == 0, "the handbrake is on X");
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    Check(bindings->cursor == INPUT_SHIFT_UP, "the menu works again");
+    press(SDL_GAMEPAD_BUTTON_SOUTH);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Input_GetBindingText(2, INPUT_SHIFT_UP, text, sizeof(text));
+    Check(strcmp(text, "LT") == 0, "a trigger can shift up");
+    Input_GetBindingText(2, INPUT_BRAKE, text, sizeof(text));
+    Check(strcmp(text, "RB") == 0, "the brake trades places with it");
+
+    press(SDL_GAMEPAD_BUTTON_EAST);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Check(active() == controls, "Back returns to the controls page");
+    press(SDL_GAMEPAD_BUTTON_EAST);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Input_GetBindingText(2, INPUT_HANDBRAKE, text, sizeof(text));
+    Check(strcmp(text, "A") == 0, "Back from the controls page drops the changes");
+
+    g_pMenu0x00818ac0 = controls;
+    FrontendMenu_EnterControls(controls, 0);
+    controls->cursor = 0;
+    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    Check(Input_GetSetting(2, INPUT_SETTING_DEADZONE) == 4, "the deadzone is set");
+    while (controls->items[controls->cursor].value != 0xe)
+        press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    press(SDL_GAMEPAD_BUTTON_SOUTH);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Input_ReloadBindings();
+    Check(Input_GetSetting(2, INPUT_SETTING_DEADZONE) == 4, "OK saves it in controls.ini");
+
+    g_pMenu0x00818ac0 = NULL;
+    Platform_SetTestUserDir("");
+    Input_ReloadBindings();
+    std::filesystem::remove_all(dir);
+    Release(pad);
+}
+
 // controls.ini is written with the defaults and read back; an edited file
 // rebinds the actions.
 void CheckBindingsFile(Pad &pad)
@@ -574,6 +683,7 @@ int main()
     CheckWheel();
     CheckDisconnectPause();
     CheckRumble(pad);
+    CheckControlsPages(pad);
     CheckBindingsFile(pad);
 
     Detach(pad);

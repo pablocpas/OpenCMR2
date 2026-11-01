@@ -837,3 +837,399 @@ extern "C" void Input_SetAutocenter(InputDevice *device, BOOL enable)
     if (device != NULL && device->haptic != NULL)
         SDL_SetHapticAutocenter(device->haptic, enable ? 100 : 0);
 }
+
+// ---- controls pages ----------------------------------------------------------------
+
+namespace {
+
+std::vector<Profile *> EditableProfiles()
+{
+    std::vector<Profile *> profiles;
+    for (const char *section : { "keyboard", "keyboard2", "gamepad" })
+        profiles.push_back(Bindings_Find(section));
+    for (InputDevice &device : s_devices)
+        if (device.id != 0 && device.profile->section.compare(0, 7, "device ") == 0 &&
+            std::find(profiles.begin(), profiles.end(), device.profile) == profiles.end())
+            profiles.push_back(device.profile);
+    return profiles;
+}
+
+Profile *EditableProfile(int index)
+{
+    Bindings_Get();
+    std::vector<Profile *> profiles = EditableProfiles();
+    return index >= 0 && index < (int)profiles.size() ? profiles[index] : NULL;
+}
+
+InputDevice *DeviceOf(const Profile *profile)
+{
+    for (InputDevice &device : s_devices)
+        if (device.id != 0 && device.profile == profile)
+            return &device;
+    return NULL;
+}
+
+// UTF-8 to the game's character set (Windows-1252 for Latin-1's letters).
+std::string GameText(const char *utf8)
+{
+    std::string text;
+    Uint32 c;
+    while ((c = SDL_StepUTF8(&utf8, NULL)) != 0)
+        text += c < 0x100 ? (char)c : '?';
+    return text;
+}
+
+// Button and axis names in the style of the gamepads connected.
+enum PadFamily { PAD_XBOX, PAD_PLAYSTATION, PAD_NINTENDO };
+
+PadFamily Family()
+{
+    for (const InputDevice &device : s_devices) {
+        if (device.id == 0 || device.gamepad == NULL)
+            continue;
+        switch (SDL_GetGamepadType(device.gamepad)) {
+        case SDL_GAMEPAD_TYPE_PS3:
+        case SDL_GAMEPAD_TYPE_PS4:
+        case SDL_GAMEPAD_TYPE_PS5:
+            return PAD_PLAYSTATION;
+        case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+        case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+        case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+        case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+            return PAD_NINTENDO;
+        default:
+            return PAD_XBOX;
+        }
+    }
+    return PAD_XBOX;
+}
+
+std::string ButtonName(int button, PadFamily family)
+{
+    static const char *const faces[3][4] = {
+        { "A", "B", "X", "Y" }, { "Cross", "Circle", "Square", "Triangle" }, { "B", "A", "Y", "X" },
+    };
+    static const char *const others[3][11] = {
+        { "Back", "Guide", "Start", "LS", "RS", "LB", "RB", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right" },
+        { "Share", "PS", "Options", "L3", "R3", "L1", "R1", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right" },
+        { "-", "Home", "+", "LS", "RS", "L", "R", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right" },
+    };
+    if (button <= SDL_GAMEPAD_BUTTON_NORTH)
+        return faces[family][button];
+    if (button <= SDL_GAMEPAD_BUTTON_DPAD_RIGHT)
+        return others[family][button - SDL_GAMEPAD_BUTTON_BACK];
+    if (button == SDL_GAMEPAD_BUTTON_MISC1)
+        return family == PAD_PLAYSTATION ? "Mic" : family == PAD_NINTENDO ? "Capture" : "Share";
+    if (button == SDL_GAMEPAD_BUTTON_TOUCHPAD)
+        return "Touchpad";
+    if (button >= SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1 && button <= SDL_GAMEPAD_BUTTON_LEFT_PADDLE2)
+        return "Paddle " + std::to_string(button - SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1 + 1);
+    return "Button " + std::to_string(button);
+}
+
+std::string AxisName(const Source &source, PadFamily family)
+{
+    static const char *const triggers[3][2] = { { "LT", "RT" }, { "L2", "R2" }, { "ZL", "ZR" } };
+    switch (source.index) {
+    case SDL_GAMEPAD_AXIS_LEFTX: return source.direction == AXIS_NEGATIVE ? "LS Left" : "LS Right";
+    case SDL_GAMEPAD_AXIS_LEFTY: return source.direction == AXIS_NEGATIVE ? "LS Up" : "LS Down";
+    case SDL_GAMEPAD_AXIS_RIGHTX: return source.direction == AXIS_NEGATIVE ? "RS Left" : "RS Right";
+    case SDL_GAMEPAD_AXIS_RIGHTY: return source.direction == AXIS_NEGATIVE ? "RS Up" : "RS Down";
+    case SDL_GAMEPAD_AXIS_LEFT_TRIGGER: return triggers[family][0];
+    default: return triggers[family][1];
+    }
+}
+
+std::string SourceName(const Source &source)
+{
+    switch (source.kind) {
+    case SOURCE_KEY:
+        return GameText(SDL_GetKeyName(SDL_GetKeyFromScancode((SDL_Scancode)source.index, SDL_KMOD_NONE, false)));
+    case SOURCE_BUTTON:
+        return ButtonName(source.index, Family());
+    case SOURCE_AXIS:
+        return AxisName(source, Family());
+    case SOURCE_JOY_BUTTON:
+        return "Button " + std::to_string(source.index + 1);
+    case SOURCE_JOY_HAT:
+        return std::string("Hat ") + (source.direction == SDL_HAT_UP ? "Up" : source.direction == SDL_HAT_DOWN ? "Down"
+                                      : source.direction == SDL_HAT_LEFT ? "Left" : "Right");
+    case SOURCE_JOY_AXIS:
+        return "Axis " + std::to_string(source.index + 1) +
+               (source.direction == AXIS_NEGATIVE ? "-" : source.direction == AXIS_POSITIVE ? "+" : "");
+    }
+    return "";
+}
+
+bool SameSource(const Source &a, const Source &b)
+{
+    return a.kind == b.kind && a.index == b.index && a.direction == b.direction;
+}
+
+// The input waited for by the controls pages.
+struct Capture {
+    Profile *profile = NULL;
+    int action = 0;
+    bool released = false;
+    Uint64 start = 0;
+    std::vector<std::vector<Sint16>> axes;      // per device of the profile, where its axes were
+} s_capture;
+
+std::vector<InputDevice *> CaptureDevices()
+{
+    std::vector<InputDevice *> devices;
+    for (InputDevice &device : s_devices)
+        if (device.id != 0 && device.profile == s_capture.profile)
+            devices.push_back(&device);
+    return devices;
+}
+
+bool IsKeyboardProfile(const Profile *profile)
+{
+    return profile->section == "keyboard" || profile->section == "keyboard2";
+}
+
+bool AnyKeyDown()
+{
+    int count = 0;
+    const bool *state = SDL_GetKeyboardState(&count);
+    for (int scancode = 1; scancode < count; scancode++)
+        if (KeyDown((SDL_Scancode)scancode))
+            return true;
+    (void)state;
+    return false;
+}
+
+// A gamepad's input in SDL's layout, or a joystick's raw one, that is
+// pressed, or moved half way from where it was when the capture began.
+bool FindInput(InputDevice *device, const std::vector<Sint16> &base, bool gamepadLayout, Source *out)
+{
+    const Sint16 travel = 16384;
+    if (gamepadLayout) {
+        for (int button = 0; button < SDL_GAMEPAD_BUTTON_COUNT; button++) {
+            if (SDL_GetGamepadButton(device->gamepad, (SDL_GamepadButton)button)) {
+                *out = { SOURCE_BUTTON, button, 0 };
+                return true;
+            }
+        }
+        for (int axis = 0; axis < SDL_GAMEPAD_AXIS_COUNT; axis++) {
+            Sint16 value = SDL_GetGamepadAxis(device->gamepad, (SDL_GamepadAxis)axis);
+            if (abs(value - base[axis]) < travel)
+                continue;
+            bool trigger = axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+            *out = { SOURCE_AXIS, axis, trigger || value > 0 ? AXIS_POSITIVE : AXIS_NEGATIVE };
+            return true;
+        }
+        return false;
+    }
+    for (int button = 0; button < SDL_GetNumJoystickButtons(device->joystick); button++) {
+        if (SDL_GetJoystickButton(device->joystick, button)) {
+            *out = { SOURCE_JOY_BUTTON, button, 0 };
+            return true;
+        }
+    }
+    for (int hat = 0; hat < SDL_GetNumJoystickHats(device->joystick); hat++) {
+        Uint8 value = SDL_GetJoystickHat(device->joystick, hat);
+        for (Uint8 direction : { SDL_HAT_UP, SDL_HAT_RIGHT, SDL_HAT_DOWN, SDL_HAT_LEFT }) {
+            if (value & direction) {
+                *out = { SOURCE_JOY_HAT, hat, direction };
+                return true;
+            }
+        }
+    }
+    for (int axis = 0; axis < SDL_GetNumJoystickAxes(device->joystick) && axis < (int)base.size(); axis++) {
+        Sint16 value = SDL_GetJoystickAxis(device->joystick, axis);
+        if (abs(value - base[axis]) < travel)
+            continue;
+        // An axis that was resting at one end is a pedal.
+        int range = base[axis] <= -24000 ? AXIS_RISING : base[axis] >= 24000 ? AXIS_FALLING
+                  : value > base[axis] ? AXIS_POSITIVE : AXIS_NEGATIVE;
+        *out = { SOURCE_JOY_AXIS, axis, range };
+        return true;
+    }
+    return false;
+}
+
+bool AnyInput(InputDevice *device, const std::vector<Sint16> &base, bool gamepadLayout)
+{
+    Source ignored;
+    return FindInput(device, base, gamepadLayout, &ignored);
+}
+
+std::vector<Sint16> AxisState(InputDevice *device, bool gamepadLayout)
+{
+    std::vector<Sint16> axes;
+    if (gamepadLayout) {
+        for (int axis = 0; axis < SDL_GAMEPAD_AXIS_COUNT; axis++)
+            axes.push_back(SDL_GetGamepadAxis(device->gamepad, (SDL_GamepadAxis)axis));
+    } else {
+        for (int axis = 0; axis < SDL_GetNumJoystickAxes(device->joystick); axis++)
+            axes.push_back(SDL_GetJoystickAxis(device->joystick, axis));
+    }
+    return axes;
+}
+
+// Binds the input, trading places with a driving action that had it.
+void Assign(Profile &profile, int action, const Source &source)
+{
+    std::vector<Source> previous = profile.actions[action];
+    for (int other = 0; other <= INPUT_PAUSE; other++) {
+        if (other == action)
+            continue;
+        std::vector<Source> &list = profile.actions[other];
+        for (size_t i = 0; i < list.size(); i++) {
+            if (!SameSource(list[i], source))
+                continue;
+            if (!previous.empty())
+                list[i] = previous[0];
+            else
+                list.erase(list.begin() + i);
+            break;
+        }
+    }
+    profile.actions[action] = { source };
+    Bindings_MarkChanged();
+}
+
+} // namespace
+
+extern "C" int Input_GetProfileCount(void)
+{
+    Bindings_Get();
+    return (int)EditableProfiles().size();
+}
+
+extern "C" int Input_GetProfileKind(int index)
+{
+    Profile *profile = EditableProfile(index);
+    if (profile == NULL || profile->section == "keyboard")
+        return INPUT_PROFILE_KEYBOARD;
+    if (profile->section == "keyboard2")
+        return INPUT_PROFILE_KEYBOARD2;
+    return profile->section == "gamepad" ? INPUT_PROFILE_GAMEPAD : INPUT_PROFILE_JOYSTICK;
+}
+
+extern "C" const char *Input_GetProfileName(int index)
+{
+    static std::string name;
+    Profile *profile = EditableProfile(index);
+    InputDevice *device = profile != NULL ? DeviceOf(profile) : NULL;
+    name = device != NULL ? GameText(device->name.c_str()) : profile != NULL ? GameText(profile->name.c_str()) : "";
+    return name.c_str();
+}
+
+extern "C" void Input_GetBindingText(int index, int action, char *text, int size)
+{
+    std::string names;
+    Profile *profile = EditableProfile(index);
+    if (profile != NULL && action >= 0 && action < INPUT_ACTION_COUNT)
+        for (const Source &source : profile->actions[action])
+            names += (names.empty() ? "" : " / ") + SourceName(source);
+    SDL_strlcpy(text, names.c_str(), size);
+}
+
+extern "C" int Input_GetSetting(int index, int setting)
+{
+    Profile *profile = EditableProfile(index);
+    if (profile == NULL)
+        return 0;
+    switch (setting) {
+    case INPUT_SETTING_DEADZONE: return profile->deadzone;
+    case INPUT_SETTING_CURVE: return profile->steeringCurve;
+    case INPUT_SETTING_RUMBLE: return profile->rumble;
+    default: return profile->smoothSteering ? 1 : 0;
+    }
+}
+
+extern "C" void Input_SetSetting(int index, int setting, int value)
+{
+    Profile *profile = EditableProfile(index);
+    if (profile == NULL || Input_GetSetting(index, setting) == value)
+        return;
+    switch (setting) {
+    case INPUT_SETTING_DEADZONE: profile->deadzone = SDL_clamp(value, 0, 99); break;
+    case INPUT_SETTING_CURVE: profile->steeringCurve = SDL_clamp(value, 0, 100); break;
+    case INPUT_SETTING_RUMBLE: profile->rumble = SDL_clamp(value, 0, 100); break;
+    default: profile->smoothSteering = value != 0; break;
+    }
+    Bindings_MarkChanged();
+}
+
+extern "C" void Input_RestoreDefaults(int index)
+{
+    Profile *profile = EditableProfile(index);
+    if (profile == NULL)
+        return;
+    int player = profile->player;
+    InputDevice *device = DeviceOf(profile);
+    Bindings_SetDefaults(*profile, device != NULL ? device->joystick : NULL);
+    profile->player = player;
+    Bindings_MarkChanged();
+}
+
+extern "C" void Input_BeginCapture(int index, int action)
+{
+    s_capture = Capture();
+    s_capture.profile = EditableProfile(index);
+    s_capture.action = action;
+    s_capture.start = SDL_GetTicks();
+    if (s_capture.profile == NULL || IsKeyboardProfile(s_capture.profile))
+        return;
+    for (InputDevice *device : CaptureDevices())
+        s_capture.axes.push_back(AxisState(device, s_capture.profile->section == "gamepad"));
+}
+
+extern "C" int Input_UpdateCapture(void)
+{
+    Capture &capture = s_capture;
+    if (capture.profile == NULL)
+        return -1;
+    bool keyboard = IsKeyboardProfile(capture.profile);
+    bool gamepadLayout = capture.profile->section == "gamepad";
+    std::vector<InputDevice *> devices = CaptureDevices();
+    if (SDL_GetTicks() - capture.start > 10000 || (!keyboard && KeyDown(SDL_SCANCODE_ESCAPE)) ||
+        (!keyboard && devices.size() != capture.axes.size())) {
+        capture.profile = NULL;
+        return -1;
+    }
+    // The input that opened the capture is let go first.
+    if (!capture.released) {
+        bool held = keyboard ? AnyKeyDown() : false;
+        for (size_t i = 0; i < devices.size(); i++)
+            held = held || AnyInput(devices[i], capture.axes[i], gamepadLayout);
+        if (keyboard)
+            for (InputDevice &device : s_devices)
+                held = held || (device.id != 0 && device.gamepad != NULL &&
+                                SDL_GetGamepadButton(device.gamepad, SDL_GAMEPAD_BUTTON_SOUTH));
+        capture.released = !held;
+        return 0;
+    }
+    Source source;
+    bool found = false;
+    if (keyboard) {
+        int count = 0;
+        SDL_GetKeyboardState(&count);
+        for (int scancode = 1; scancode < count && !found; scancode++) {
+            if (KeyDown((SDL_Scancode)scancode)) {
+                source = { SOURCE_KEY, scancode, 0 };
+                found = true;
+            }
+        }
+        // A controller's B gives up waiting for a key.
+        for (InputDevice &device : s_devices) {
+            if (!found && device.id != 0 && device.gamepad != NULL &&
+                SDL_GetGamepadButton(device.gamepad, SDL_GAMEPAD_BUTTON_EAST)) {
+                capture.profile = NULL;
+                return -1;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < devices.size() && !found; i++)
+            found = FindInput(devices[i], capture.axes[i], gamepadLayout, &source);
+    }
+    if (!found)
+        return 0;
+    Assign(*capture.profile, capture.action, source);
+    capture.profile = NULL;
+    return 1;
+}

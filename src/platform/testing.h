@@ -13,7 +13,6 @@ struct PlatformTestClock {
 void Platform_SetTestClock(const PlatformTestClock *clock);
 void Platform_SetTestKeyboard(const BYTE *keys); // 256 DIK entries, NULL disables
 void Platform_SetTestUserDir(const char *dir);   // ends with '/'
-void Input_ReloadBindings(void);                 // controls.ini of the user directory
 // Startup tests provide folder results without opening desktop dialogs.
 struct PlatformTestDialogs {
     void (*openFolder)(SDL_DialogFileCallback, void *);

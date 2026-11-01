@@ -99,6 +99,44 @@ void Input_ImportKeyboardKeys(int player, const BYTE keys[9]);
 /* Writes controls.ini when the bindings changed since it was read. */
 void Input_SaveBindings(void);
 
+/* ---- controls pages ------------------------------------------------------- */
+
+/* The bindings the controls pages edit: player 1's keys, player 2's keys,
+   gamepads, then each connected joystick or wheel. */
+enum InputProfileKind {
+    INPUT_PROFILE_KEYBOARD,
+    INPUT_PROFILE_KEYBOARD2,
+    INPUT_PROFILE_GAMEPAD,
+    INPUT_PROFILE_JOYSTICK
+};
+
+enum InputSetting {
+    INPUT_SETTING_DEADZONE,     /* percent */
+    INPUT_SETTING_CURVE,        /* percent */
+    INPUT_SETTING_RUMBLE,       /* percent */
+    INPUT_SETTING_SMOOTH        /* 0 or 1 */
+};
+
+int Input_GetProfileCount(void);
+int Input_GetProfileKind(int profile);
+/* The device's name for a joystick or wheel, in the game's character set. */
+const char *Input_GetProfileName(int profile);
+/* The inputs bound to an action, named as on the device (A or Cross, a key
+   in the keyboard's layout), in the game's character set. */
+void Input_GetBindingText(int profile, int action, char *text, int size);
+int Input_GetSetting(int profile, int setting);
+void Input_SetSetting(int profile, int setting, int value);
+void Input_RestoreDefaults(int profile);
+/* Waits for the next key, button, axis or hat of the profile's devices and
+   binds it to the action; an input bound to another driving action of the
+   profile trades places with the action's own. */
+void Input_BeginCapture(int profile, int action);
+/* 1 once bound, -1 if given up (Escape for a controller, or ten seconds),
+   0 while waiting. */
+int Input_UpdateCapture(void);
+/* Reads controls.ini again, dropping the changes not saved. */
+void Input_ReloadBindings(void);
+
 /* ---- raw keyboard and mouse ------------------------------------------------ */
 
 typedef struct InputMouseState {

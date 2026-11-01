@@ -189,14 +189,11 @@ const char *const s_joystick[INPUT_ACTION_COUNT] = {
 void SetDefaults(void)
 {
     s_profiles.clear();
-    s_profiles.push_back(MakeProfile("keyboard", s_keyboard));
-    s_profiles.push_back(MakeProfile("keyboard2", s_keyboard2));
-    s_profiles.push_back(MakeProfile("gamepad", s_gamepad));
-    s_profiles.push_back(MakeProfile("joystick", s_joystick));
-#ifdef __ANDROID__
-    // Handhelds: Start pauses, Back follows the system.
-    Bind(s_profiles[2], INPUT_PAUSE, "start");
-#endif
+    for (const char *section : { "keyboard", "keyboard2", "gamepad", "joystick" }) {
+        s_profiles.emplace_back();
+        s_profiles.back().section = section;
+        Bindings_SetDefaults(s_profiles.back(), NULL);
+    }
 }
 
 // Empty without a user directory (tests): the defaults, nothing written.
@@ -368,20 +365,14 @@ void Bindings_MarkChanged(void)
     s_changed = true;
 }
 
-Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad)
-{
-    Bindings_Get();
-    char guid[33];
-    SDL_GUIDToString(SDL_GetJoystickGUID(joystick), guid, sizeof(guid));
-    std::string section = std::string("device ") + guid;
-    if (Profile *profile = Bindings_Find(section))
-        return profile;
-    if (gamepad)
-        return Bindings_Find("gamepad");
+namespace {
 
-    // A wheel's pedals are axes that rest at one end. Keeps the joystick
-    // defaults (throttle and brake on the Y axis) otherwise.
-    Profile profile = *Bindings_Find("joystick");
+// A joystick's: the joystick section, and a wheel's pedals, the axes that
+// rest at one end; throttle and brake stay on the Y axis otherwise.
+void JoystickDefaults(Profile &profile, SDL_Joystick *joystick)
+{
+    std::string section = profile.section;
+    profile = *Bindings_Find("joystick");
     profile.section = section;
     const char *name = SDL_GetJoystickName(joystick);
     profile.name = name ? name : "";
@@ -402,6 +393,44 @@ Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad)
     }
     if (SDL_GetJoystickType(joystick) == SDL_JOYSTICK_TYPE_WHEEL)
         profile.deadzone = 0;
+}
+
+} // namespace
+
+void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick)
+{
+    static const struct { const char *section; const char *const *bindings; } defaults[] = {
+        { "keyboard", s_keyboard }, { "keyboard2", s_keyboard2 }, { "gamepad", s_gamepad }, { "joystick", s_joystick },
+    };
+    for (const auto &entry : defaults) {
+        if (profile.section == entry.section) {
+            profile = MakeProfile(entry.section, entry.bindings);
+#ifdef __ANDROID__
+            // Handhelds: Start pauses, Back follows the system.
+            if (profile.section == "gamepad")
+                Bind(profile, INPUT_PAUSE, "start");
+#endif
+            return;
+        }
+    }
+    if (joystick != NULL)
+        JoystickDefaults(profile, joystick);
+}
+
+Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad)
+{
+    Bindings_Get();
+    char guid[33];
+    SDL_GUIDToString(SDL_GetJoystickGUID(joystick), guid, sizeof(guid));
+    std::string section = std::string("device ") + guid;
+    if (Profile *profile = Bindings_Find(section))
+        return profile;
+    if (gamepad)
+        return Bindings_Find("gamepad");
+
+    Profile profile;
+    profile.section = section;
+    JoystickDefaults(profile, joystick);
     s_profiles.push_back(profile);
     s_changed = true;
     Sys_Log("controls: new profile for %s (%s), throttle %s, brake %s", profile.name.c_str(), guid,

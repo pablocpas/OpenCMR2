@@ -1485,6 +1485,7 @@ void FrontendMenu_BuildPagesAndSelectInitial(BYTE param1, BYTE back)
     FrontendMenu_BuildGameOptions();
     FrontendMenu_BuildGraphicsOptions();
     FrontendMenu_BuildScreenOptions();     // PORT
+    FrontendMenu_BuildInputControls();     // PORT
     FrontendMenu_BuildRenderDeviceOptions();
     FrontendMenu_BuildAdvancedGraphicsOptions();
     FrontendMenu_BuildDisplayDevice();
@@ -12295,4 +12296,359 @@ char *FrontendMenu_GetScreenOptionsLabel(void)
 {
     sprintf(CFrontend::m_stringDest, g_strEllipsisFormat, ScreenOptions_Text(SCREEN_TEXT_TITLE));
     return CFrontend::m_stringDest;
+}
+
+// PORT: the controls pages, in place of the original's (Options >
+// Controllers). The first chooses the bindings to edit, player 1's keys,
+// player 2's, the gamepads' or a connected joystick's or wheel's (src/input,
+// controls.ini), and sets their deadzone, steering curve, rumble and
+// steering smoothing; the second binds each driving action to the next key,
+// button or axis given. OK saves controls.ini; Back drops the changes.
+
+Menu g_controlsMenu;
+Menu g_controlsBindingsMenu;
+
+enum ControlsItem {
+    CONTROLS_ITEM_DEVICE,
+    CONTROLS_ITEM_BINDINGS,
+    CONTROLS_ITEM_DEADZONE,
+    CONTROLS_ITEM_CURVE,
+    CONTROLS_ITEM_RUMBLE,
+    CONTROLS_ITEM_SMOOTH,
+    CONTROLS_ITEM_DEFAULT,
+    CONTROLS_ITEM_OK = 0xe
+};
+
+enum ControlsText {
+    CONTROLS_TEXT_DEVICE,
+    CONTROLS_TEXT_KEYBOARD,
+    CONTROLS_TEXT_KEYBOARD2,
+    CONTROLS_TEXT_GAMEPAD,
+    CONTROLS_TEXT_DEADZONE,
+    CONTROLS_TEXT_CURVE,
+    CONTROLS_TEXT_RUMBLE,
+    CONTROLS_TEXT_SMOOTH,
+    CONTROLS_TEXT_PRESS_KEY,
+    CONTROLS_TEXT_PRESS_INPUT,
+    CONTROLS_TEXT_COUNT
+};
+
+// In the game's character set (Windows-1252; 0xb1 is Polish l with a stroke).
+static const char *const g_controlsText[6][CONTROLS_TEXT_COUNT] = {
+    { "Device", "Keyboard", "Keyboard (Player 2)", "Gamepad", "Deadzone", "Steering Curve", "Vibration",
+      "Smooth Steering", "Press a key", "Press a button or move an axis (Escape cancels)" },
+    { "P\xe9riph\xe9rique", "Clavier", "Clavier (joueur 2)", "Manette", "Zone morte", "Courbe de direction",
+      "Vibrations", "Direction progressive", "Appuyez sur une touche",
+      "Appuyez sur un bouton ou bougez un axe (\xc9" "chap annule)" },
+    { "Dispositivo", "Teclado", "Teclado (jugador 2)", "Mando", "Zona muerta", "Curva de direcci\xf3n", "Vibraci\xf3n",
+      "Direcci\xf3n suavizada", "Pulsa una tecla", "Pulsa un bot\xf3n o mueve un eje (Esc cancela)" },
+    { "Dispositivo", "Tastiera", "Tastiera (giocatore 2)", "Gamepad", "Zona morta", "Curva dello sterzo",
+      "Vibrazione", "Sterzo graduale", "Premi un tasto", "Premi un pulsante o muovi un asse (Esc annulla)" },
+    { "Ger\xe4t", "Tastatur", "Tastatur (Spieler 2)", "Gamepad", "Totzone", "Lenkkurve", "Vibration",
+      "Weiche Lenkung", "Taste dr\xfc" "cken", "Knopf dr\xfc" "cken oder Achse bewegen (Esc bricht ab)" },
+    { "Urzadzenie", "Klawiatura", "Klawiatura (gracz 2)", "Pad", "Martwa strefa", "Krzywa skretu", "Wibracje",
+      "P\xb1ynne sterowanie", "Nacisnij klawisz", "Nacisnij przycisk lub porusz osia (Esc anuluje)" },
+};
+
+// The settings offered: deadzone 0..20%, curve and rumble 0..100% by tens.
+#define CONTROLS_DEADZONE_COUNT 21
+#define CONTROLS_PERCENT_COUNT 11
+
+static char *Controls_Text(int text)
+{
+    int language = CGameInfo::GetGameRegion() == 3 ? 5 : CFrontend::m_unk0x0065aa70;
+    if (language > 5)
+        language = 0;
+    return (char *)g_controlsText[language][text];
+}
+
+static int g_controlsProfile;           // the bindings shown
+static int g_controlsShownProfile = -1;
+static BOOL g_controlsSaved;
+static BOOL g_controlsCapturing;
+
+static char *Controls_ProfileName(int profile)
+{
+    switch (Input_GetProfileKind(profile)) {
+    case INPUT_PROFILE_KEYBOARD: return Controls_Text(CONTROLS_TEXT_KEYBOARD);
+    case INPUT_PROFILE_KEYBOARD2: return Controls_Text(CONTROLS_TEXT_KEYBOARD2);
+    case INPUT_PROFILE_GAMEPAD: return Controls_Text(CONTROLS_TEXT_GAMEPAD);
+    default: return (char *)Input_GetProfileName(profile);
+    }
+}
+
+// The rows of the profile shown, and which of its settings apply: none for
+// keys, rumble only for gamepads.
+static void Controls_LoadRows(Menu *pMenu)
+{
+    static const BYTE settings[4] = { CONTROLS_ITEM_DEADZONE, CONTROLS_ITEM_CURVE, CONTROLS_ITEM_RUMBLE, CONTROLS_ITEM_SMOOTH };
+    MenuItem *pItem;
+    int kind;
+    int i;
+
+    kind = Input_GetProfileKind(g_controlsProfile);
+    i = Input_GetSetting(g_controlsProfile, INPUT_SETTING_DEADZONE);
+    Menu_GetItem(pMenu, CONTROLS_ITEM_DEADZONE)->max = (BYTE)(i < CONTROLS_DEADZONE_COUNT - 1 ? i : CONTROLS_DEADZONE_COUNT - 1);
+    Menu_GetItem(pMenu, CONTROLS_ITEM_CURVE)->max = (BYTE)((Input_GetSetting(g_controlsProfile, INPUT_SETTING_CURVE) + 5) / 10);
+    Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max = (BYTE)((Input_GetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE) + 5) / 10);
+    Menu_GetItem(pMenu, CONTROLS_ITEM_SMOOTH)->max = Input_GetSetting(g_controlsProfile, INPUT_SETTING_SMOOTH) != 0 ? 0 : 1;
+    for (i = 0; i < 4; i++) {
+        pItem = Menu_GetItem(pMenu, settings[i]);
+        pItem->enabled = pItem->visible = kind != INPUT_PROFILE_KEYBOARD && kind != INPUT_PROFILE_KEYBOARD2 &&
+                                          (settings[i] != CONTROLS_ITEM_RUMBLE || kind == INPUT_PROFILE_GAMEPAD);
+    }
+    if (!Menu_GetItem(pMenu, pMenu->items[pMenu->cursor].value)->visible)
+        Menu_ValidateCursor(pMenu, 0);
+    g_controlsShownProfile = g_controlsProfile;
+}
+
+static void Controls_StoreRows(Menu *pMenu)
+{
+    Input_SetSetting(g_controlsProfile, INPUT_SETTING_DEADZONE, Menu_GetItem(pMenu, CONTROLS_ITEM_DEADZONE)->max);
+    Input_SetSetting(g_controlsProfile, INPUT_SETTING_CURVE, Menu_GetItem(pMenu, CONTROLS_ITEM_CURVE)->max * 10);
+    Input_SetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE, Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max * 10);
+    Input_SetSetting(g_controlsProfile, INPUT_SETTING_SMOOTH, Menu_GetItem(pMenu, CONTROLS_ITEM_SMOOTH)->max == 0);
+}
+
+// Coming from the options (param 0) starts the changes afresh; coming back
+// from the bindings page keeps them.
+void FrontendMenu_EnterControls(Menu *pMenu, int param)
+{
+    MenuItem *pDevice;
+
+    if (param == 0)
+        g_controlsSaved = FALSE;
+    pDevice = Menu_GetItem(pMenu, CONTROLS_ITEM_DEVICE);
+    pDevice->min = (BYTE)Input_GetProfileCount();
+    if (g_controlsProfile >= pDevice->min)
+        g_controlsProfile = 0;
+    pDevice->max = (BYTE)g_controlsProfile;
+    Controls_LoadRows(pMenu);
+}
+
+// Follows the device chosen and the controllers connected meanwhile.
+void FrontendMenu_UpdateControls(Menu *pMenu)
+{
+    MenuItem *pDevice;
+
+    pDevice = Menu_GetItem(pMenu, CONTROLS_ITEM_DEVICE);
+    pDevice->min = (BYTE)Input_GetProfileCount();
+    if (pDevice->max >= pDevice->min)
+        pDevice->max = 0;
+    if (pDevice->max != g_controlsShownProfile) {
+        g_controlsProfile = pDevice->max;
+        Controls_LoadRows(pMenu);
+    } else {
+        Controls_StoreRows(pMenu);
+    }
+}
+
+void FrontendMenu_RestoreControlsDefaults(Menu *pMenu, MenuItem *pItem)
+{
+    Input_RestoreDefaults(g_controlsProfile);
+    Controls_LoadRows(pMenu);
+}
+
+void FrontendMenu_ApplyControls(Menu *pMenu, MenuItem *pItem)
+{
+    Controls_StoreRows(pMenu);
+    g_controlsSaved = TRUE;
+}
+
+// Leaving for the options (v 1): OK saved the changes, Back drops them. The
+// players' joysticks take the steering smoothing.
+void FrontendMenu_LeaveControls(Menu *pMenu, char v)
+{
+    if (v == 0)
+        return;
+    if (g_controlsSaved)
+        Input_SaveBindings();
+    else
+        Input_ReloadBindings();
+    CInput::RefreshControllerConfigurations();
+}
+
+void FrontendMenu_BeginControlsCapture(Menu *pMenu, MenuItem *pItem)
+{
+    Input_BeginCapture(g_controlsProfile, pItem->value);
+    g_controlsCapturing = TRUE;
+    Menu_SetFlags(pMenu, 0, 0, 0, 0);
+}
+
+void FrontendMenu_UpdateControlsBindings(Menu *pMenu)
+{
+    if (!g_controlsCapturing)
+        return;
+    Menu_SetFlags(pMenu, 0, 0, 0, 0);
+    if (Input_UpdateCapture() == 0)
+        return;
+    g_controlsCapturing = FALSE;
+    Menu_SetFlags(pMenu, 1, 1, 1, 1);
+}
+
+// Both pages as the screen options are drawn: a label, then the value.
+static void Controls_Draw(Menu *pMenu, int rowHeight, BOOL carousel)
+{
+    short rect[4];
+    MenuItem *pItem;
+    BYTE *pColour;
+    BYTE *pSelColour;
+    BYTE *pUnselColour;
+    BYTE *pLineColour;
+    BYTE *pLineShadow;
+    char binding[128];
+    int valueX;
+    int textY;
+    int step;
+    int x;
+    int y;
+    int row;
+    int i;
+    int j;
+
+    step = (int)(g_pGraphics->resY * rowHeight) / 480;
+    rect[0] = (int)(g_pGraphics->resX * 100) / 640;
+    rect[2] = CFrontend::m_pAr640ATexture->width;
+    rect[3] = CFrontend::m_pAr640ATexture->height;
+    row = 0;
+    for (i = 0; i < pMenu->itemCount; i++)
+        row += pMenu->items[i].visible ? 1 : 0;
+    y = ((int)(g_pGraphics->resY * 8) / 480 + (int)(g_pGraphics->resY * 38) / 480 +
+         (int)(g_pGraphics->resY * 384) / 480) / 2 - (step * row) / 2;
+    // The bindings start under the title, as the original's did, and their
+    // inputs line up after the longest action.
+    valueX = 0;
+    if (pMenu == &g_controlsBindingsMenu) {
+        y = (int)(g_pGraphics->resY * 65) / 480;
+        for (i = 0; i <= INPUT_PAUSE; i++) {
+            j = Font_GetTextWidth(1, (BYTE *)CFrontend::GetTextString(0x6b + i));
+            valueX = j > valueX ? j : valueX;
+        }
+        valueX += (int)(g_pGraphics->resX * 122) / 640 + (int)(g_pGraphics->resX * 24) / 640;
+    }
+    FrontendDraw_PlayTime();
+    FrontendDraw_MenuPath(pMenu, PATH_X(), PATH_Y(), 1, 2, NULL, -1);
+    pLineColour = pMenu->cursor == 0 ? g_colourWhite0x00524968 : g_colourText0x0052496c;
+    pLineShadow = pMenu->cursor == 0 ? g_colourShadowWhite0x00524974 : g_colourShadowText0x00524978;
+    g_frontendDrawRect[0] = (int)(g_pGraphics->resX * 99) / 640;
+    g_frontendDrawRect[1] = y;
+    g_frontendDrawRect[2] = (int)(g_pGraphics->resX * 282) / 640;
+    g_frontendDrawRect[3] = 1;
+    Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineShadow, 1);
+    g_frontendDrawRect[1]++;
+    Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineColour, 1);
+    row = 0;
+    pItem = pMenu->items;
+    for (i = 0; i < pMenu->itemCount; i++, pItem++) {
+        if (!pItem->visible)
+            continue;
+        rect[1] = y + (int)(g_pGraphics->resY * 2) / 480 + step / 2 + (step * row - CFrontend::m_pAr640ATexture->height / 2);
+        if (pMenu->cursor == i) {
+            pColour = pSelColour = g_colourWhite0x00524968;
+            pUnselColour = g_colourText0x0052496c;
+            Sprite_Queue((SpriteRect *)&CFrontend::m_pAr640ATexture->field_0x11c, (SpriteRect *)rect,
+                         CFrontend::m_pAr640ATexture, 1, 0, 0, NULL, pColour, 8);
+        } else {
+            pColour = pUnselColour = g_colourText0x0052496c;
+            pSelColour = g_colourWhite0x00524968;
+            Sprite_Queue((SpriteRect *)&CFrontend::m_pAr640DTexture->field_0x11c, (SpriteRect *)rect,
+                         CFrontend::m_pAr640DTexture, 1, 0, 0, NULL, pColour, 8);
+        }
+        x = (int)(g_pGraphics->resX * 122) / 640;
+        textY = step * 2 / 3 + g_frontendDrawRect[1];
+        if (pMenu == &g_controlsBindingsMenu && pItem->value <= INPUT_PAUSE) {
+            if (g_controlsCapturing && pMenu->cursor == i)
+                strcpy(binding, "...");
+            else
+                Input_GetBindingText(g_controlsProfile, pItem->value, binding, sizeof(binding));
+            Font_DrawText(1, CFrontend::GetTextString(pItem->id), x, textY, (int *)pColour, 0x11);
+            Font_DrawText(1, binding, valueX, textY, (int *)pColour, 0x11);
+        } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_DEVICE) {
+            sprintf(CFrontend::m_stringDest, "%s  < %s >", Controls_Text(CONTROLS_TEXT_DEVICE),
+                    Controls_ProfileName(pItem->max));
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else if (pMenu == &g_controlsMenu && pItem->value >= CONTROLS_ITEM_DEADZONE &&
+                   pItem->value <= CONTROLS_ITEM_RUMBLE) {
+            sprintf(CFrontend::m_stringDest, "%s  < %d%% >",
+                    Controls_Text(pItem->value == CONTROLS_ITEM_DEADZONE ? CONTROLS_TEXT_DEADZONE
+                                  : pItem->value == CONTROLS_ITEM_CURVE ? CONTROLS_TEXT_CURVE : CONTROLS_TEXT_RUMBLE),
+                    pItem->value == CONTROLS_ITEM_DEADZONE ? pItem->max : pItem->max * 10);
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_SMOOTH) {
+            strcpy(CFrontend::m_stringDest, Controls_Text(CONTROLS_TEXT_SMOOTH));
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+            for (j = 0; j < pItem->min; j++) {
+                x += (int)(g_pGraphics->resX * 10) / 640 + Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);
+                strcpy(CFrontend::m_stringDest, CFrontend::GetTextString(j == 0 ? 0x134 : 0x133));
+                Font_DrawText(1, CFrontend::m_stringDest, x, textY,
+                              (int *)(pItem->max == j ? pSelColour : pUnselColour), 0x11);
+            }
+        } else if (pItem->type == 2) {
+            sprintf(CFrontend::m_stringDest, g_strEllipsisFormat, CFrontend::GetTextString(pItem->id));
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else {
+            Font_DrawText(1, CFrontend::GetTextString(pItem->id), x, textY, (int *)pColour, 0x11);
+        }
+        if (pMenu->cursor == i + 1 || pMenu->cursor == i) {
+            pLineColour = g_colourWhite0x00524968;
+            pLineShadow = g_colourShadowWhite0x00524974;
+        } else {
+            pLineColour = g_colourText0x0052496c;
+            pLineShadow = g_colourShadowText0x00524978;
+        }
+        row++;
+        g_frontendDrawRect[1] = step * row + y;
+        Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineShadow, 1);
+        g_frontendDrawRect[1]++;
+        Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineColour, 1);
+    }
+    if (g_controlsCapturing && pMenu == &g_controlsBindingsMenu) {
+        int kind = Input_GetProfileKind(g_controlsProfile);
+        Font_DrawText(1, Controls_Text(kind == INPUT_PROFILE_KEYBOARD || kind == INPUT_PROFILE_KEYBOARD2
+                                       ? CONTROLS_TEXT_PRESS_KEY : CONTROLS_TEXT_PRESS_INPUT),
+                      (int)(g_pGraphics->resX * 122) / 640, step * row + y + step, (int *)g_colourWhite0x00524968, 0x11);
+    }
+    if (carousel)
+        FrontendDraw_Carousel(FrontendMenu_GetMain(), 0, NULL);
+}
+
+void FrontendMenu_DrawControls(Menu *pMenu)
+{
+    Controls_Draw(pMenu, 36, TRUE);
+}
+
+void FrontendMenu_DrawControlsBindings(Menu *pMenu)
+{
+    Controls_Draw(pMenu, 30, FALSE);
+}
+
+void FrontendMenu_BuildInputControls(void)
+{
+    int i;
+
+    Menu_Init(&g_controlsMenu, NULL, 0x18, 0, FrontendMenu_GetOptions(), NULL, 1, 0, 1);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, 1, 0, 0, 0, 0, CONTROLS_ITEM_DEVICE);
+    Menu_AddItemType2(&g_controlsMenu, 0, 0x65, &g_controlsBindingsMenu, 0, CONTROLS_ITEM_BINDINGS);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_DEADZONE_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_DEADZONE);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_CURVE);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_RUMBLE);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, 2, 0, 0, 0, 0, CONTROLS_ITEM_SMOOTH);
+    Menu_AddItemType4(&g_controlsMenu, 0, 0x1fe, (MenuItemAction)FrontendMenu_RestoreControlsDefaults, CONTROLS_ITEM_DEFAULT);
+    Menu_AddItemType1(&g_controlsMenu, 0, 0x67, (MenuItemAction)FrontendMenu_ApplyControls, CONTROLS_ITEM_OK);
+    Menu_SetCallbacks(&g_controlsMenu, FrontendMenu_EnterControls, (MenuCallback)FrontendMenu_UpdateControls,
+                      (MenuCallback)FrontendMenu_DrawControls, (MenuCallback)FrontendMenu_LeaveControls);
+    Menu_ValidateCursor(&g_controlsMenu, 0);
+
+    Menu_Init(&g_controlsBindingsMenu, NULL, 0x65, 0, &g_controlsMenu, NULL, 1, 0, 1);
+    for (i = 0; i <= INPUT_PAUSE; i++)
+        Menu_AddItemType4(&g_controlsBindingsMenu, 0, 0x6b + i, (MenuItemAction)FrontendMenu_BeginControlsCapture, i);
+    Menu_AddItemType1(&g_controlsBindingsMenu, 0, 0x67, NULL, CONTROLS_ITEM_OK);
+    Menu_SetCallbacks(&g_controlsBindingsMenu, NULL, (MenuCallback)FrontendMenu_UpdateControlsBindings,
+                      (MenuCallback)FrontendMenu_DrawControlsBindings, NULL);
+    Menu_ValidateCursor(&g_controlsBindingsMenu, 0);
+}
+
+Menu *FrontendMenu_GetInputControls(void)
+{
+    return &g_controlsMenu;
 }

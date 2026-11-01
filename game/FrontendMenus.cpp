@@ -1951,7 +1951,8 @@ void FrontendMenu_BuildOptions(void)
     Menu_AddItemType2(&g_menu0x0081f118, 0, 0x14, &g_menu0x0081ef38, 0, 0);
     Menu_AddItemType2(&g_menu0x0081f118, 0, 0x15, &g_menu0x0081fa78, 0, 0);
     Menu_AddItemType2(&g_menu0x0081f118, 0, 0x16, &g_menu0x00823c18, 0, 0);
-    Menu_AddItemType2(&g_menu0x0081f118, 0, 0x18, FrontendMenu_GetControls(), 0, 0);
+    // PORT: the port's controls pages (FrontendScreens.cpp).
+    Menu_AddItemType2(&g_menu0x0081f118, 0, 0x18, FrontendMenu_GetInputControls(), 0, 0);
     if (CGameInfo::GetGameRegion() != 3 && CGameInfo::GetGameRegion() != 2)
         Menu_AddItemType2(&g_menu0x0081f118, 0, 0x19, &g_menu0x008221d8, 0, 0);
     Menu_AddItemType2(&g_menu0x0081f118, 0, 0x148, &g_menu0x0081be78, 0, 1000);

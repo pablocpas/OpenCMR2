@@ -475,4 +475,8 @@ void FrontendMenu_BuildScreenOptions(void);
 Menu *FrontendMenu_GetScreenOptions(void);
 char *FrontendMenu_GetScreenOptionsLabel(void);
 
+// PORT: the controls pages of the options (FrontendScreens.cpp).
+void FrontendMenu_BuildInputControls(void);
+Menu *FrontendMenu_GetInputControls(void);
+
 #endif

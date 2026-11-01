@@ -125,7 +125,17 @@ Escape to pause) and, on a gamepad, the left stick to steer, the right and
 left triggers for throttle and brake, A for the handbrake, the shoulder
 buttons for the gears, Y for the camera, B to look back and Start to pause.
 Wheels steer with their first axis, and their pedals are found from where
-their axes rest. All of them are set in `controls.ini` in the user directory,
+their axes rest.
+
+**Options > Controllers** chooses the bindings to edit: player 1's keys,
+player 2's keys, the gamepads' or those of a connected joystick or wheel.
+**Configuration** binds each driving action to the next key, button or axis
+given (Escape gives up waiting for a controller's); an input already bound to
+another action trades places with it. The page also sets a controller's
+deadzone, steering curve, vibration and steering smoothing, and **Default**
+restores the bindings of the device chosen. OK saves, Back drops the changes.
+
+The bindings are kept in `controls.ini` in the user directory,
 written with the defaults and an explanation on first launch: each action
 lists the keys, buttons and axes bound to it, with a section for each
 keyboard player, for gamepads, for other joysticks, and for each model of
