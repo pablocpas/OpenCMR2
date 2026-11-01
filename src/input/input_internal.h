@@ -45,6 +45,15 @@ struct Profile {
     int player = 0;                 // 1 or 2; 0 follows the connection order
     int rumble = 100;               // percent of the gamepad's rumble
     int steeringCurve = 0;          // percent of cubic response of the steering axes
+    unsigned chosen = 0;            // SETTING_* bits set by the user (written to controls.ini)
+};
+
+// Settings of a profile; those not chosen follow the defaults of its kind.
+enum {
+    SETTING_DEADZONE = 1,
+    SETTING_SATURATION = 2,
+    SETTING_CURVE = 4,
+    SETTING_RUMBLE = 8,
 };
 
 bool IsAnalog(const Source &source);
@@ -61,6 +70,9 @@ void Bindings_Load(void);
 void Bindings_MarkChanged(void);
 // The defaults of a profile, from the device for a joystick's.
 void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick);
+// The defaults of the settings not chosen: for a device section, from the
+// device (NULL: as the joystick defaults).
+void Bindings_DefaultSettings(Profile &profile, SDL_Joystick *joystick);
 // Player 1's default keys: the keys Android's touch controls press, which
 // keep working whatever the keyboard is bound to.
 const Profile &Bindings_TouchProfile(void);

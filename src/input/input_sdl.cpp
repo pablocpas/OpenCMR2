@@ -377,6 +377,30 @@ int AxisValue(Sint16 raw, int range)
     }
 }
 
+// A thumbstick's gate is round: pushed to its edge on a diagonal, each axis
+// reads about 70%, so a thumb that rises or drops a little while pushing to
+// the side does not reach full lock. The stick is read as if its gate were
+// square: at the edge the axis nearer to the push gives its full value, and
+// along the axes and towards the centre nothing changes.
+Sint16 SquareStick(SDL_Gamepad *gamepad, SDL_GamepadAxis axis)
+{
+    SDL_GamepadAxis other;
+    switch (axis) {
+    case SDL_GAMEPAD_AXIS_LEFTX: other = SDL_GAMEPAD_AXIS_LEFTY; break;
+    case SDL_GAMEPAD_AXIS_LEFTY: other = SDL_GAMEPAD_AXIS_LEFTX; break;
+    case SDL_GAMEPAD_AXIS_RIGHTX: other = SDL_GAMEPAD_AXIS_RIGHTY; break;
+    case SDL_GAMEPAD_AXIS_RIGHTY: other = SDL_GAMEPAD_AXIS_RIGHTX; break;
+    default: return SDL_GetGamepadAxis(gamepad, axis);
+    }
+    double x = SDL_GetGamepadAxis(gamepad, axis) / 32767.0;
+    double y = SDL_GetGamepadAxis(gamepad, other) / 32767.0;
+    double longest = SDL_max(fabs(x), fabs(y));
+    if (longest <= 0.0)
+        return 0;
+    double value = SDL_clamp(x * sqrt(x * x + y * y) / longest, -1.0, 1.0);
+    return (Sint16)lround(value * 32767.0);
+}
+
 int SourceValue(const InputDevice *device, const Profile &profile, const Source &source)
 {
     switch (source.kind) {
@@ -387,7 +411,7 @@ int SourceValue(const InputDevice *device, const Profile &profile, const Source 
     case SOURCE_AXIS:
         if (device->gamepad == NULL)
             return 0;
-        return Scale(profile, AxisValue(SDL_GetGamepadAxis(device->gamepad, (SDL_GamepadAxis)source.index), source.direction));
+        return Scale(profile, AxisValue(SquareStick(device->gamepad, (SDL_GamepadAxis)source.index), source.direction));
     case SOURCE_JOY_BUTTON:
         return source.index < SDL_GetNumJoystickButtons(device->joystick) &&
                SDL_GetJoystickButton(device->joystick, source.index) ? INPUT_FULL : 0;
@@ -1196,9 +1220,9 @@ extern "C" void Input_SetSetting(int index, int setting, int value)
     if (profile == NULL || Input_GetSetting(index, setting) == value)
         return;
     switch (setting) {
-    case INPUT_SETTING_DEADZONE: profile->deadzone = SDL_clamp(value, 0, 99); break;
-    case INPUT_SETTING_CURVE: profile->steeringCurve = SDL_clamp(value, 0, 100); break;
-    default: profile->rumble = SDL_clamp(value, 0, 100); break;
+    case INPUT_SETTING_DEADZONE: profile->deadzone = SDL_clamp(value, 0, 99); profile->chosen |= SETTING_DEADZONE; break;
+    case INPUT_SETTING_CURVE: profile->steeringCurve = SDL_clamp(value, 0, 100); profile->chosen |= SETTING_CURVE; break;
+    default: profile->rumble = SDL_clamp(value, 0, 100); profile->chosen |= SETTING_RUMBLE; break;
     }
     Bindings_MarkChanged();
 }

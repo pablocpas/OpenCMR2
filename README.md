@@ -128,6 +128,9 @@ and to resume.
 A gamepad's stick turns the wheels at the car setup's steering speed, about
 as fast as the keys do; followed directly, as the original did with any
 joystick, the wheels would jump to the stick's angle in one physics step.
+The stick reaches full lock before its end (the last 5% of its travel, as
+many sticks stop short of it) and also when the thumb drifts up or down
+while pushing to the side (its round gate is read as a square for this).
 The faster the car, the more of the stick's travel goes to small angles, in
 proportion to how often drivers use each angle at that speed (fitted on the
 recorded runs of the super specials, driven with keys): from linear in slow

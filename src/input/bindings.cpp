@@ -35,7 +35,10 @@ const char *const s_header =
     "# (released at its maximum).\n"
     "#\n"
     "# deadzone and saturation are percentages of an axis: the part left out around\n"
-    "# its rest, and the part that gives the full value. player is 1 or 2 for a\n"
+    "# its rest, and the part that gives the full value (2 and 95 for gamepads,\n"
+    "# whose sticks often stop short of their end; 0 and 100 for wheels; 2 and\n"
+    "# 100 for other joysticks). Settings left out follow these defaults.\n"
+    "# player is 1 or 2 for a\n"
     "# device, or auto: the second controller connected plays as player 2 when two\n"
     "# players race. steering_curve, 0 to 100, makes a steering axis\n"
     "# gentler around its centre for finer corrections, keeping full lock at its\n"
@@ -202,11 +205,16 @@ std::string Path(void)
     return dir && *dir ? std::string(dir) + "controls.ini" : std::string();
 }
 
+// The format of controls.ini: 1 wrote every setting, the defaults too; 2
+// writes only those chosen.
+const int kFormat = 2;
+
 void Read(const char *text)
 {
     std::stringstream lines(text);
     std::string line;
     Profile *profile = NULL;
+    int format = 1;
     while (std::getline(lines, line)) {
         line = Trim(line);
         if (line.empty() || line[0] == '#' || line[0] == ';')
@@ -220,16 +228,27 @@ void Read(const char *text)
                 s_profiles.push_back(*Bindings_Find("joystick"));
                 profile = &s_profiles.back();
                 profile->section = section;
+                profile->chosen = 0;
             }
             if (profile == NULL)
                 Sys_Log("controls.ini: unknown section [%s]", section.c_str());
             continue;
         }
         size_t equals = line.find('=');
-        if (profile == NULL || equals == std::string::npos)
+        if (equals == std::string::npos)
             continue;
         std::string key = Lower(Trim(line.substr(0, equals)));
         std::string value = Trim(line.substr(equals + 1));
+        if (profile == NULL) {
+            if (key == "format")
+                format = SDL_atoi(value.c_str());
+            continue;
+        }
+        // Format 1 wrote the defaults of the time (2, 100, 0, 100) as if
+        // chosen: they follow today's defaults instead.
+        if (format < 2 && ((key == "deadzone" && value == "2") || (key == "saturation" && value == "100") ||
+                           (key == "steering_curve" && value == "0") || (key == "rumble" && value == "100")))
+            continue;
         int action;
         for (action = 0; action < INPUT_ACTION_COUNT; action++)
             if (key == s_actionNames[action])
@@ -238,19 +257,24 @@ void Read(const char *text)
             Bind(*profile, action, value.c_str());
         else if (key == "name")
             profile->name = value;
-        else if (key == "deadzone")
+        else if (key == "deadzone") {
             profile->deadzone = SDL_clamp(SDL_atoi(value.c_str()), 0, 99);
-        else if (key == "saturation")
+            profile->chosen |= SETTING_DEADZONE;
+        } else if (key == "saturation") {
             profile->saturation = SDL_clamp(SDL_atoi(value.c_str()), 1, 100);
+            profile->chosen |= SETTING_SATURATION;
+        }
         else if (key == "player")
             profile->player = value == "1" ? 1 : value == "2" ? 2 : 0;
         else if (key == "smooth_steering")
             ;   // the kind of device decides (Input_IsSmoothSteering)
-        else if (key == "steering_curve")
+        else if (key == "steering_curve") {
             profile->steeringCurve = SDL_clamp(SDL_atoi(value.c_str()), 0, 100);
-        else if (key == "rumble")
+            profile->chosen |= SETTING_CURVE;
+        } else if (key == "rumble") {
             profile->rumble = SDL_clamp(SDL_atoi(value.c_str()), 0, 100);
-        else
+            profile->chosen |= SETTING_RUMBLE;
+        } else
             Sys_Log("controls.ini: [%s] unknown setting '%s'", profile->section.c_str(), key.c_str());
     }
 }
@@ -258,6 +282,7 @@ void Read(const char *text)
 std::string Write(void)
 {
     std::string text = s_header;
+    text += "\nformat = " + std::to_string(kFormat) + "\n";
     for (const Profile &profile : s_profiles) {
         text += "\n[" + profile.section + "]\n";
         if (!profile.name.empty())
@@ -269,10 +294,15 @@ std::string Write(void)
             text += std::string(s_actionNames[action]) + " = " + list + "\n";
         }
         if (!IsKeyboard(profile)) {
-            text += "deadzone = " + std::to_string(profile.deadzone) + "\n";
-            text += "saturation = " + std::to_string(profile.saturation) + "\n";
-            text += "steering_curve = " + std::to_string(profile.steeringCurve) + "\n";
-            text += "rumble = " + std::to_string(profile.rumble) + "\n";
+            // Only the settings chosen: the others follow the defaults.
+            if (profile.chosen & SETTING_DEADZONE)
+                text += "deadzone = " + std::to_string(profile.deadzone) + "\n";
+            if (profile.chosen & SETTING_SATURATION)
+                text += "saturation = " + std::to_string(profile.saturation) + "\n";
+            if (profile.chosen & SETTING_CURVE)
+                text += "steering_curve = " + std::to_string(profile.steeringCurve) + "\n";
+            if (profile.chosen & SETTING_RUMBLE)
+                text += "rumble = " + std::to_string(profile.rumble) + "\n";
             if (profile.section.compare(0, 7, "device ") == 0)
                 text += std::string("player = ") + (profile.player ? std::to_string(profile.player) : "auto") + "\n";
         }
@@ -389,11 +419,26 @@ void JoystickDefaults(Profile &profile, SDL_Joystick *joystick)
         profile.actions[INPUT_THROTTLE] = { pedals[0] };
         profile.actions[INPUT_BRAKE] = { pedals[1] };
     }
-    if (SDL_GetJoystickType(joystick) == SDL_JOYSTICK_TYPE_WHEEL)
-        profile.deadzone = 0;
+    profile.chosen = 0;
+    Bindings_DefaultSettings(profile, joystick);
 }
 
 } // namespace
+
+void Bindings_DefaultSettings(Profile &profile, SDL_Joystick *joystick)
+{
+    bool gamepad = profile.section == "gamepad";
+    bool wheel = joystick != NULL && SDL_GetJoystickType(joystick) == SDL_JOYSTICK_TYPE_WHEEL;
+    if (!(profile.chosen & SETTING_DEADZONE))
+        profile.deadzone = wheel ? 0 : 2;
+    // A thumbstick often stops short of its end, more so on the diagonals.
+    if (!(profile.chosen & SETTING_SATURATION))
+        profile.saturation = gamepad ? 95 : 100;
+    if (!(profile.chosen & SETTING_CURVE))
+        profile.steeringCurve = 0;
+    if (!(profile.chosen & SETTING_RUMBLE))
+        profile.rumble = 100;
+}
 
 void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick)
 {
@@ -403,6 +448,7 @@ void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick)
     for (const auto &entry : defaults) {
         if (profile.section == entry.section) {
             profile = MakeProfile(entry.section, entry.bindings);
+            Bindings_DefaultSettings(profile, NULL);
 #ifdef __ANDROID__
             // Handhelds: Start pauses, Back follows the system.
             if (profile.section == "gamepad")
@@ -427,8 +473,10 @@ Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad)
     char guid[33];
     SDL_GUIDToString(SDL_GetJoystickGUID(joystick), guid, sizeof(guid));
     std::string section = std::string("device ") + guid;
-    if (Profile *profile = Bindings_Find(section))
+    if (Profile *profile = Bindings_Find(section)) {
+        Bindings_DefaultSettings(*profile, joystick);
         return profile;
+    }
     if (gamepad)
         return Bindings_Find("gamepad");
 

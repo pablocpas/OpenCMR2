@@ -143,7 +143,23 @@ void CheckGamepadActions(Pad &pad)
     SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 16384);
     Input_Update();
     int right = Input_GetAction(0, INPUT_STEER_RIGHT);
-    Check(right > INPUT_FULL * 45 / 100 && right < INPUT_FULL * 50 / 100, "half right, less the deadzone");
+    Check(right > INPUT_FULL * 50 / 100 && right < INPUT_FULL * 53 / 100, "half right, less the deadzones");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 31500);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_RIGHT) == INPUT_FULL, "96% of the stick is full lock");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 23170);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, -23170);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_RIGHT) == INPUT_FULL, "the edge of the gate on a diagonal is full lock");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 8000);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, -1000);
+    Input_Update();
+    right = Input_GetAction(0, INPUT_STEER_RIGHT);
+    Check(right > INPUT_FULL * 23 / 100 && right < INPUT_FULL * 25 / 100, "near the axis the response is unchanged");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, 0);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 16384);
+    Input_Update();
+    right = Input_GetAction(0, INPUT_STEER_RIGHT);
     Bindings_Find("gamepad")->steeringCurve = 100;
     Input_Update();
     int curved = Input_GetAction(0, INPUT_STEER_RIGHT);
@@ -680,6 +696,23 @@ void CheckBindingsFile(Pad &pad)
     SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_LEFT_STICK, true);
     Input_Update();
     Check(Input_GetAction(0, INPUT_HANDBRAKE) == INPUT_FULL, "the second input of the list is");
+
+    // A controls.ini of format 1 wrote every setting: the defaults of the
+    // time follow today's, a setting chosen stays.
+    std::string old = "[gamepad]\ndeadzone = 2\nsaturation = 100\nrumble = 10\n";
+    SDL_SaveFile(file.string().c_str(), old.data(), old.size());
+    Input_ReloadBindings();
+    Check(Input_GetSetting(2, INPUT_SETTING_DEADZONE) == 2 && Bindings_Find("gamepad")->saturation == 95,
+          "the old defaults follow today's");
+    Check(Input_GetSetting(2, INPUT_SETTING_RUMBLE) == 10, "a chosen setting stays");
+    Input_SaveBindings();
+    Bindings_MarkChanged();
+    Input_SaveBindings();
+    text = (char *)SDL_LoadFile(file.string().c_str(), nullptr);
+    content = text ? text : "";
+    SDL_free(text);
+    Check(content.find("rumble = 10") != std::string::npos && content.find("saturation =") == std::string::npos,
+          "only the chosen settings are written");
 
     // An older Controller.rcf only gives the keys while controls.ini is
     // missing.
