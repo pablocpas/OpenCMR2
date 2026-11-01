@@ -9,6 +9,9 @@ import android.view.View
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -90,6 +93,50 @@ class TouchLayoutEditorTest {
             assertTrue(saved.left.horizontal > 0f)
             assertTrue(saved.left.vertical > 0f)
             assertEquals(TouchPadSettings(), saved.right)
+        }
+    }
+
+    @Test fun hiddenNavigationBarDoesNotBlockTheOutsideEdges() {
+        ActivityScenario.launch(TouchLayoutActivity::class.java).use { scenario ->
+            compose.waitForIdle()
+            scenario.onActivity { activity ->
+                val left = pad(activity, true)
+                val right = pad(activity, false)
+                val overlay = left.parent as View
+                // Some devices keep reporting the navigation gesture area
+                // while the navigation bar itself is hidden in immersive mode.
+                for (gestures in listOf(Insets.of(0, 0, 144, 0), Insets.of(144, 0, 0, 0),
+                    Insets.of(0, 0, 0, 48))) {
+                    val insets = WindowInsetsCompat.Builder()
+                        .setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
+                        .setVisible(WindowInsetsCompat.Type.systemBars(), false)
+                        .setInsets(WindowInsetsCompat.Type.mandatorySystemGestures(), gestures)
+                        .build()
+                    ViewCompat.dispatchApplyWindowInsets(overlay, insets)
+                    assertEquals(0, left.spacingLeft)
+                    assertEquals(0, right.spacingRight)
+                    assertEquals(0, left.spacingBottom)
+                    assertEquals(0, right.spacingBottom)
+                }
+            }
+        }
+    }
+
+    @Test fun visibleNavigationBarAndCameraCutoutStillKeepControlsClear() {
+        ActivityScenario.launch(TouchLayoutActivity::class.java).use { scenario ->
+            compose.waitForIdle()
+            scenario.onActivity { activity ->
+                val left = pad(activity, true)
+                val right = pad(activity, false)
+                val insets = WindowInsetsCompat.Builder()
+                    .setInsets(WindowInsetsCompat.Type.navigationBars(), Insets.of(0, 0, 144, 0))
+                    .setVisible(WindowInsetsCompat.Type.navigationBars(), true)
+                    .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(80, 0, 0, 0))
+                    .build()
+                ViewCompat.dispatchApplyWindowInsets(left.parent as View, insets)
+                assertEquals(80, left.spacingLeft)
+                assertEquals(144, right.spacingRight)
+            }
         }
     }
 

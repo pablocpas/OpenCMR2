@@ -83,7 +83,9 @@ class TouchControls(
         }
         ViewCompat.setOnApplyWindowInsetsListener(overlay) { _, insets ->
             val c = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-            val s = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.mandatorySystemGestures())
+            // Gesture insets can remain even with the navigation bar hidden.
+            // Only visible bars should limit placement in immersive mode.
+            val s = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val nextCutout = TouchInsets(c.left, c.top, c.right, c.bottom)
             val nextSystem = TouchInsets(s.left, s.top, s.right, s.bottom)
             if (cutout != nextCutout || systemInsets != nextSystem) {
