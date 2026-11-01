@@ -405,6 +405,11 @@ void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick)
     for (const auto &entry : defaults) {
         if (profile.section == entry.section) {
             profile = MakeProfile(entry.section, entry.bindings);
+            // A stick is short: followed directly, the wheels jump to its
+            // angle in one physics step. Eased at the car setup's steering
+            // speed, a gamepad turns them about as fast as the keys do. A
+            // wheel is followed directly, as the original did.
+            profile.smoothSteering = profile.section == "gamepad";
 #ifdef __ANDROID__
             // Handhelds: Start pauses, Back follows the system.
             if (profile.section == "gamepad")

@@ -244,9 +244,12 @@ void CheckRecords(Pad &pad)
     // Keys switch the player to driving as with a keyboard; the stick back.
     s_keys[INPUT_KEY_LEFT] = 0x80;
     RaceFrame();
-    Check(Device(2).type == 1, "keys drive as a keyboard");
-    Check((Device(2).held & 1) != 0, "and steer with bit 1");
-    s_keys[INPUT_KEY_LEFT] = 0;
+    Check(CInput::m_controllerInfo[2].analogSteering == 0, "keys steer as a keyboard");
+    Check((Device(2).held & 1) != 0, "with bit 1");
+    s_keys[INPUT_KEY_UP] = 0x80;
+    RaceFrame();
+    Check(Device(2).type == 1, "keys alone drive as a keyboard");
+    s_keys[INPUT_KEY_LEFT] = s_keys[INPUT_KEY_UP] = 0;
     RaceFrame();
     Check(Device(2).type == 1, "until an axis is used");
     SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, SDL_JOYSTICK_AXIS_MAX);
@@ -334,6 +337,39 @@ void CheckRacePresses(Pad &pad)
     g_carBuffer = oldBuffer;
     g_carOrderCount = oldCount;
     g_carOrder[0] = oldOrder[0]; g_carOrder[1] = oldOrder[1];
+}
+
+// Steering on the D-pad with the throttle on a trigger: the steering is read
+// as keys (no axis, the car's progressive steering), the pedals as axes.
+void CheckMixedChannels(Pad &pad)
+{
+    Profile &gamepad = *Bindings_Find("gamepad");
+    std::vector<Source> left = gamepad.actions[INPUT_STEER_LEFT];
+    std::vector<Source> right = gamepad.actions[INPUT_STEER_RIGHT];
+    gamepad.actions[INPUT_STEER_LEFT] = { { SOURCE_BUTTON, SDL_GAMEPAD_BUTTON_DPAD_LEFT, 0 } };
+    gamepad.actions[INPUT_STEER_RIGHT] = { { SOURCE_BUTTON, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 0 } };
+    Release(pad);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    RaceFrame();
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_DPAD_LEFT, true);
+    RaceFrame();
+    RaceFrame();
+    Check(Device(2).type == 3, "the trigger keeps the joystick record");
+    Check(CInput::m_controllerInfo[2].analogSteering == 0 && CInput::m_controllerInfo[2].analogPedals != 0,
+          "steering from buttons, pedals from axes");
+    Check((Device(2).held & 1) != 0 && Device(2).joystick.bindings[5].position == -0x10000,
+          "the D-pad steers with bit 1, the trigger is a full pedal");
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_DPAD_LEFT, false);
+    RaceFrame();
+    Check(CInput::m_controllerInfo[2].analogSteering == 0, "still steering with buttons while only the trigger moves");
+    gamepad.actions[INPUT_STEER_LEFT] = left;
+    gamepad.actions[INPUT_STEER_RIGHT] = right;
+    Release(pad);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, SDL_JOYSTICK_AXIS_MIN);
+    RaceFrame();
+    Check(CInput::m_controllerInfo[2].analogSteering != 0, "the stick steers as an axis again");
+    Release(pad);
+    RaceFrame();
 }
 
 // The second controller is player 2's when two players race; with one, any
@@ -547,6 +583,8 @@ void CheckControlsPages(Pad &pad)
     press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
     Check(Menu_GetItem(controls, 0)->max == 2 && Input_GetProfileKind(2) == INPUT_PROFILE_GAMEPAD, "the gamepad chosen");
     Check(Menu_GetItem(controls, 2)->visible && Menu_GetItem(controls, 4)->visible, "with deadzone and rumble");
+    Check(Input_GetSetting(2, INPUT_SETTING_SMOOTH) == 1 && Menu_GetItem(controls, 5)->max == 0,
+          "gamepads ease the steering by default");
     press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     press(SDL_GAMEPAD_BUTTON_SOUTH);
     frame(SDL_GAMEPAD_BUTTON_INVALID, false);
@@ -668,6 +706,10 @@ void CheckBindingsFile(Pad &pad)
 int main()
 {
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
+    // Only the virtual devices below: a controller connected to the machine
+    // would take a place among them.
+    SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT,
+                "0x045e/0x028e,0x045e/0x02ea,0x045e/0x0b12,0x045e/0x0b13,0x046d/0xc24f,0x0000/0x0000");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD)) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
@@ -687,6 +729,7 @@ int main()
     CheckGamepadActions(pad);
     CheckRecords(pad);
     CheckRacePresses(pad);
+    CheckMixedChannels(pad);
     CheckTwoPlayers(pad);
     CheckManualMapping();
     CheckWheel();

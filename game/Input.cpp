@@ -23,8 +23,8 @@
 // every device of the player. Records 2 and 3 are the same players as
 // joysticks, with their steering, throttle and brake as axes; the player
 // drives with it (CInput::m_playerControllers) and it reads as a keyboard
-// while the player's last driving input came from keys or buttons, so that
-// the game steers as it did with keys. The bits follow the original's
+// while the player's last driving inputs came from keys or buttons, so that
+// the game steers as it did with keys (see UpdateDevice). The bits follow the original's
 // keyboard: in the menus (CGameInfo::m_fixedMenuKeys) the cursor keys,
 // Return, Escape, F1 and F2, and the pause's bit; on a stage bit 1 << action
 // for the actions, Escape's bit for the pause as well, and F1, F2 and F4.
@@ -952,13 +952,19 @@ DeviceInfo *CInput::UpdateDevice(int index)
     }
 
     // PORT: the devices are read once, with record 0. A player's joystick
-    // reads as a keyboard while the player drives with keys or buttons.
+    // reads as a keyboard while the player drives with keys or buttons only;
+    // its configuration takes the steering, and the throttle and brake, from
+    // its axes while they come from axes (a D-pad steers as keys do while
+    // the triggers stay analogue).
     if (index == 0) {
         Input_SetLocalPlayers(RallyDataState());
         Input_Update();
     }
-    if (index == 2 || index == 3)
-        pDevice->type = Input_IsAnalog(index - 2) ? 3 : 1;
+    if (index == 2 || index == 3) {
+        m_controllerInfo[index].analogSteering = Input_IsAnalogSteering(index - 2);
+        m_controllerInfo[index].analogPedals = Input_IsAnalogPedals(index - 2);
+        pDevice->type = m_controllerInfo[index].analogSteering || m_controllerInfo[index].analogPedals ? 3 : 1;
+    }
 
     switch (pDevice->type) {
     case 1:

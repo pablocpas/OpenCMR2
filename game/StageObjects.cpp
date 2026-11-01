@@ -12470,10 +12470,15 @@ void StageObject_UpdatePlayerControlIndicators(int player, int device)
                     g_controlCar->flag0x1d0[0] = (char)half;
                 else
                     g_controlCar->flag0x1d0[1] = (char)half;
-            } else if ((pDev->held & g_carButtonMasks[0]) != 0) {
-                g_controlCar->flag0x1d0[0] = 0x3f;
-            } else if ((pDev->held & g_carButtonMasks[1]) != 0) {
-                g_controlCar->flag0x1d0[1] = 0x3f;
+            } else {
+                // PORT: steering on buttons with the pedals on axes (a D-pad
+                // and triggers) steers as keys do, not as a stick pushed to
+                // its end, which a direct steering mode follows at once.
+                g_controlCar->steeringInputMode = 0;
+                if ((pDev->held & g_carButtonMasks[0]) != 0)
+                    g_controlCar->flag0x1d0[0] = 0x3f;
+                else if ((pDev->held & g_carButtonMasks[1]) != 0)
+                    g_controlCar->flag0x1d0[1] = 0x3f;
             }
             if (axisThrottle != -1) {
                 g_controlCar->analogThrottle = 1;

@@ -146,9 +146,12 @@ menus, bit 1 << action and Escape's bit for the pause on a stage. Records 2
 and 3 are the same players as joysticks: steering on X, the throttle on Rz
 and the brake on Z, each read as DirectInput wheels report a pedal (the
 maximum when released), with fixed configurations that name those axes. The
-players drive with records 2 and 3, which read as keyboards while the
-player's last steering, throttle or brake input came from a key or button,
-so that keys steer as they did in the original. Everything after the game's
+players drive with records 2 and 3. Whether the steering, and the throttle
+and brake, come from axes is decided apart, by the last input of each: a
+record reads as a keyboard while both come from keys or buttons, and its
+configuration takes from its axes only those that come from axes, so a D-pad
+steers as keys do (the car's progressive steering) while the triggers stay
+analogue (`PORT:` in `StageObject_UpdatePlayerControlIndicators`). Everything after the game's
 conversion of these values to its 0..63 controls, which replays and network
 races record, is unchanged.
 

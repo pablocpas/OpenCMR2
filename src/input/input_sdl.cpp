@@ -50,11 +50,32 @@ struct InputEffect {
 
 namespace {
 
+// Whether the steering, and the throttle and brake, come from an axis or
+// from keys and buttons: decided apart, so that a D-pad can steer as keys do
+// while the triggers stay analogue.
+struct Channel {
+    bool analog;
+    bool decided;                       // set by an input, not assumed
+};
+
+enum { CHANNEL_STEERING, CHANNEL_PEDALS, CHANNEL_COUNT };
+
 struct Player {
     int values[INPUT_ACTION_COUNT];
-    bool analog;
-    bool decided;                       // analog was set by an input, not assumed
+    Channel channels[CHANNEL_COUNT];
 };
+
+// Inputs of one update of a player's channels.
+struct ChannelUse {
+    bool digital[CHANNEL_COUNT];
+    bool analog[CHANNEL_COUNT];
+    bool hasAxis[CHANNEL_COUNT];        // a device of the player has an axis bound to it
+};
+
+int ChannelOf(int action)
+{
+    return action <= INPUT_STEER_RIGHT ? CHANNEL_STEERING : CHANNEL_PEDALS;
+}
 
 bool s_initialised;
 #ifdef __ANDROID__
@@ -79,6 +100,7 @@ bool AndroidTouchOnly()
 }
 #endif
 const BYTE *s_testKeyboard;
+bool s_testNoControllers;
 bool s_heldBack[SDL_SCANCODE_COUNT];
 std::deque<InputDevice> s_devices;
 int s_nextOrder;
@@ -297,6 +319,8 @@ void ScanJoysticks()
     if (s_touchOnly)
         count = 0;
 #endif
+    if (s_testNoControllers)
+        count = 0;
     std::vector<SDL_JoystickID> present(ids, ids + count);
     SDL_free(ids);
     for (InputDevice &device : s_devices)
@@ -388,7 +412,7 @@ int Curve(int value, int percent)
     return (int)((v * (100 - percent) + cubic * percent) / 100);
 }
 
-void Accumulate(Player &player, InputDevice *device, const Profile &profile, bool *digital, bool *analog)
+void Accumulate(Player &player, InputDevice *device, const Profile &profile, ChannelUse *use)
 {
     for (int action = 0; action < INPUT_ACTION_COUNT; action++) {
         for (const Source &source : profile.actions[action]) {
@@ -400,10 +424,13 @@ void Accumulate(Player &player, InputDevice *device, const Profile &profile, boo
                 device->used = true;
             if (action > INPUT_BRAKE)
                 continue;
-            if (IsAnalog(source) && value > INPUT_FULL / 4)
-                *analog = true;
-            else if (!IsAnalog(source) && value != 0)
-                *digital = true;
+            if (IsAnalog(source)) {
+                use->hasAxis[ChannelOf(action)] = use->hasAxis[ChannelOf(action)] || device != NULL;
+                if (value > INPUT_FULL / 4)
+                    use->analog[ChannelOf(action)] = true;
+            } else if (value != 0) {
+                use->digital[ChannelOf(action)] = true;
+            }
         }
     }
 }
@@ -421,35 +448,35 @@ void UpdatePlayer(int index)
 {
     Player &player = s_players[index];
     std::deque<Profile> &profiles = Bindings_Get();
-    bool digital = false;
-    bool analog = false;
-    bool hasAxis = false;
+    ChannelUse use = {};
 
     memset(player.values, 0, sizeof(player.values));
     for (Profile &profile : profiles)
         if ((profile.section == "keyboard" && Plays(0, index)) || (profile.section == "keyboard2" && Plays(1, index)))
-            Accumulate(player, NULL, profile, &digital, &analog);
+            Accumulate(player, NULL, profile, &use);
 #ifdef __ANDROID__
     if (index == 0)
-        Accumulate(player, NULL, Bindings_TouchProfile(), &digital, &analog);
+        Accumulate(player, NULL, Bindings_TouchProfile(), &use);
 #endif
     for (InputDevice &device : s_devices) {
         if (device.id == 0 || !Plays(Owner(device), index))
             continue;
-        Accumulate(player, &device, *device.profile, &digital, &analog);
-        hasAxis = hasAxis || SteersWithAxis(*device.profile);
+        Accumulate(player, &device, *device.profile, &use);
     }
     if (s_pausePulse[index] > 0) {
         player.values[INPUT_PAUSE] = INPUT_FULL;
         s_pausePulse[index]--;
     }
-    // The device kind last used decides; before any input, an axis if the
+    // The kind of input last used decides; before any input, an axis if the
     // player has one.
-    if (analog != digital) {
-        player.analog = analog;
-        player.decided = true;
-    } else if (!player.decided || (player.analog && !hasAxis)) {
-        player.analog = hasAxis;
+    for (int i = 0; i < CHANNEL_COUNT; i++) {
+        Channel &channel = player.channels[i];
+        if (use.analog[i] != use.digital[i]) {
+            channel.analog = use.analog[i];
+            channel.decided = true;
+        } else if (!channel.decided || (channel.analog && !use.hasAxis[i])) {
+            channel.analog = use.hasAxis[i];
+        }
     }
 }
 
@@ -584,6 +611,7 @@ void Input_HoldBackKey(SDL_Scancode scancode)
 }
 
 void Platform_SetTestKeyboard(const BYTE *keys) { s_testKeyboard = keys; }
+void Platform_SetTestNoControllers(bool ignore) { s_testNoControllers = ignore; }
 
 void Input_ReloadBindings(void)
 {
@@ -616,9 +644,14 @@ extern "C" int Input_GetAction(int player, int action)
     return s_players[player].values[action];
 }
 
-extern "C" BOOL Input_IsAnalog(int player)
+extern "C" BOOL Input_IsAnalogSteering(int player)
 {
-    return player >= 0 && player < INPUT_PLAYERS && s_players[player].analog;
+    return player >= 0 && player < INPUT_PLAYERS && s_players[player].channels[CHANNEL_STEERING].analog;
+}
+
+extern "C" BOOL Input_IsAnalogPedals(int player)
+{
+    return player >= 0 && player < INPUT_PLAYERS && s_players[player].channels[CHANNEL_PEDALS].analog;
 }
 
 extern "C" BOOL Input_IsSmoothSteering(int player)

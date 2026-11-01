@@ -136,6 +136,8 @@ int main(int argc, char **argv)
     BYTE *keys = g_keys;
     Platform_SetTestClock(&clock);
     Platform_SetTestKeyboard(keys);
+    // Recorded and random inputs only: no controller connected to the machine.
+    Platform_SetTestNoControllers(true);
     Main_InitD3DX();
     CGame::RegisterNetworkResourceRelease();
     Input_ClearKeyPressQueue();

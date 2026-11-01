@@ -12,6 +12,7 @@ struct PlatformTestClock {
 };
 void Platform_SetTestClock(const PlatformTestClock *clock);
 void Platform_SetTestKeyboard(const BYTE *keys); // 256 DIK entries, NULL disables
+void Platform_SetTestNoControllers(bool ignore); // controllers connected to the machine are not read
 void Platform_SetTestUserDir(const char *dir);   // ends with '/'
 // Startup tests provide folder results without opening desktop dialogs.
 struct PlatformTestDialogs {

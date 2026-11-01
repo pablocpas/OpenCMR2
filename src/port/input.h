@@ -74,9 +74,11 @@ void Input_SetLocalPlayers(int count);
 
 /* Value of an action of a player, 0..INPUT_FULL. */
 int Input_GetAction(int player, int action);
-/* Whether the player drives with an axis rather than keys or buttons: the
-   last steering, throttle or brake input came from an axis. */
-BOOL Input_IsAnalog(int player);
+/* Whether the player steers with an axis rather than keys or buttons, and
+   whether the throttle and brake are axes: the last input of each came from
+   an axis. */
+BOOL Input_IsAnalogSteering(int player);
+BOOL Input_IsAnalogPedals(int player);
 /* Whether the game eases the steering towards the player's axis rather
    than following it directly (smooth_steering of its device). */
 BOOL Input_IsSmoothSteering(int player);

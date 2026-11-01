@@ -114,9 +114,9 @@ connected controller drives player 1, together with the keyboard; when two
 players race, the second controller connected is player 2's, with the
 numeric keypad. Controllers connected or disconnected while the game runs
 are taken at once; losing the controller a player drives with pauses the
-stage. A player switches between keys and an axis freely: the
-game steers as with a keyboard after a key, and follows the stick or wheel
-after it moves. Without a physical keyboard (Steam Deck Game Mode), the
+stage. A player switches between keys and an axis freely, for the steering
+and for the pedals apart: keys, buttons and a D-pad steer progressively, as
+the original's keyboard did, and the triggers and pedals stay analogue. Without a physical keyboard (Steam Deck Game Mode), the
 on-screen keyboard opens only to type a name.
 
 The default controls are the original's keys (cursor keys, Space for the
@@ -125,8 +125,11 @@ Escape to pause) and, on a gamepad, the left stick to steer, the right and
 left triggers for throttle and brake, A for the handbrake, the shoulder
 buttons for the gears, Y for the camera, B to look back and Start to pause
 and to resume.
-Wheels steer with their first axis, and their pedals are found from where
-their axes rest.
+A gamepad eases the steering at the car setup's steering speed, about as
+fast as the keys turn the wheels; followed directly, as the original did with
+any joystick, the wheels jumped to the stick's angle in one physics step.
+Wheels steer with their first axis, followed directly, and their pedals are
+found from where their axes rest.
 
 **Options > Controllers** chooses the bindings to edit: player 1's keys,
 player 2's keys, the gamepads' or those of a connected joystick or wheel.
