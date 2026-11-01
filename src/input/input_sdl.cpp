@@ -935,20 +935,32 @@ extern "C" void Input_SetAutocenter(InputDevice *device, BOOL enable)
 
 namespace {
 
+// The touch controls in the list of the controls pages, with nothing to
+// edit: their buttons press player 1's default keys (Bindings_TouchProfile).
+Profile s_touchEntry;
+
 std::vector<Profile *> EditableProfiles()
 {
     std::vector<Profile *> profiles;
 #ifdef __ANDROID__
-    // The touch controls press player 1's default keys whatever the keyboard
-    // is bound to, and are edited in the launcher: the keyboard players are
-    // listed only with a physical keyboard.
+    s_touchEntry.section = "touch";
+    profiles.push_back(&s_touchEntry);
     bool keyboard = AndroidHasKeyboard();
 #else
     bool keyboard = true;
 #endif
-    for (const char *section : { "keyboard", "keyboard2", "gamepad" })
-        if (keyboard || strcmp(section, "gamepad") == 0)
-            profiles.push_back(Bindings_Find(section));
+    if (keyboard) {
+        profiles.push_back(Bindings_Find("keyboard"));
+        profiles.push_back(Bindings_Find("keyboard2"));
+    }
+    // Gamepads while one is connected: their bindings are captured from it.
+    Profile *gamepad = Bindings_Find("gamepad");
+    for (const InputDevice &device : s_devices) {
+        if (device.id != 0 && device.profile == gamepad) {
+            profiles.push_back(gamepad);
+            break;
+        }
+    }
     for (InputDevice &device : s_devices)
         if (device.id != 0 && device.profile->section.compare(0, 7, "device ") == 0 &&
             std::find(profiles.begin(), profiles.end(), device.profile) == profiles.end())
@@ -1204,6 +1216,8 @@ extern "C" int Input_GetProfileCount(void)
 extern "C" int Input_GetProfileKind(int index)
 {
     Profile *profile = EditableProfile(index);
+    if (profile != NULL && profile->section == "touch")
+        return INPUT_PROFILE_TOUCH;
     if (profile == NULL || profile->section == "keyboard")
         return INPUT_PROFILE_KEYBOARD;
     if (profile->section == "keyboard2")
@@ -1258,7 +1272,7 @@ extern "C" void Input_SetSetting(int index, int setting, int value)
 extern "C" void Input_RestoreDefaults(int index)
 {
     Profile *profile = EditableProfile(index);
-    if (profile == NULL)
+    if (profile == NULL || profile == &s_touchEntry)
         return;
     int player = profile->player;
     InputDevice *device = DeviceOf(profile);
@@ -1271,6 +1285,8 @@ extern "C" void Input_BeginCapture(int index, int action)
 {
     s_capture = Capture();
     s_capture.profile = EditableProfile(index);
+    if (s_capture.profile == &s_touchEntry)
+        s_capture.profile = NULL;
     s_capture.action = action;
     s_capture.start = SDL_GetTicks();
     if (s_capture.profile == NULL || IsKeyboardProfile(s_capture.profile))

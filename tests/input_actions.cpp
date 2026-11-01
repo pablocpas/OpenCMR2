@@ -772,7 +772,11 @@ int main()
     CheckControlsPages(pad);
     CheckBindingsFile(pad);
 
+    Check(Input_GetProfileCount() == 3 && Input_GetProfileKind(2) == INPUT_PROFILE_GAMEPAD,
+          "the controls pages list the gamepads while one is connected");
     Detach(pad);
+    Input_Update();
+    Check(Input_GetProfileCount() == 2, "and not without one, as nothing could be bound");
     Platform_SetTestKeyboard(nullptr);
     SDL_DestroyWindow(window);
     SDL_Quit();

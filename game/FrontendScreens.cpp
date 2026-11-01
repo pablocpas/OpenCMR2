@@ -12328,24 +12328,32 @@ enum ControlsText {
     CONTROLS_TEXT_RUMBLE,
     CONTROLS_TEXT_PRESS_KEY,
     CONTROLS_TEXT_PRESS_INPUT,
+    CONTROLS_TEXT_TOUCH,
+    CONTROLS_TEXT_TOUCH_NOTE,
     CONTROLS_TEXT_COUNT
 };
 
 // In the game's character set (Windows-1252; 0xb1 is Polish l with a stroke).
 static const char *const g_controlsText[6][CONTROLS_TEXT_COUNT] = {
     { "Device", "Keyboard", "Keyboard (Player 2)", "Gamepad", "Deadzone", "Steering Curve", "Vibration",
-      "Press a key", "Press a button or move an axis (Escape cancels)" },
+      "Press a key", "Press a button or move an axis (Escape cancels)",
+      "Touch Controls", "Set up in the app's Controls screen" },
     { "P\xe9riph\xe9rique", "Clavier", "Clavier (joueur 2)", "Manette", "Zone morte", "Courbe de direction",
       "Vibrations", "Appuyez sur une touche",
-      "Appuyez sur un bouton ou bougez un axe (\xc9" "chap annule)" },
+      "Appuyez sur un bouton ou bougez un axe (\xc9" "chap annule)", "Commandes tactiles",
+      "R\xe9glages dans l'\xe9" "cran Commandes de l'appli" },
     { "Dispositivo", "Teclado", "Teclado (jugador 2)", "Mando", "Zona muerta", "Curva de direcci\xf3n", "Vibraci\xf3n",
-      "Pulsa una tecla", "Pulsa un bot\xf3n o mueve un eje (Esc cancela)" },
+      "Pulsa una tecla", "Pulsa un bot\xf3n o mueve un eje (Esc cancela)", "Controles t\xe1" "ctiles",
+      "Se configuran en la pantalla Controles de la app" },
     { "Dispositivo", "Tastiera", "Tastiera (giocatore 2)", "Gamepad", "Zona morta", "Curva dello sterzo",
-      "Vibrazione", "Premi un tasto", "Premi un pulsante o muovi un asse (Esc annulla)" },
+      "Vibrazione", "Premi un tasto", "Premi un pulsante o muovi un asse (Esc annulla)", "Comandi touch",
+      "Si impostano nella schermata Controlli dell'app" },
     { "Ger\xe4t", "Tastatur", "Tastatur (Spieler 2)", "Gamepad", "Totzone", "Lenkkurve", "Vibration",
-      "Taste dr\xfc" "cken", "Knopf dr\xfc" "cken oder Achse bewegen (Esc bricht ab)" },
+      "Taste dr\xfc" "cken", "Knopf dr\xfc" "cken oder Achse bewegen (Esc bricht ab)",
+      "Touch-Steuerung", "Einstellung im Steuerung-Bildschirm der App" },
     { "Urzadzenie", "Klawiatura", "Klawiatura (gracz 2)", "Pad", "Martwa strefa", "Krzywa skretu", "Wibracje",
-      "Nacisnij klawisz", "Nacisnij przycisk lub porusz osia (Esc anuluje)" },
+      "Nacisnij klawisz", "Nacisnij przycisk lub porusz osia (Esc anuluje)", "Sterowanie dotykowe",
+      "Ustawienia na ekranie Sterowanie aplikacji" },
 };
 
 // The settings offered: deadzone 0..20%, curve and rumble 0..100% by tens.
@@ -12368,6 +12376,7 @@ static BOOL g_controlsCapturing;
 static char *Controls_ProfileName(int profile)
 {
     switch (Input_GetProfileKind(profile)) {
+    case INPUT_PROFILE_TOUCH: return Controls_Text(CONTROLS_TEXT_TOUCH);
     case INPUT_PROFILE_KEYBOARD: return Controls_Text(CONTROLS_TEXT_KEYBOARD);
     case INPUT_PROFILE_KEYBOARD2: return Controls_Text(CONTROLS_TEXT_KEYBOARD2);
     case INPUT_PROFILE_GAMEPAD: return Controls_Text(CONTROLS_TEXT_GAMEPAD);
@@ -12392,8 +12401,15 @@ static void Controls_LoadRows(Menu *pMenu)
     for (i = 0; i < 3; i++) {
         pItem = Menu_GetItem(pMenu, settings[i]);
         pItem->enabled = pItem->visible = kind != INPUT_PROFILE_KEYBOARD && kind != INPUT_PROFILE_KEYBOARD2 &&
+                                          kind != INPUT_PROFILE_TOUCH &&
                                           (settings[i] != CONTROLS_ITEM_RUMBLE || kind == INPUT_PROFILE_GAMEPAD);
     }
+    // The touch controls are set up in the launcher: their buttons show the
+    // actions they press, so they are not bound here.
+    pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_BINDINGS);
+    pItem->enabled = pItem->visible = kind != INPUT_PROFILE_TOUCH;
+    pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_DEFAULT);
+    pItem->enabled = pItem->visible = kind != INPUT_PROFILE_TOUCH;
     if (!Menu_GetItem(pMenu, pMenu->items[pMenu->cursor].value)->visible)
         Menu_ValidateCursor(pMenu, 0);
     g_controlsShownProfile = g_controlsProfile;
@@ -12588,6 +12604,9 @@ static void Controls_Draw(Menu *pMenu, int rowHeight, BOOL carousel)
         g_frontendDrawRect[1]++;
         Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineColour, 1);
     }
+    if (pMenu == &g_controlsMenu && Input_GetProfileKind(g_controlsProfile) == INPUT_PROFILE_TOUCH)
+        Font_DrawText(1, Controls_Text(CONTROLS_TEXT_TOUCH_NOTE), (int)(g_pGraphics->resX * 122) / 640,
+                      step * row + y + step, (int *)g_colourText0x0052496c, 0x11);
     if (g_controlsCapturing && pMenu == &g_controlsBindingsMenu) {
         int kind = Input_GetProfileKind(g_controlsProfile);
         Font_DrawText(1, Controls_Text(kind == INPUT_PROFILE_KEYBOARD || kind == INPUT_PROFILE_KEYBOARD2

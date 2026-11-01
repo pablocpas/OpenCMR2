@@ -111,7 +111,8 @@ enum InputProfileKind {
     INPUT_PROFILE_KEYBOARD,
     INPUT_PROFILE_KEYBOARD2,
     INPUT_PROFILE_GAMEPAD,
-    INPUT_PROFILE_JOYSTICK
+    INPUT_PROFILE_JOYSTICK,
+    INPUT_PROFILE_TOUCH         /* Android's on-screen controls: nothing to edit here */
 };
 
 enum InputSetting {
@@ -120,6 +121,10 @@ enum InputSetting {
     INPUT_SETTING_RUMBLE        /* percent */
 };
 
+/* Listed: the touch controls (Android), the keyboard players while a
+   physical keyboard is connected, gamepads while one is, then each connected
+   joystick or wheel. The touch controls are edited in the launcher: each of
+   their buttons shows the action it presses. */
 int Input_GetProfileCount(void);
 int Input_GetProfileKind(int profile);
 /* The device's name for a joystick or wheel, in the game's character set. */

@@ -140,7 +140,8 @@ Wheels steer with their first axis, followed directly, and their pedals are
 found from where their axes rest.
 
 **Options > Controllers** chooses the bindings to edit: player 1's keys,
-player 2's keys, the gamepads' or those of a connected joystick or wheel.
+player 2's keys, the gamepads' (while one is connected) or those of a
+connected joystick or wheel.
 **Configuration** binds each driving action to the next key, button or axis
 given (Escape gives up waiting for a controller's); an input already bound to
 another action trades places with it. The page also sets a controller's
@@ -178,9 +179,11 @@ pauses the game; a controller’s Back/Select follows its SDL mapping.
 Controller firmware must expose its input to Android; buttons intercepted by
 system shortcuts cannot be mapped by the app.
 
-In the game's **Options > Controllers** the keyboard players are listed only
-while a physical keyboard is connected; the touch controls steer as keys do,
-with the car's progressive steering, and are edited in the launcher.
+In the game's **Options > Controllers** the touch controls are listed with
+nothing to change: they are set up in the launcher, and each button shows the
+action it presses. They steer as keys do, with the car's progressive
+steering. The keyboard players are listed only while a physical keyboard is
+connected, and gamepads while one is.
 
 The touch controls use one layout for the menus and the stages. The left group
 has Left and Right, with Confirm and Back/Pause above them. The right group
