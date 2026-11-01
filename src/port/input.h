@@ -84,6 +84,8 @@ InputDevice *Input_OpenJoystick(int index);
 /* A controller in the Xbox layout (see input_sdl.cpp), rather than a raw
    joystick or wheel. */
 BOOL Input_IsGamepad(InputDevice *device);
+/* Whether the device reports itself as a steering wheel. */
+BOOL Input_IsWheel(InputDevice *device);
 void Input_CloseDevice(InputDevice *device);
 
 const char *Input_GetInstanceName(InputDevice *device);

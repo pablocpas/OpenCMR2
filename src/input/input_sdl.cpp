@@ -525,6 +525,11 @@ extern "C" BOOL Input_IsGamepad(InputDevice *device)
     return device != NULL && device->gamepad != NULL;
 }
 
+extern "C" BOOL Input_IsWheel(InputDevice *device)
+{
+    return device != NULL && device->joystick != NULL && SDL_GetJoystickType(device->joystick) == SDL_JOYSTICK_TYPE_WHEEL;
+}
+
 extern "C" BOOL Input_HasAxis(InputDevice *device, DWORD offset)
 {
     int axis = AxisOfOffset(offset);

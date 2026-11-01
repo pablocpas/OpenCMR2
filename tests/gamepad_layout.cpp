@@ -23,6 +23,18 @@ extern void Input_TranslatePedalsToMenuKeys();
 extern void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *out);
 extern void Input_RescanChangedJoysticks();
 extern unsigned short Input_GetAssignedController();
+extern void Input_MergeConfiguredDeviceButtons(int index, DeviceInfo *out, BOOL padOnly);
+extern void FrontendMenu_BuildAllControlsPages();
+extern Menu *FrontendMenu_GetDeviceBindings();
+extern Menu *FrontendMenu_GetDeviceConfiguration();
+extern Menu *FrontendMenu_GetDeviceCalibration();
+extern void FrontendControls_EnterDeviceConfiguration(Menu *, int);
+extern void FrontendControls_EnterDeviceBindings(Menu *, char);
+extern int FrontendControls_GetBindingCaptureState();
+extern int FrontendControls_GetCalibrationState();
+extern void FrontendMenu_UpdateAndSwitchActive();
+extern Menu *g_pMenu0x00818ac0;
+extern ControllerData g_controlsCopy[6];
 extern BYTE g_carSimulationClockFlags;
 extern int Car_UpdateEngineNoteFalloff(int *);
 
@@ -296,6 +308,196 @@ void CheckWheelMenuPedals(InputDevice *wheel, DeviceInfo *info)
     CInput::m_unk0x0059f6b0[info->field_0x18] = nullptr;
 }
 
+SDL_JoystickID AttachPad(const char *name, Uint16 product, SDL_Joystick **opened)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x1234;
+    desc.product_id = product;
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.name = name;
+    SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    *opened = SDL_OpenJoystick(id);
+    SDL_SetJoystickVirtualAxis(*opened, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(*opened, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+    SDL_UpdateJoysticks();
+    return id;
+}
+
+int IndexOf(const char *name)
+{
+    for (int i = 2; i < Input_GetAssignedController(); ++i)
+        if (strcmp(CInput::m_controllerInfo[i].name, name) == 0)
+            return i;
+    return -1;
+}
+
+// The page that assigns a button to each action, and the calibration page
+// after it, work with the controller they set up, as in the menus before
+// them: the original left them to the keyboard.
+void CheckBindingsPage()
+{
+    SDL_Joystick *virt;
+    SDL_JoystickID id = AttachPad("Virtual Pad C", 3, &virt);
+    CInput::m_unk0x005168f4[0] = 0;
+    CInput::m_unk0x005168f4[1] = 1;
+    Input_RescanChangedJoysticks();
+    const int pad = IndexOf("Virtual Pad C");
+    Check(pad == 2 && CInput::m_unk0x005168f4[0] == pad, "the pad is player 1's");
+    Menu_SetInputStateFlag(0);
+    FrontendMenu_BuildAllControlsPages();
+    FrontendControls_EnterDeviceConfiguration(FrontendMenu_GetDeviceConfiguration(), 0);
+    Menu *page = FrontendMenu_GetDeviceBindings();
+    FrontendControls_EnterDeviceBindings(page, 0);
+    g_pMenu0x00818ac0 = page;
+    int now = 1000;
+    auto frame = [&](SDL_GamepadButton button, bool down) {
+        if (button != SDL_GAMEPAD_BUTTON_INVALID)
+            SDL_SetJoystickVirtualButton(virt, button, down);
+        CMain::m_frameTime = now += 16;
+        FrontendMenu_UpdateAndSwitchActive();
+    };
+    auto press = [&](SDL_GamepadButton button) {
+        frame(button, true);
+        frame(button, false);
+    };
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    page->cursor = 0;
+    for (int i = 0; i < 4; ++i)
+        press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    Check(page->cursor == 4, "the D-pad moves through the actions");
+    press(SDL_GAMEPAD_BUTTON_DPAD_UP);
+    Check(page->cursor == 3, "and back up");
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    Check(page->cursor == 4 && FrontendControls_GetBindingCaptureState() == 0, "on the handbrake, not waiting");
+    frame(SDL_GAMEPAD_BUTTON_SOUTH, true);
+    Check(FrontendControls_GetBindingCaptureState() != 0, "confirm starts waiting for a button");
+    frame(SDL_GAMEPAD_BUTTON_SOUTH, true);
+    frame(SDL_GAMEPAD_BUTTON_SOUTH, false);
+    Check(FrontendControls_GetBindingCaptureState() != 0, "the confirm press itself is not taken");
+    frame(SDL_GAMEPAD_BUTTON_NORTH, true);
+    Check(FrontendControls_GetBindingCaptureState() == 0, "a button press is taken");
+    Check(g_controlsCopy[pad].field_0x130 == 0x80, "the handbrake is on Y (button 3)");
+    frame(SDL_GAMEPAD_BUTTON_NORTH, false);
+    Check(page->cursor == 4, "the menu stays on the action");
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    Check(page->cursor == 5, "the menu works again after it");
+
+    // OK leads a controller on to its calibration page; there it can
+    // calibrate, confirm and leave without a keyboard.
+    for (int i = 0; i < page->itemCount && page->cursor != page->itemCount - 1; ++i)
+        press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    press(SDL_GAMEPAD_BUTTON_SOUTH);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Check(g_pMenu0x00818ac0 == FrontendMenu_GetDeviceCalibration(), "OK leads to the calibration page");
+    Menu *calibration = FrontendMenu_GetDeviceCalibration();
+    calibration->cursor = 0;
+    SDL_SetJoystickVirtualAxis(virt, SDL_GAMEPAD_AXIS_LEFTY, SDL_JOYSTICK_AXIS_MAX);
+    for (int i = 0; i < 40; ++i)
+        frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Check(calibration->cursor == 0, "testing the stick does not move the cursor");
+    SDL_SetJoystickVirtualAxis(virt, SDL_GAMEPAD_AXIS_LEFTY, 0);
+    press(SDL_GAMEPAD_BUTTON_SOUTH);
+    Check(FrontendControls_GetCalibrationState() != 0, "confirm starts calibrating the axis");
+    press(SDL_GAMEPAD_BUTTON_SOUTH);
+    Check(FrontendControls_GetCalibrationState() == 0, "confirm accepts the axis settings");
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    Check(calibration->cursor == 1, "the D-pad moves to the next axis");
+    g_pMenu0x00818ac0 = nullptr;
+    SDL_CloseJoystick(virt);
+    SDL_DetachVirtualJoystick(id);
+    Input_RescanChangedJoysticks();
+    CInput::DInputReleaseDevices();
+}
+
+// Without a keyboard (Steam Deck Game Mode, handhelds) a controller must
+// drive and work in every menu before the controls menu is reached.
+void CheckAssignment()
+{
+    SDL_Joystick *virtA, *virtB;
+    SDL_JoystickID a = AttachPad("Virtual Pad A", 1, &virtA);
+    SDL_JoystickID b = AttachPad("Virtual Pad B", 2, &virtB);
+    CInput::m_unk0x005168f4[0] = 0;
+    CInput::m_unk0x005168f4[1] = 1;
+    Input_RescanChangedJoysticks();
+    Check(IndexOf("Virtual Pad A") == 2 && IndexOf("Virtual Pad B") == 3, "both pads listed in order");
+    Check(CInput::m_unk0x005168f4[0] == 2, "player 1 starts on the first controller");
+
+    // A controller nobody chose works in player 1's menus; player 2's does not.
+    CInput::m_unk0x005168f4[0] = 0;
+    SDL_SetJoystickVirtualButton(virtB, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    CInput::UpdateAllAvailableDevices();
+    DeviceInfo menu{};
+    Input_MergeAssignedJoystickButtons(0, &menu);
+    Check((menu.field_0x8 & 0x10) != 0, "an unassigned controller confirms in player 1's menus");
+    SDL_SetJoystickVirtualButton(virtB, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    CInput::UpdateAllAvailableDevices();
+    CInput::m_unk0x005168f4[1] = 3;
+    SDL_SetJoystickVirtualButton(virtB, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    CInput::UpdateAllAvailableDevices();
+    menu = DeviceInfo{};
+    Input_MergeAssignedJoystickButtons(0, &menu);
+    Check((menu.field_0x8 & 0x10) == 0, "player 2's controller stays out of player 1's menus");
+    SDL_SetJoystickVirtualButton(virtB, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    CInput::UpdateAllAvailableDevices();
+
+    // The calibration page takes the controller's buttons and D-pad, never
+    // its stick, which is being tested there.
+    CInput::m_unk0x005168f4[1] = 1;
+    const int padA = IndexOf("Virtual Pad A");
+    SDL_SetJoystickVirtualAxis(virtA, SDL_GAMEPAD_AXIS_LEFTY, SDL_JOYSTICK_AXIS_MAX);
+    CInput::UpdateAllAvailableDevices();
+    menu = DeviceInfo{};
+    Input_MergeConfiguredDeviceButtons(padA, &menu, TRUE);
+    Check((menu.field_0x8 & 0xf) == 0 && (menu.field_0x4 & 0xf) == 0, "the tested stick does not navigate");
+    SDL_SetJoystickVirtualButton(virtA, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
+    CInput::UpdateAllAvailableDevices();
+    menu = DeviceInfo{};
+    Input_MergeConfiguredDeviceButtons(padA, &menu, TRUE);
+    Check((menu.field_0x8 & 0xf) == 8 && (menu.field_0x4 & 0xf) == 8, "the D-pad navigates and adjusts");
+    CInput::UpdateAllAvailableDevices();
+    menu = DeviceInfo{};
+    Input_MergeConfiguredDeviceButtons(padA, &menu, TRUE);
+    Check((menu.field_0x8 & 0xf) == 0 && (menu.field_0x4 & 0xf) == 8, "a held D-pad is pressed once");
+    SDL_SetJoystickVirtualButton(virtA, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false);
+    SDL_SetJoystickVirtualAxis(virtA, SDL_GAMEPAD_AXIS_LEFTY, 0);
+    SDL_SetJoystickVirtualButton(virtA, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    CInput::UpdateAllAvailableDevices();
+    menu = DeviceInfo{};
+    Input_MergeConfiguredDeviceButtons(padA, &menu, TRUE);
+    Check((menu.field_0x8 & 0x10) != 0, "its confirm button confirms the axis settings");
+    SDL_SetJoystickVirtualButton(virtA, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    CInput::UpdateAllAvailableDevices();
+
+    // Listed in another order, a controller keeps its configuration and the
+    // player who uses it, as it can between two starts.
+    const int padB = IndexOf("Virtual Pad B");
+    CInput::m_controllerInfo[padB].field_0x130 = 0x4000;
+    CInput::m_unk0x005168f4[1] = (unsigned short)padB;
+    SDL_CloseJoystick(virtA);
+    SDL_DetachVirtualJoystick(a);
+    a = AttachPad("Virtual Pad A", 1, &virtA);
+    Input_RescanChangedJoysticks();
+    Check(IndexOf("Virtual Pad B") == 2 && IndexOf("Virtual Pad A") == 3, "pads listed in the new order");
+    Check(CInput::m_controllerInfo[2].field_0x130 == 0x4000, "a controller keeps its bindings in a new place");
+    Check(CInput::m_unk0x005168f4[1] == 2, "player 2 keeps their controller in a new place");
+    Check(CInput::m_unk0x005168f4[0] == 3, "player 1 follows the first controller player 2 does not use");
+
+    // A player whose controller is disconnected goes back to the keyboard.
+    SDL_CloseJoystick(virtB);
+    SDL_DetachVirtualJoystick(b);
+    Input_RescanChangedJoysticks();
+    Check(CInput::m_unk0x005168f4[1] == 1, "player 2 goes back to the keyboard without their controller");
+    Check(CInput::m_unk0x005168f4[0] == 2, "player 1 keeps the controller still connected");
+    SDL_CloseJoystick(virtA);
+    SDL_DetachVirtualJoystick(a);
+    Input_RescanChangedJoysticks();
+    Check(CInput::m_unk0x005168f4[0] == 0, "player 1 is on the keyboard without controllers");
+    CInput::DInputReleaseDevices();
+}
+
 } // namespace
 
 int main()
@@ -466,10 +668,12 @@ int main()
           "a disconnected wheel is closed and no longer listed");
     CInput::DInputReleaseDevices();
 
+    CheckAssignment();
+    CheckBindingsPage();
     CheckUnknownController();
     SDL_DestroyWindow(window);
     SDL_Quit();
     if (s_failures == 0)
-        puts("gamepad layout: input, mixed-rate race edges, profiles, analog/digital triggers, menus and hotplug passed");
+        puts("gamepad layout: input, mixed-rate race edges, profiles, analog/digital triggers, menus, assignment and hotplug passed");
     return s_failures == 0 ? 0 : 1;
 }

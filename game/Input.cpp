@@ -7,6 +7,8 @@
 #include "FileBuffer.h"
 #include "Game.h"
 
+#include "port/sys.h"
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -916,6 +918,10 @@ void CInput::ReadKeyboardDevice(DeviceInfo *pDevice)
     }
 }
 
+// PORT: the directions of each device's first POV hat (the D-pad of a
+// gamepad), apart from its stick's: see Input_MergeConfiguredDeviceButtons.
+static unsigned int s_hatDirections[8];
+
 // FUNCTION: CMR2 0x0049fb70
 void CInput::ReadJoystick(DeviceInfo *pDevice)
 {
@@ -925,6 +931,7 @@ void CInput::ReadJoystick(DeviceInfo *pDevice)
 
     pJoystick = m_unk0x0059f6b0[pDevice->field_0x18];
     pDevice->field_0x4 = 0;
+    s_hatDirections[pDevice - m_availableDevices] = 0;
     if (pJoystick == NULL || !Input_ReadJoystick(pJoystick, &joyState))
         return;
 
@@ -947,14 +954,17 @@ void CInput::ReadJoystick(DeviceInfo *pDevice)
         pDevice->field_0x4 |= 0x8;
 
     if ((joyState.rgdwPOV[0] & 0xffff) != 0xffff) {
+        unsigned int hat = 0;
         if (joyState.rgdwPOV[0] >= 4500 && joyState.rgdwPOV[0] <= 13500)
-            pDevice->field_0x4 |= 0x2;
+            hat |= 0x2;
         if (joyState.rgdwPOV[0] >= 13500 && joyState.rgdwPOV[0] <= 22500)
-            pDevice->field_0x4 |= 0x8;
+            hat |= 0x8;
         if (joyState.rgdwPOV[0] >= 22500 && joyState.rgdwPOV[0] <= 31500)
-            pDevice->field_0x4 |= 0x1;
+            hat |= 0x1;
         if (joyState.rgdwPOV[0] >= 31500 || joyState.rgdwPOV[0] <= 4500)
-            pDevice->field_0x4 |= 0x4;
+            hat |= 0x4;
+        pDevice->field_0x4 |= hat;
+        s_hatDirections[pDevice - m_availableDevices] = hat;
     }
 
     for (i = 0; i < pDevice->field_0x14; i++) {
@@ -1456,36 +1466,126 @@ void CInput::InitDetectedControllerSlot(DeviceInfo *pDevice, int index)
     pController->field_0x13a = 0x400;
 }
 
+// PORT: whether player 1's device follows the controllers connected (the
+// first one, or the keyboard without any) rather than a choice made in the
+// controls menu ([input] auto_player1 in opencmr2.ini). The original kept
+// player 1 on the keyboard until it was changed there, with the keyboard.
+static BOOL Input_Player1Automatic(void)
+{
+    return Sys_GetOption("input.auto_player1", 1) != 0;
+}
+
+// The device player 1 follows automatically: of the controllers player 2
+// does not use, the first wheel, else the first gamepad, else the first
+// other joystick; the keyboard without any. Android lists some built-in
+// devices of phones as joysticks: only gamepads and wheels count there.
+unsigned short Input_GetAutomaticPlayer1Device(void)
+{
+    int best = 0;
+    int bestRank = 0;
+    int rank;
+    int i;
+
+    for (i = 2; i < CInput::m_controllerCount && i < 8; i++) {
+        int joystick = CInput::m_availableDevices[i].field_0x18;
+        if (i == CInput::m_unk0x005168f4[1] || CInput::m_availableDevices[i].field_0x0 != 3 || joystick < 0 || joystick > 3)
+            continue;
+        if (Input_IsWheel(CInput::m_unk0x0059f6b0[joystick]))
+            rank = 3;
+        else if (Input_IsGamepad(CInput::m_unk0x0059f6b0[joystick]))
+            rank = 2;
+        else
+#ifdef __ANDROID__
+            continue;
+#else
+            rank = 1;
+#endif
+        if (rank > bestRank) {
+            best = i;
+            bestRank = rank;
+        }
+    }
+    return (unsigned short)best;
+}
+
+// Called when the controls menu stores player 1's device: choosing another
+// than the automatic one keeps that choice; choosing it again follows the
+// controllers again.
+void Input_StorePlayer1Choice(void)
+{
+    BOOL automatic = CInput::m_unk0x005168f4[0] == Input_GetAutomaticPlayer1Device();
+
+    if (Input_Player1Automatic() != automatic)
+        Sys_SetOption("input.auto_player1", automatic);
+}
+
 // FUNCTION: CMR2 0x0040c050
 void CInput::RefreshControllerConfigurations(void)
 {
     DeviceInfo *pDevice;
     int i;
+    // PORT: a controller keeps its configuration, and the players theirs,
+    // when the controllers are listed in another order than when it was
+    // saved, as they can be from one start to the next. The original matched
+    // configuration i with device i by name only, and reset it otherwise.
+    static ControllerData saved[6];
+    int moved[6];
+    BOOL taken[6];
+    int j;
+    int slot;
+    BOOL lost;
 
+    memcpy(saved, m_controllerInfo, sizeof(saved));
+    for (j = 0; j < 6; j++) {
+        moved[j] = -1;
+        taken[j] = FALSE;
+    }
     m_controllerCount = CountAttachedInputDevices();
-    for (i = 0; i < m_controllerCount; i++) {
+    for (i = 0; i < m_controllerCount && i < 6; i++) {
         pDevice = UpdateDevice(i);
-        if (m_hasLoadedControllerInfo == 0 || strcmp(m_controllerInfo[i].name, pDevice->deviceInstanceName) != 0)
+        j = -1;
+        if (m_hasLoadedControllerInfo != 0) {
+            if (strcmp(saved[i].name, pDevice->deviceInstanceName) == 0 && !taken[i])
+                j = i;
+            for (slot = 2; j < 0 && i >= 2 && slot < 6; slot++)
+                if (!taken[slot] && strcmp(saved[slot].name, pDevice->deviceInstanceName) == 0)
+                    j = slot;
+        }
+        if (j < 0) {
+            memset(&m_controllerInfo[i], 0, sizeof(m_controllerInfo[i]));
             InitDetectedControllerSlot(pDevice, i);
+            continue;
+        }
+        taken[j] = TRUE;
+        moved[j] = i;
+        if (j != i) {
+            m_controllerInfo[i] = saved[j];
+            m_controllerInfo[i].index = (BYTE)i;
+        }
     }
     if (m_controllerCount < 6)
         memset(&m_controllerInfo[m_controllerCount], 0, (6 - m_controllerCount) * sizeof(ControllerData));
-#ifdef __ANDROID__
-    // A handheld's built-in gamepad must work before the controls menu can
-    // be reached. Preserve a valid saved joystick assignment, otherwise use
-    // the first SDL gamepad. Keyboard/touch input is still merged by the game.
-    if (m_unk0x005168f4[0] < 2 || m_unk0x005168f4[0] >= m_controllerCount) {
-        m_unk0x005168f4[0] = 0;
-        for (i = 2; i < m_controllerCount; ++i) {
-            int joystick = m_availableDevices[i].field_0x18;
-            if (joystick >= 0 && joystick < 4 && Input_IsGamepad(m_unk0x0059f6b0[joystick])) {
-                m_unk0x005168f4[0] = (unsigned short)i;
-                break;
-            }
+    // A player whose controller is gone goes back to the keyboard.
+    lost = FALSE;
+    for (slot = 0; slot < 8; slot++) {
+        j = m_unk0x005168f4[slot];
+        if (j < 2 && j < m_controllerCount)
+            continue;
+        if (j < 6 && moved[j] >= 0) {
+            m_unk0x005168f4[slot] = (unsigned short)moved[j];
+            continue;
         }
+        m_unk0x005168f4[slot] = (unsigned short)(slot < 2 ? slot : 0);
+        if (slot == 0)
+            lost = TRUE;
     }
+    // PORT: player 1 starts on the first controller connected, so one works
+    // before the controls menu is reached (Steam Deck, Android handhelds),
+    // until another device is chosen for player 1 there.
+    if (Input_Player1Automatic() || lost)
+        m_unk0x005168f4[0] = Input_GetAutomaticPlayer1Device();
     ApplyControllerButtonBindings(0);
-#endif
+    ApplyControllerButtonBindings(1);
     m_hasLoadedControllerInfo = TRUE;
 }
 
@@ -1581,9 +1681,9 @@ void CInput::UpdateAllAvailableDevices(void)
 {
     // Frontend/pause transitions must not replay unconsumed driving actions.
     memset(s_pendingRacePresses, 0, sizeof(s_pendingRacePresses));
-#ifdef __ANDROID__
+    // PORT: controllers connected or disconnected since are taken in the
+    // menus, so one can be used without a keyboard to open the controls menu.
     Input_RescanChangedJoysticks();
-#endif
     int i;
 
     for (i = 0; i < 8; i++)
@@ -1764,6 +1864,7 @@ DWORD Input_GetControllerField118(unsigned short slot)
 void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *pOut)
 {
     DeviceInfo *pDev;
+    int i;
 
     if ((short)Input_GetControllerSlotMapping(slot) != 0 && (short)Input_GetControllerSlotMapping(slot) != 1) {
         pDev = CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(slot));
@@ -1773,6 +1874,46 @@ void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *pOut)
             pOut->field_0xc |= pDev->field_0xc;
         }
     }
+    // PORT: player 1's menus also take every controller player 2 does not
+    // use, so any connected controller works in them, also one not chosen in
+    // the controls menu yet. Only the chosen one drives.
+    if (slot != 0)
+        return;
+    for (i = 2; i < 8; i++) {
+        pDev = CInput::GetAvailableDeviceRecord(i);
+        if (i == (short)Input_GetControllerSlotMapping(0) || i == (short)Input_GetControllerSlotMapping(1) ||
+            (pDev->field_0x0 != 0 && pDev->field_0x0 != 3) || pDev->field_0x18 < 0 || pDev->field_0x18 > 3)
+            continue;
+        pOut->field_0x8 |= pDev->field_0x8;
+        pOut->field_0x4 |= pDev->field_0x4;
+        pOut->field_0xc |= pDev->field_0xc;
+    }
+}
+
+// PORT: menu input of the controller a page of the controls menu sets up,
+// which the original left to the keyboard. On the calibration page its
+// stick and pedals are being tested: only its buttons and its D-pad count.
+void Input_MergeConfiguredDeviceButtons(int index, DeviceInfo *pOut, BOOL padOnly)
+{
+    static unsigned int previousHat[8];
+    DeviceInfo *pDev;
+    unsigned int hat;
+
+    if (index < 2 || index >= 8)
+        return;
+    pDev = CInput::GetAvailableDeviceRecord(index);
+    if ((pDev->field_0x0 != 0 && pDev->field_0x0 != 3) || pDev->field_0x18 < 0 || pDev->field_0x18 > 3)
+        return;
+    hat = s_hatDirections[index];
+    if (!padOnly) {
+        pOut->field_0x8 |= pDev->field_0x8;
+        pOut->field_0x4 |= pDev->field_0x4;
+        pOut->field_0xc |= pDev->field_0xc;
+    } else {
+        pOut->field_0x8 |= (pDev->field_0x8 & ~CInput::m_directionButtonMask) | (hat & ~previousHat[index]);
+        pOut->field_0x4 |= (pDev->field_0x4 & ~CInput::m_directionButtonMask) | hat;
+    }
+    previousHat[index] = hat;
 }
 
 // FUNCTION: CMR2 0x0040bdd0

@@ -109,20 +109,32 @@ If you have the CD or an ISO, install the game or extract it first: OpenCMR2
 reads the installed folders `Game`, `FrontEnd`, `Sounds`, `CountrySpecific`
 and `SetupRep`, and does not start when one of them is missing.
 
+Keyboards, gamepads and wheels work in the menus and on the stages. Player 1
+drives with the first controller connected (a wheel before a gamepad), or the
+keyboard without one, until another device is chosen for player 1 in
+**Options > Controls**. Any controller that player 2 does not use also works
+in player 1's menus. Controllers connected or disconnected while the game runs
+are taken in the menus (pause first during a stage). In the controls menu, the
+page that assigns a button to each action and the axis calibration after it
+work with the controller being set up: confirm starts waiting for a button or
+axis, and on the calibration page the D-pad selects an axis, Left and Right set
+its saturation and Up and Down its deadzone. A controller keeps its bindings
+when the controllers are listed in another order. Without a physical keyboard
+(Steam Deck Game Mode), the on-screen keyboard opens only to type a name.
+
 On Android, install the APK and copy the installation folder to the
 device first. On first launch, choose it in the system's folder picker: the
 game files are copied into the app once (about 700 MB), as Android gives
 apps no direct access to other folders. The on-screen controls press the
 default keyboard keys, so they work in the menus and on the stages, and
-hide while a gamepad is used, external or built into a handheld. Android selects
-an SDL gamepad automatically; Start pauses the game. The launcher has a
+hide while a gamepad is used, external or built into a handheld. Start pauses
+the game. The launcher has a
 **Controls** screen, usable by touch before starting the game, to test a pad and
 correct individual buttons, sticks or triggers. These corrections are saved by
 device and preserve the rest of SDL’s automatic layout and analog input.
 **Restore automatic mapping** removes the corrections. You can also keep the
 touch controls visible or choose to play with touch controls only. Android Back
-pauses the game; a controller’s Back/Select follows its SDL mapping. Connect or
-disconnect controllers in the menus (or pause first during a stage) to rescan.
+pauses the game; a controller’s Back/Select follows its SDL mapping.
 Controller firmware must expose its input to Android; buttons intercepted by
 system shortcuts cannot be mapped by the app.
 
@@ -187,6 +199,7 @@ the game.
 | `[video] stretch_movies` | `0` | Stretch the movies over the whole window (`1`) instead of keeping their 4:3 proportions |
 | `[input] key_repeat_delay` | `750` | Milliseconds before a key held in the menus repeats |
 | `[input] key_repeat_interval` | `100` | Milliseconds between the repeats of a held key |
+| `[input] auto_player1` | `1` | Player 1 uses the first controller connected, a wheel before others, or the keyboard without one (`1`); the controls menu sets `0` when another device is chosen for player 1 there |
 | `[install] language` | `English` | English, American, French, German, Italian, Spanish or Polish |
 | `[install] sku` | `EUROPE` | Game edition: `EUROPE`, `AMERICA`, `POLAND` or `JAPAN` |
 | `[install] menu_shortcut` | asked | Entry in the applications menu (Linux) or Start menu (Windows): `1` keeps it pointing at this copy, `0` removes it |

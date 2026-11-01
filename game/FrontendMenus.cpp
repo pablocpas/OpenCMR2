@@ -395,6 +395,8 @@ void Input_RescanChangedJoysticks(void);
 void Input_SetControllerSlotMapping(unsigned short slot, unsigned short index);
 unsigned short Input_GetControllerSlotMapping(unsigned short slot);
 unsigned short Input_GetAssignedController(void);
+void Input_StorePlayer1Choice(void);
+void Input_MergeConfiguredDeviceButtons(int index, DeviceInfo *pOut, BOOL padOnly);
 
 // Separator line under the rows of the controls pages.
 // GLOBAL: CMR2 0x0082af70
@@ -423,6 +425,13 @@ int g_controlsSelectedSlot;
 short FrontendControls_GetSelectedSlot(void)
 {
     return (short)g_controlsSelectedSlot;
+}
+
+// PORT: the menu input of the controller the bindings or the calibration
+// page sets up (FrontendMenu_UpdateAndSwitchActive).
+void FrontendControls_MergeConfiguredDevice(DeviceInfo *pOut, BOOL padOnly)
+{
+    Input_MergeConfiguredDeviceButtons(CONTROLS_SEL, pOut, padOnly);
 }
 
 // Item callback of the controls list: selects the device of this entry.
@@ -677,6 +686,7 @@ void FrontendControls_UpdateAxisCalibration(Menu *pMenu)
     JoystickBinding *pBinding;
     DeviceInfo *pDevice;
     unsigned int held;
+    BOOL deadzone;
     int axis;
     int j;
 
@@ -701,12 +711,19 @@ void FrontendControls_UpdateAxisCalibration(Menu *pMenu)
             g_axisBindings[pMenu->cursor].saturation = pDevice->joystick.bindings[pMenu->cursor].saturation;
         }
         held = pKeys->field_0x4;
+        // PORT: up and down also set the deadzone, as Shift with left and
+        // right does: a controller has no Shift (see FrontendControls_Text).
+        deadzone = CInput::IsShiftPressed() != 0;
+        if (held & 0xc) {
+            deadzone = TRUE;
+            held = (held & 4) ? 1 : 2;
+        }
         // PORT: the original moved the marks once per frame, at the display's
         // refresh; without vertical sync that was a few hundred times a
         // second. They move at 60 steps a second.
         static SysStepClock clock;
         for (j = Sys_TakeSteps(&clock, 60, 5); j > 0; j--) {
-            if (CInput::IsShiftPressed() == 0) {
+            if (!deadzone) {
                 if (held & 1) {
                     if (g_axisBindings[pMenu->cursor].saturation < 0x26de)
                         g_axisBindings[pMenu->cursor].saturation += 0x32;
@@ -769,6 +786,7 @@ void FrontendControls_LeaveDeviceConfiguration(Menu *pMenu, char back)
             i++;
         } while ((INT_PTR)pSlot < (INT_PTR)(g_controlsDeviceSelection.slots + 8));
         memcpy(Input_GetControllerTable(), g_controlsCopy, sizeof(g_controlsCopy));
+        Input_StorePlayer1Choice();   // PORT
     }
 }
 
@@ -1219,6 +1237,40 @@ inline int FrontendMenus_DrawLabel(char *text, int x, int y, BYTE *pColour)
     return Font_GetTextWidth(1, (BYTE *)text) + (int)(g_pGraphics->resX * 10) / 640 + x;
 }
 
+// PORT: help of the calibration page for keyboards and controllers alike, in
+// the game's character set (Windows-1252; Polish letters in place of some
+// symbols: 0xb1 is l with a stroke, 0xbd s acute, 0xbe z acute).
+static const char *const g_controlsCalibrationText[6][3] = {
+    { "Left/Right: adjust saturation.",
+      "Up/Down, or Shift with Left/Right: adjust deadzone.",
+      "Return or the confirm button: accept the axis settings." },
+    { "Gauche/droite : r\xe9gler la saturation.",
+      "Haut/bas, ou Maj avec gauche/droite : r\xe9gler la zone morte.",
+      "Entr\xe9" "e ou bouton de validation : confirmer l'axe." },
+    { "Izquierda/derecha: ajustar la saturaci\xf3n.",
+      "Arriba/abajo, o May\xfas con izquierda/derecha: ajustar la zona muerta.",
+      "Retorno o el bot\xf3n de aceptar: confirmar el eje." },
+    { "Sinistra/destra: regola la saturazione.",
+      "Su/gi\xf9, o Maiusc con sinistra/destra: regola la zona morta.",
+      "Invio o pulsante di conferma: conferma l'asse." },
+    { "Links/Rechts: S\xe4ttigung einstellen.",
+      "Hoch/Runter oder Umschalt mit Links/Rechts: Totzone einstellen.",
+      "Eingabe oder Best\xe4tigungstaste: Achse \xfc" "bernehmen." },
+    { "Lewo/prawo: nasycenie.",
+      "G\xf3ra/d\xf3\xb1 lub Shift ze strza\xb1kami: martwa strefa.",
+      "Enter lub przycisk akceptacji: zatwierd\xbe o\xbd." },
+};
+
+// A help line in the language the menus show, or Polish for that edition.
+static char *FrontendControls_Text(int line)
+{
+    int language = CGameInfo::GetGameRegion() == 3 ? 5 : CFrontend::m_unk0x0065aa70;
+
+    if (language < 0 || language > 5)
+        language = 0;
+    return (char *)g_controlsCalibrationText[language][line];
+}
+
 // Draw callback of the calibration page: one row per axis ("axis N" and its
 // calibration bar), "back", and the key help at the bottom.
 // match 79%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
@@ -1301,11 +1353,12 @@ void FrontendControls_DrawCalibration(Menu *pMenu)
         Sprite_FillRect(&g_pGraphics->field309_0x150, g_controlsLine, pColour, 1);
     }
     if (FrontendControls_GetCalibrationState() != 0) {
-        Font_DrawText(1, CFrontend::GetTextString(0x207), (int)(g_pGraphics->resX * 24) / 640,
+        // PORT: the original's help named only keys (0x207-0x209).
+        Font_DrawText(1, FrontendControls_Text(0), (int)(g_pGraphics->resX * 24) / 640,
                       (int)(g_pGraphics->resY * 420) / 480, (int *)g_colourText0x0052496c, 9);
-        Font_DrawText(1, CFrontend::GetTextString(0x208), (int)(g_pGraphics->resX * 24) / 640,
+        Font_DrawText(1, FrontendControls_Text(1), (int)(g_pGraphics->resX * 24) / 640,
                       (int)(g_pGraphics->resY * 440) / 480, (int *)g_colourText0x0052496c, 9);
-        Font_DrawText(1, CFrontend::GetTextString(0x209), (int)(g_pGraphics->resX * 24) / 640,
+        Font_DrawText(1, FrontendControls_Text(2), (int)(g_pGraphics->resX * 24) / 640,
                       (int)(g_pGraphics->resY * 460) / 480, (int *)g_colourText0x0052496c, 9);
     } else {
         Font_DrawText(1, CFrontend::GetTextString(0x20a), (int)(g_pGraphics->resX * 24) / 640,
