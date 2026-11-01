@@ -12398,29 +12398,29 @@ void SurfaceSound_UpdateNearestNetworkCarEngines(void)
     } while (--limit);
 }
 // PORT: a thumbstick's travel (eased steering, a gamepad's, steeringInputMode
-// 1) spread over the lock by speed. With keys the wheels turn gradually and
-// return to the centre: the recorded runs of the super specials, driven with
-// keys, kept under 220 of the about 460 of full lock 99% of the time at
-// speeds of 1 to 1.5, and under 101 at 1.5 to 2, yet a key held long enough
-// still reaches full lock there, to throw the car into a corner. Followed
-// linearly, a thumbstick left only the first fifth of its few millimetres
-// for the steering used at speed. Its response turns from linear at a speed
-// of 0.5 to cubic from 1.5: the end of its travel still gives full lock, the
-// first 60% of it the lock used at top speed.
+// 1) spread over the lock by speed, so that each part of the travel serves an
+// equal share of the steering drivers do at that speed, while its end still
+// gives full lock, as a key held long enough does. Fitted on the 24 recorded
+// runs of the super specials (three difficulties, both sides, 74,000 steps
+// driven with keys): the response x + (x^2 - x)k matches the quantiles of the
+// lock they used with k = 0 at a speed of 0.25, 0.5 at 0.55, then 0.38 more
+// per unit of speed up to 1 (a square from 1.85). At speed 1.25, 60% of the
+// travel gives 41% of the lock instead of 60%.
 static int StageObject_ShapeThumbstickSteering(int value, int speed)
 {
     int blend;
-    int cubic;
 
     if (value > 0x10000)
         value = 0x10000;
-    blend = speed - 0x8000;
-    if (blend < 0)
+    if (speed <= 0x4000)
         blend = 0;
-    else if (blend > 0x10000)
+    else if (speed <= 0x8ccc)
+        blend = FixMul(speed - 0x4000, 0x1aaaa);
+    else
+        blend = 0x8000 + FixMul(speed - 0x8ccc, 0x6148);
+    if (blend > 0x10000)
         blend = 0x10000;
-    cubic = FixMul(FixMul(value, value), value);
-    return value + FixMul(cubic - value, blend);
+    return value + FixMul(FixMul(value, value) - value, blend);
 }
 
 // Refreshes the on-screen control indicators of the active car (steer, throttle,
