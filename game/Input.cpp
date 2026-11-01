@@ -70,6 +70,23 @@ static unsigned int Input_PlayerButtons(int player)
     return buttons;
 }
 
+// The configuration of a player's keyboard (records 0 and 1): no masks, so
+// that GetButtonMapping gives bit 1 << action. Not InitDetectedControllerSlot,
+// which also names the keys for the original's controls pages, gone, and
+// runs before the texts are loaded: "INVALID TEXT STRING 4" overflowed a
+// 20-byte key name.
+static void Input_InitKeyboardConfiguration(int index)
+{
+    ControllerData *pController;
+
+    pController = &CInput::m_controllerInfo[index];
+    memset(pController, 0, sizeof(*pController));
+    pController->index = (BYTE)index;
+    strcpy(pController->name, CInput::m_availableDevices[index].deviceInstanceName);
+    pController->field_0x0 = 0x8000;
+    pController->field_0x4 = 0x8000;
+}
+
 // The configuration of a player's joystick (records 2 and 3): its axes,
 // and bit 1 << action for every action, as the keyboard records give them.
 static void Input_InitPlayerConfiguration(int index)
@@ -1381,18 +1398,15 @@ void CInput::InitDetectedControllerSlot(DeviceInfo *pDevice, int index)
 // drive with. The bindings themselves are in controls.ini (src/input).
 void CInput::RefreshControllerConfigurations(void)
 {
-    DeviceInfo *pDevice;
     int i;
 
     m_controllerCount = CountAttachedInputDevices();
     for (i = 0; i < m_controllerCount && i < 6; i++) {
-        pDevice = UpdateDevice(i);
-        if (i < 2) {
-            memset(&m_controllerInfo[i], 0, sizeof(m_controllerInfo[i]));
-            InitDetectedControllerSlot(pDevice, i);
-        } else {
+        UpdateDevice(i);
+        if (i < 2)
+            Input_InitKeyboardConfiguration(i);
+        else
             Input_InitPlayerConfiguration(i);
-        }
     }
     if (m_controllerCount < 6)
         memset(&m_controllerInfo[m_controllerCount], 0, (6 - m_controllerCount) * sizeof(ControllerData));
