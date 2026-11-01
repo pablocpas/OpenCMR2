@@ -658,30 +658,20 @@ extern "C" BOOL Input_IsAnalogPedals(int player)
     return player >= 0 && player < INPUT_PLAYERS && s_players[player].channels[CHANNEL_PEDALS].analog;
 }
 
-// A gamepad's thumbstick, also on one SDL has no layout for: its few
-// millimetres of travel, followed directly, turn the wheels to the stick's
-// angle in one 40 ms physics step. A wheel, a joystick's longer lever, or a
-// device of unknown kind (as many wheels are) is followed directly, as the
-// original did.
-bool HasThumbstick(const InputDevice &device)
-{
-    if (device.wheel)
-        return false;
-    return device.gamepad != NULL || SDL_GetJoystickType(device.joystick) == SDL_JOYSTICK_TYPE_GAMEPAD;
-}
-
 extern "C" BOOL Input_IsSmoothSteering(int player)
 {
-    // The device last steered with decides, else the first that can steer.
+    // A stick is short: followed directly, the wheels jump to its angle in
+    // one 40 ms physics step. The device last steered with decides, else the
+    // first that can steer.
     if (player < 0 || player >= INPUT_PLAYERS)
         return FALSE;
     const InputDevice *steering = s_players[player].steering;
     for (const InputDevice &device : s_devices)
         if (steering == &device && device.id != 0)
-            return HasThumbstick(device);
+            return device.gamepad != NULL && !device.wheel;
     for (const InputDevice &device : s_devices)
         if (device.id != 0 && Plays(Owner(device), player) && SteersWithAxis(*device.profile))
-            return HasThumbstick(device);
+            return device.gamepad != NULL && !device.wheel;
     return FALSE;
 }
 
