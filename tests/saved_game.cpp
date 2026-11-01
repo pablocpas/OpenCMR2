@@ -34,7 +34,7 @@ extern BYTE *RallyData_GetDriverCategoryProfile(int);
 extern BYTE *RallyData_GetDriverEntryRecord(int);
 struct RallyCarDamageState;
 extern RallyCarDamageState *RallyData_GetDriverGroupRecord(int);
-extern BYTE *RallyData_GetPlayerCarSetup(int);
+extern CarSetup *RallyData_GetPlayerCarSetup(int);
 extern int *RallyData_GetDriverSettingPair(int);
 extern int *RallyData_GetDriverPrimaryPairRecord(int);
 extern BYTE *RallyData_GetDriverSelectionFlagRecord(int);
@@ -155,7 +155,7 @@ int main()
             Check(RallyData_GetRecord(i) != nullptr && !strcmp((char *)RallyData_GetRecord(i), image.playerIdentifiers[i].name), "restore non-null player name used by garage");
             Check(profile.setup.value0 == 1 && profile.setup.value1 == 2 && profile.setup.value2 == 3 && profile.setup.value3 == 2 && profile.setup.value4 == 5, "restore setup");
             Check(!memcmp(RallyData_GetDriverGroupRecord(i), &image.playerCars[i], sizeof(image.playerCars[i])), "restore car record");
-            Check(!memcmp(RallyData_GetPlayerCarSetup(i), &image.playerCarSetups[i], sizeof(image.playerCarSetups[i])), "restore controller record");
+            Check(!memcmp(RallyData_GetPlayerCarSetup(i), &image.playerCarSetups[i], sizeof(image.playerCarSetups[i])), "restore car setup");
         }
         for (int i = 0; i < 16; i++) {
             const SaveSlot &slot = *(SaveSlot *)RallyData_GetDriverEntryRecord(i);
