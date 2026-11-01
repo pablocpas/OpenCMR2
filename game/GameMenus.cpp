@@ -2833,6 +2833,8 @@ void GameMenu_HandleNetworkResultsChatInput(Menu *pMenu)
         g_unk0x00519ee4 = pMenu->cursor;
     }
     Network_RebuildSessionPlayerList();
+    if (g_chatLineSelected)
+        Sys_RequestTextInput();   // PORT
     if (!g_chatLineSelected || !Input_PopQueuedCharacter(&key))
         return;
     switch (key) {

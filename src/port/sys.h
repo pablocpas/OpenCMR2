@@ -62,6 +62,9 @@ typedef struct SysEvent {
 int Sys_PollEvent(SysEvent *event);
 /* Waits for the next event (the game idles like this while inactive). */
 int Sys_WaitEvent(SysEvent *event);
+/* Called on every frame the game edits text: keeps text input (and an
+   on-screen keyboard, without a physical one) on. */
+void Sys_RequestTextInput(void);
 
 /* ---- window ---- */
 

@@ -895,11 +895,37 @@ bool TakePendingText(SysEvent *out)
     return true;
 }
 
+// Text input is on while there is a keyboard, or while the game edits text
+// (Sys_RequestTextInput). Without a keyboard, turning it on shows the
+// system's on-screen keyboard, Steam's in Steam Deck Game Mode: the game
+// kept it on for its whole run.
+Uint64 s_textInputUntil;
+
+void UpdateTextInput()
+{
+    if (s_window == NULL)
+        return;
+    bool wanted = SDL_HasKeyboard() || SDL_GetTicks() < s_textInputUntil;
+    if (wanted == SDL_TextInputActive(s_window))
+        return;
+    if (wanted)
+        SDL_StartTextInput(s_window);
+    else
+        SDL_StopTextInput(s_window);
+}
+
 } // namespace
+
+extern "C" void Sys_RequestTextInput(void)
+{
+    s_textInputUntil = SDL_GetTicks() + 250;
+    UpdateTextInput();
+}
 
 extern "C" int Sys_PollEvent(SysEvent *event)
 {
     SDL_Event e;
+    UpdateTextInput();
     if (TakePendingText(event))
         return 1;
     while (SDL_PollEvent(&e)) {
@@ -949,7 +975,7 @@ extern "C" BOOL Sys_CreateWindow(const char *title, BOOL fullscreen)
         SDL_DestroySurface(icon);
     }
 #endif
-    SDL_StartTextInput(s_window);
+    UpdateTextInput();
     return TRUE;
 }
 

@@ -10791,6 +10791,7 @@ void OptionMenu_UpdateLoadGameAndNameEntry(Menu *pMenu)
     index = Menu_FindItem(pMenu, 4);
     if (pMenu->items[index].max == 1) {
         Menu_SetFlags(pMenu, 0, 0, 1, 0);
+        Sys_RequestTextInput();   // PORT
         pDevice = CInput::GetAvailableDeviceRecord(0);
         if (pDevice->field_0x8 == 0) {
             g_nameEditorOpened = 1;
