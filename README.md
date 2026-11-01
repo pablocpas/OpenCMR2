@@ -123,7 +123,8 @@ The default controls are the original's keys (cursor keys, Space for the
 handbrake, `]` and `[` for the gears, C for the camera, R to look back,
 Escape to pause) and, on a gamepad, the left stick to steer, the right and
 left triggers for throttle and brake, A for the handbrake, the shoulder
-buttons for the gears, Y for the camera, B to look back and Start to pause.
+buttons for the gears, Y for the camera, B to look back and Start to pause
+and to resume.
 Wheels steer with their first axis, and their pedals are found from where
 their axes rest.
 

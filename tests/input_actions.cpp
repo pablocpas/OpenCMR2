@@ -229,6 +229,15 @@ void CheckRecords(Pad &pad)
     Check(CInput::GetEnabledControllerAxisBinding(0, 0) == 0 && CInput::GetEnabledControllerAxisBinding(0, 2) == 5 &&
           CInput::GetEnabledControllerAxisBinding(0, 3) == 2, "the configuration names those axes");
     Check((unsigned short)CInput::GetButtonMapping(0, 5) == 0x20, "the configuration names bit 1 << action");
+    // Held into the pause menu, Start is no new press there; pressed again,
+    // it is the pause's bit that closes the in-race menu.
+    MenuFrame();
+    Check((Device(2).pressed & 0x200) == 0, "a held Start does not press again in the pause menu");
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_START, false);
+    MenuFrame();
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_START, true);
+    MenuFrame();
+    Check((Device(0).pressed & 0x200) != 0 && (Device(0).pressed & 0x3f) == 0, "Start again gives the pause's bit alone");
     Release(pad);
     RaceFrame();
 

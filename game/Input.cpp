@@ -26,8 +26,8 @@
 // while the player's last driving input came from keys or buttons, so that
 // the game steers as it did with keys. The bits follow the original's
 // keyboard: in the menus (CGameInfo::m_fixedMenuKeys) the cursor keys,
-// Return, Escape, F1 and F2; on a stage bit 1 << action for the actions,
-// Escape's bit for the pause as well, and F1, F2 and F4.
+// Return, Escape, F1 and F2, and the pause's bit; on a stage bit 1 << action
+// for the actions, Escape's bit for the pause as well, and F1, F2 and F4.
 static int Input_PlayerOfDevice(int index)
 {
     return index < 2 ? index : index - 2;
@@ -50,6 +50,10 @@ static unsigned int Input_PlayerButtons(int player)
         for (i = 0; i < 6; i++)
             if (Input_IsPressed(player, INPUT_MENU_LEFT + i))
                 buttons |= menuBits[i];
+        // The pause's bit too: the in-race menu closes with the button that
+        // opened it (InRaceMenu_IsBackPressed), as Start does on a gamepad.
+        if (Input_IsPressed(player, INPUT_PAUSE))
+            buttons |= 1u << INPUT_PAUSE;
     } else {
         for (i = 0; i <= INPUT_PAUSE; i++)
             if (Input_IsPressed(player, i))
