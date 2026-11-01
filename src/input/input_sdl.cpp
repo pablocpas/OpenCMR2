@@ -429,6 +429,10 @@ void UpdatePlayer(int index)
     for (Profile &profile : profiles)
         if ((profile.section == "keyboard" && Plays(0, index)) || (profile.section == "keyboard2" && Plays(1, index)))
             Accumulate(player, NULL, profile, &digital, &analog);
+#ifdef __ANDROID__
+    if (index == 0)
+        Accumulate(player, NULL, Bindings_TouchProfile(), &digital, &analog);
+#endif
     for (InputDevice &device : s_devices) {
         if (device.id == 0 || !Plays(Owner(device), index))
             continue;

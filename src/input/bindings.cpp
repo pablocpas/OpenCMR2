@@ -417,6 +417,12 @@ void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick)
         JoystickDefaults(profile, joystick);
 }
 
+const Profile &Bindings_TouchProfile(void)
+{
+    static Profile profile = MakeProfile("keyboard", s_keyboard);
+    return profile;
+}
+
 Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad)
 {
     Bindings_Get();

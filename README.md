@@ -153,7 +153,8 @@ On Android, install the APK and copy the installation folder to the
 device first. On first launch, choose it in the system's folder picker: the
 game files are copied into the app once (about 700 MB), as Android gives
 apps no direct access to other folders. The on-screen controls press the
-default keyboard keys, so they work in the menus and on the stages, and
+default keyboard keys, so they work in the menus and on the stages whatever
+the keyboard is bound to, and
 hide while a gamepad is used, external or built into a handheld. Start pauses
 the game. The launcher has a
 **Controls** screen, usable by touch before starting the game, to test a pad and

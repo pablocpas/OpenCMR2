@@ -62,5 +62,8 @@ void Bindings_Load(void);
 void Bindings_MarkChanged(void);
 // The defaults of a profile, from the device for a joystick's.
 void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick);
+// Player 1's default keys: the keys Android's touch controls press, which
+// keep working whatever the keyboard is bound to.
+const Profile &Bindings_TouchProfile(void);
 
 #endif
