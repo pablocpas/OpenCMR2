@@ -963,6 +963,7 @@ DeviceInfo *CInput::UpdateDevice(int index)
     if (index == 2 || index == 3) {
         m_controllerInfo[index].analogSteering = Input_IsAnalogSteering(index - 2);
         m_controllerInfo[index].analogPedals = Input_IsAnalogPedals(index - 2);
+        m_controllerInfo[index].smoothSteering = Input_IsSmoothSteering(index - 2);
         pDevice->type = m_controllerInfo[index].analogSteering || m_controllerInfo[index].analogPedals ? 3 : 1;
     }
 

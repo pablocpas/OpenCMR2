@@ -125,9 +125,9 @@ Escape to pause) and, on a gamepad, the left stick to steer, the right and
 left triggers for throttle and brake, A for the handbrake, the shoulder
 buttons for the gears, Y for the camera, B to look back and Start to pause
 and to resume.
-A gamepad eases the steering at the car setup's steering speed, about as
-fast as the keys turn the wheels; followed directly, as the original did with
-any joystick, the wheels jumped to the stick's angle in one physics step.
+A gamepad's stick turns the wheels at the car setup's steering speed, about
+as fast as the keys do; followed directly, as the original did with any
+joystick, the wheels would jump to the stick's angle in one physics step.
 Wheels steer with their first axis, followed directly, and their pedals are
 found from where their axes rest.
 
@@ -136,7 +136,7 @@ player 2's keys, the gamepads' or those of a connected joystick or wheel.
 **Configuration** binds each driving action to the next key, button or axis
 given (Escape gives up waiting for a controller's); an input already bound to
 another action trades places with it. The page also sets a controller's
-deadzone, steering curve, vibration and steering smoothing, and **Default**
+deadzone, steering curve and vibration, and **Default**
 restores the bindings of the device chosen. OK saves, Back drops the changes.
 
 The bindings are kept in `controls.ini` in the user directory,
@@ -148,9 +148,9 @@ a steering curve for finer corrections around the centre, the strength of a
 gamepad's rumble and the player it belongs to. The keys of an older
 `Controller.rcf` are taken when `controls.ini` does not exist yet.
 
-Gamepads rumble on the stages: the high frequency motor with the roughness
-of the surface under the front wheels, more with speed, the low frequency
-one with impacts. Wheels and joysticks with force feedback get the game's
+Gamepads rumble on the stages: lightly on the high frequency motor with the
+roughness of the surface under the front wheels, more with speed, and with
+impacts on the low frequency one. Wheels and joysticks with force feedback get the game's
 own forces.
 
 On Android, install the APK and copy the installation folder to the

@@ -166,8 +166,8 @@ Key codes stay DirectInput scan codes (`DIK_*` values) for text entry: the
 game stores them and names them. Force-feedback effects (constant, spring,
 damper, friction, inertia) map to SDL haptic effects on devices that support
 them. Gamepads, whose motors cannot play those, rumble from the amplitude the
-game gives its road noise: the surface roughness under the front wheels
-times the speed, plus impacts (`PORT:` in `ForceFeedback_UpdatePlayerSlot`).
+game gives its road noise: lightly with the surface roughness under the front
+wheels times the speed, and with impacts (`PORT:` in `ForceFeedback_UpdatePlayerSlot`).
 A controller lost while a player drives with it holds that player's pause
 action briefly, which pauses a stage.
 

@@ -43,7 +43,6 @@ struct Profile {
     int deadzone = 2;               // percent of the axis left out around its rest
     int saturation = 100;           // percent of the axis that gives the full value
     int player = 0;                 // 1 or 2; 0 follows the connection order
-    bool smoothSteering = false;    // the game eases the wheel towards the axis
     int rumble = 100;               // percent of the gamepad's rumble
     int steeringCurve = 0;          // percent of cubic response of the steering axes
 };

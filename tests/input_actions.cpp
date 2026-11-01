@@ -450,6 +450,7 @@ void CheckWheel()
     Input_Update();
     Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL, "the first pedal is the throttle");
     Check(Input_GetAction(0, INPUT_STEER_RIGHT) == INPUT_FULL, "the wheel steers on X, without deadzone");
+    Check(!Input_IsSmoothSteering(0), "a wheel is followed directly");
     SDL_SetJoystickVirtualAxis(virt, 2, SDL_JOYSTICK_AXIS_MIN);
     Input_Update();
     Check(Input_GetAction(0, INPUT_BRAKE) == INPUT_FULL, "a pedal resting at the maximum is the brake");
@@ -583,8 +584,8 @@ void CheckControlsPages(Pad &pad)
     press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
     Check(Menu_GetItem(controls, 0)->max == 2 && Input_GetProfileKind(2) == INPUT_PROFILE_GAMEPAD, "the gamepad chosen");
     Check(Menu_GetItem(controls, 2)->visible && Menu_GetItem(controls, 4)->visible, "with deadzone and rumble");
-    Check(Input_GetSetting(2, INPUT_SETTING_SMOOTH) == 1 && Menu_GetItem(controls, 5)->max == 0,
-          "gamepads ease the steering by default");
+    Check(Input_IsSmoothSteering(0) && CInput::m_controllerInfo[2].smoothSteering != 0,
+          "a gamepad's stick is eased");
     press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     press(SDL_GAMEPAD_BUTTON_SOUTH);
     frame(SDL_GAMEPAD_BUTTON_INVALID, false);

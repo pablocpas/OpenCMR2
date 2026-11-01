@@ -37,8 +37,7 @@ const char *const s_header =
     "# deadzone and saturation are percentages of an axis: the part left out around\n"
     "# its rest, and the part that gives the full value. player is 1 or 2 for a\n"
     "# device, or auto: the second controller connected plays as player 2 when two\n"
-    "# players race. smooth_steering eases the steering towards the axis instead of\n"
-    "# following it directly. steering_curve, 0 to 100, makes a steering axis\n"
+    "# players race. steering_curve, 0 to 100, makes a steering axis\n"
     "# gentler around its centre for finer corrections, keeping full lock at its\n"
     "# end (0 follows the axis linearly, as the original). rumble is the strength\n"
     "# of a gamepad's vibration in percent (0 turns it off).\n"
@@ -246,7 +245,7 @@ void Read(const char *text)
         else if (key == "player")
             profile->player = value == "1" ? 1 : value == "2" ? 2 : 0;
         else if (key == "smooth_steering")
-            profile->smoothSteering = SDL_atoi(value.c_str()) != 0;
+            ;   // the kind of device decides (Input_IsSmoothSteering)
         else if (key == "steering_curve")
             profile->steeringCurve = SDL_clamp(SDL_atoi(value.c_str()), 0, 100);
         else if (key == "rumble")
@@ -272,7 +271,6 @@ std::string Write(void)
         if (!IsKeyboard(profile)) {
             text += "deadzone = " + std::to_string(profile.deadzone) + "\n";
             text += "saturation = " + std::to_string(profile.saturation) + "\n";
-            text += "smooth_steering = " + std::to_string(profile.smoothSteering ? 1 : 0) + "\n";
             text += "steering_curve = " + std::to_string(profile.steeringCurve) + "\n";
             text += "rumble = " + std::to_string(profile.rumble) + "\n";
             if (profile.section.compare(0, 7, "device ") == 0)
@@ -405,11 +403,6 @@ void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick)
     for (const auto &entry : defaults) {
         if (profile.section == entry.section) {
             profile = MakeProfile(entry.section, entry.bindings);
-            // A stick is short: followed directly, the wheels jump to its
-            // angle in one physics step. Eased at the car setup's steering
-            // speed, a gamepad turns them about as fast as the keys do. A
-            // wheel is followed directly, as the original did.
-            profile.smoothSteering = profile.section == "gamepad";
 #ifdef __ANDROID__
             // Handhelds: Start pauses, Back follows the system.
             if (profile.section == "gamepad")

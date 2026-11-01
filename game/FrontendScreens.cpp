@@ -12301,8 +12301,8 @@ char *FrontendMenu_GetScreenOptionsLabel(void)
 // PORT: the controls pages, in place of the original's (Options >
 // Controllers). The first chooses the bindings to edit, player 1's keys,
 // player 2's, the gamepads' or a connected joystick's or wheel's (src/input,
-// controls.ini), and sets their deadzone, steering curve, rumble and
-// steering smoothing; the second binds each driving action to the next key,
+// controls.ini), and sets their deadzone, steering curve and rumble; the
+// second binds each driving action to the next key,
 // button or axis given. OK saves controls.ini; Back drops the changes.
 
 Menu g_controlsMenu;
@@ -12314,7 +12314,6 @@ enum ControlsItem {
     CONTROLS_ITEM_DEADZONE,
     CONTROLS_ITEM_CURVE,
     CONTROLS_ITEM_RUMBLE,
-    CONTROLS_ITEM_SMOOTH,
     CONTROLS_ITEM_DEFAULT,
     CONTROLS_ITEM_OK = 0xe
 };
@@ -12327,7 +12326,6 @@ enum ControlsText {
     CONTROLS_TEXT_DEADZONE,
     CONTROLS_TEXT_CURVE,
     CONTROLS_TEXT_RUMBLE,
-    CONTROLS_TEXT_SMOOTH,
     CONTROLS_TEXT_PRESS_KEY,
     CONTROLS_TEXT_PRESS_INPUT,
     CONTROLS_TEXT_COUNT
@@ -12336,18 +12334,18 @@ enum ControlsText {
 // In the game's character set (Windows-1252; 0xb1 is Polish l with a stroke).
 static const char *const g_controlsText[6][CONTROLS_TEXT_COUNT] = {
     { "Device", "Keyboard", "Keyboard (Player 2)", "Gamepad", "Deadzone", "Steering Curve", "Vibration",
-      "Smooth Steering", "Press a key", "Press a button or move an axis (Escape cancels)" },
+      "Press a key", "Press a button or move an axis (Escape cancels)" },
     { "P\xe9riph\xe9rique", "Clavier", "Clavier (joueur 2)", "Manette", "Zone morte", "Courbe de direction",
-      "Vibrations", "Direction progressive", "Appuyez sur une touche",
+      "Vibrations", "Appuyez sur une touche",
       "Appuyez sur un bouton ou bougez un axe (\xc9" "chap annule)" },
     { "Dispositivo", "Teclado", "Teclado (jugador 2)", "Mando", "Zona muerta", "Curva de direcci\xf3n", "Vibraci\xf3n",
-      "Direcci\xf3n suavizada", "Pulsa una tecla", "Pulsa un bot\xf3n o mueve un eje (Esc cancela)" },
+      "Pulsa una tecla", "Pulsa un bot\xf3n o mueve un eje (Esc cancela)" },
     { "Dispositivo", "Tastiera", "Tastiera (giocatore 2)", "Gamepad", "Zona morta", "Curva dello sterzo",
-      "Vibrazione", "Sterzo graduale", "Premi un tasto", "Premi un pulsante o muovi un asse (Esc annulla)" },
+      "Vibrazione", "Premi un tasto", "Premi un pulsante o muovi un asse (Esc annulla)" },
     { "Ger\xe4t", "Tastatur", "Tastatur (Spieler 2)", "Gamepad", "Totzone", "Lenkkurve", "Vibration",
-      "Weiche Lenkung", "Taste dr\xfc" "cken", "Knopf dr\xfc" "cken oder Achse bewegen (Esc bricht ab)" },
+      "Taste dr\xfc" "cken", "Knopf dr\xfc" "cken oder Achse bewegen (Esc bricht ab)" },
     { "Urzadzenie", "Klawiatura", "Klawiatura (gracz 2)", "Pad", "Martwa strefa", "Krzywa skretu", "Wibracje",
-      "P\xb1ynne sterowanie", "Nacisnij klawisz", "Nacisnij przycisk lub porusz osia (Esc anuluje)" },
+      "Nacisnij klawisz", "Nacisnij przycisk lub porusz osia (Esc anuluje)" },
 };
 
 // The settings offered: deadzone 0..20%, curve and rumble 0..100% by tens.
@@ -12381,7 +12379,7 @@ static char *Controls_ProfileName(int profile)
 // keys, rumble only for gamepads.
 static void Controls_LoadRows(Menu *pMenu)
 {
-    static const BYTE settings[4] = { CONTROLS_ITEM_DEADZONE, CONTROLS_ITEM_CURVE, CONTROLS_ITEM_RUMBLE, CONTROLS_ITEM_SMOOTH };
+    static const BYTE settings[3] = { CONTROLS_ITEM_DEADZONE, CONTROLS_ITEM_CURVE, CONTROLS_ITEM_RUMBLE };
     MenuItem *pItem;
     int kind;
     int i;
@@ -12391,8 +12389,7 @@ static void Controls_LoadRows(Menu *pMenu)
     Menu_GetItem(pMenu, CONTROLS_ITEM_DEADZONE)->max = (BYTE)(i < CONTROLS_DEADZONE_COUNT - 1 ? i : CONTROLS_DEADZONE_COUNT - 1);
     Menu_GetItem(pMenu, CONTROLS_ITEM_CURVE)->max = (BYTE)((Input_GetSetting(g_controlsProfile, INPUT_SETTING_CURVE) + 5) / 10);
     Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max = (BYTE)((Input_GetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE) + 5) / 10);
-    Menu_GetItem(pMenu, CONTROLS_ITEM_SMOOTH)->max = Input_GetSetting(g_controlsProfile, INPUT_SETTING_SMOOTH) != 0 ? 0 : 1;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < 3; i++) {
         pItem = Menu_GetItem(pMenu, settings[i]);
         pItem->enabled = pItem->visible = kind != INPUT_PROFILE_KEYBOARD && kind != INPUT_PROFILE_KEYBOARD2 &&
                                           (settings[i] != CONTROLS_ITEM_RUMBLE || kind == INPUT_PROFILE_GAMEPAD);
@@ -12407,7 +12404,6 @@ static void Controls_StoreRows(Menu *pMenu)
     Input_SetSetting(g_controlsProfile, INPUT_SETTING_DEADZONE, Menu_GetItem(pMenu, CONTROLS_ITEM_DEADZONE)->max);
     Input_SetSetting(g_controlsProfile, INPUT_SETTING_CURVE, Menu_GetItem(pMenu, CONTROLS_ITEM_CURVE)->max * 10);
     Input_SetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE, Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max * 10);
-    Input_SetSetting(g_controlsProfile, INPUT_SETTING_SMOOTH, Menu_GetItem(pMenu, CONTROLS_ITEM_SMOOTH)->max == 0);
 }
 
 // Coming from the options (param 0) starts the changes afresh; coming back
@@ -12455,8 +12451,7 @@ void FrontendMenu_ApplyControls(Menu *pMenu, MenuItem *pItem)
     g_controlsSaved = TRUE;
 }
 
-// Leaving for the options (v 1): OK saved the changes, Back drops them. The
-// players' joysticks take the steering smoothing.
+// Leaving for the options (v 1): OK saved the changes, Back drops them.
 void FrontendMenu_LeaveControls(Menu *pMenu, char v)
 {
     if (v == 0)
@@ -12574,15 +12569,6 @@ static void Controls_Draw(Menu *pMenu, int rowHeight, BOOL carousel)
                                   : pItem->value == CONTROLS_ITEM_CURVE ? CONTROLS_TEXT_CURVE : CONTROLS_TEXT_RUMBLE),
                     pItem->value == CONTROLS_ITEM_DEADZONE ? pItem->max : pItem->max * 10);
             Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
-        } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_SMOOTH) {
-            strcpy(CFrontend::m_stringDest, Controls_Text(CONTROLS_TEXT_SMOOTH));
-            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
-            for (j = 0; j < pItem->min; j++) {
-                x += (int)(g_pGraphics->resX * 10) / 640 + Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);
-                strcpy(CFrontend::m_stringDest, CFrontend::GetTextString(j == 0 ? 0x134 : 0x133));
-                Font_DrawText(1, CFrontend::m_stringDest, x, textY,
-                              (int *)(pItem->max == j ? pSelColour : pUnselColour), 0x11);
-            }
         } else if (pItem->type == 2) {
             sprintf(CFrontend::m_stringDest, g_strEllipsisFormat, CFrontend::GetTextString(pItem->id));
             Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
@@ -12632,7 +12618,6 @@ void FrontendMenu_BuildInputControls(void)
     Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_DEADZONE_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_DEADZONE);
     Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_CURVE);
     Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_RUMBLE);
-    Menu_AddItemType3(&g_controlsMenu, 0, -1, 2, 0, 0, 0, 0, CONTROLS_ITEM_SMOOTH);
     Menu_AddItemType4(&g_controlsMenu, 0, 0x1fe, (MenuItemAction)FrontendMenu_RestoreControlsDefaults, CONTROLS_ITEM_DEFAULT);
     Menu_AddItemType1(&g_controlsMenu, 0, 0x67, (MenuItemAction)FrontendMenu_ApplyControls, CONTROLS_ITEM_OK);
     Menu_SetCallbacks(&g_controlsMenu, FrontendMenu_EnterControls, (MenuCallback)FrontendMenu_UpdateControls,

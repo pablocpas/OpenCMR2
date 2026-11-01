@@ -63,6 +63,7 @@ enum { CHANNEL_STEERING, CHANNEL_PEDALS, CHANNEL_COUNT };
 struct Player {
     int values[INPUT_ACTION_COUNT];
     Channel channels[CHANNEL_COUNT];
+    const InputDevice *steering;        // the device last steered with an axis
 };
 
 // Inputs of one update of a player's channels.
@@ -426,8 +427,11 @@ void Accumulate(Player &player, InputDevice *device, const Profile &profile, Cha
                 continue;
             if (IsAnalog(source)) {
                 use->hasAxis[ChannelOf(action)] = use->hasAxis[ChannelOf(action)] || device != NULL;
-                if (value > INPUT_FULL / 4)
+                if (value > INPUT_FULL / 4) {
                     use->analog[ChannelOf(action)] = true;
+                    if (action <= INPUT_STEER_RIGHT)
+                        player.steering = device;
+                }
             } else if (value != 0) {
                 use->digital[ChannelOf(action)] = true;
             }
@@ -656,9 +660,18 @@ extern "C" BOOL Input_IsAnalogPedals(int player)
 
 extern "C" BOOL Input_IsSmoothSteering(int player)
 {
+    // A stick is short: followed directly, the wheels jump to its angle in
+    // one 40 ms physics step. The device last steered with decides, else the
+    // first that can steer.
+    if (player < 0 || player >= INPUT_PLAYERS)
+        return FALSE;
+    const InputDevice *steering = s_players[player].steering;
+    for (const InputDevice &device : s_devices)
+        if (steering == &device && device.id != 0)
+            return device.gamepad != NULL && !device.wheel;
     for (const InputDevice &device : s_devices)
         if (device.id != 0 && Plays(Owner(device), player) && SteersWithAxis(*device.profile))
-            return device.profile->smoothSteering;
+            return device.gamepad != NULL && !device.wheel;
     return FALSE;
 }
 
@@ -1173,8 +1186,7 @@ extern "C" int Input_GetSetting(int index, int setting)
     switch (setting) {
     case INPUT_SETTING_DEADZONE: return profile->deadzone;
     case INPUT_SETTING_CURVE: return profile->steeringCurve;
-    case INPUT_SETTING_RUMBLE: return profile->rumble;
-    default: return profile->smoothSteering ? 1 : 0;
+    default: return profile->rumble;
     }
 }
 
@@ -1186,8 +1198,7 @@ extern "C" void Input_SetSetting(int index, int setting, int value)
     switch (setting) {
     case INPUT_SETTING_DEADZONE: profile->deadzone = SDL_clamp(value, 0, 99); break;
     case INPUT_SETTING_CURVE: profile->steeringCurve = SDL_clamp(value, 0, 100); break;
-    case INPUT_SETTING_RUMBLE: profile->rumble = SDL_clamp(value, 0, 100); break;
-    default: profile->smoothSteering = value != 0; break;
+    default: profile->rumble = SDL_clamp(value, 0, 100); break;
     }
     Bindings_MarkChanged();
 }
