@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include "CategoryBestResults.h"
+#include "CarSetup.h"
 
 // Pointer-free records from the original .rcs format. Unknown bytes stay
 // opaque; no native addresses or compiler-dependent global ordering is saved.
@@ -108,7 +109,6 @@ extern SaveBlock g_saveBlock;
 #define g_saveSlots (g_saveBlock.slots)
 
 struct SavedGameCarRecord { BYTE data[0x148]; };
-struct SavedGameController { BYTE data[7]; };
 
 struct SavedGameStage {
     unsigned country : 5;
@@ -126,7 +126,7 @@ struct SavedGameImage {
     DriverProfileSetup playerSetup[4];
     DriverProfileIdentifier playerIdentifiers[4];
     SavedGameCarRecord playerCars[4];
-    SavedGameController playerControllers[4];
+    CarSetup playerCarSetups[4];
     int settingPairs[20][2];
     int primaryValues[20];
     BYTE selectionFlags[20];
@@ -153,7 +153,7 @@ typedef char SavedGameLayoutCheck10[(offsetof(SavedGameImage, drivers) == 0x34) 
 typedef char SavedGameLayoutCheck11[(offsetof(SavedGameImage, playerSetup) == 0xb4) ? 1 : -1];
 typedef char SavedGameLayoutCheck12[(offsetof(SavedGameImage, playerIdentifiers) == 0xc4) ? 1 : -1];
 typedef char SavedGameLayoutCheck13[(offsetof(SavedGameImage, playerCars) == 0xf4) ? 1 : -1];
-typedef char SavedGameLayoutCheck14[(offsetof(SavedGameImage, playerControllers) == 0x614) ? 1 : -1];
+typedef char SavedGameLayoutCheck14[(offsetof(SavedGameImage, playerCarSetups) == 0x614) ? 1 : -1];
 typedef char SavedGameLayoutCheck15[(offsetof(SavedGameImage, settingPairs) == 0x630) ? 1 : -1];
 typedef char SavedGameLayoutCheck16[(offsetof(SavedGameImage, primaryValues) == 0x6d0) ? 1 : -1];
 typedef char SavedGameLayoutCheck17[(offsetof(SavedGameImage, selectionFlags) == 0x720) ? 1 : -1];

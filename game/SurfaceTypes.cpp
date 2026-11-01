@@ -205,7 +205,7 @@ void Car_UpdateSurfaceParams(Car *pCar, int blend)
 {
     int i = 7;
     short noise = 0;
-    int *pComp = &pCar->surfaceCompressionWords[(offsetof(Car, field_0x8b8) + sizeof(int) - offsetof(Car, surfaceCompressionWords)) / sizeof(int)];
+    int *pComp = &pCar->surfaceCompressionWords[(offsetof(Car, cornerWeight) + sizeof(int) - offsetof(Car, surfaceCompressionWords)) / sizeof(int)];
     short noiseNext = 0;
     short *pSurf = &pCar->wheelSurface[7];
     int *pOut = &pCar->surfaceOutputWords[(offsetof(Car, cornerGrip) + 7 * sizeof(CarCornerGrip) + offsetof(CarCornerGrip, gripB)) / sizeof(int)];

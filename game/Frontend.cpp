@@ -702,7 +702,7 @@ void FrontendDraw_AnimatedMatrixBackground(short x0, short y0, char *pMap)
             g_frontendDrawRect[1] -= (FixMul(0x30000, wave) >> 16);
             *(unsigned int *)colour = g_matrixColours[*pCell];
             brightness = wave / 4 + 0xc000;
-            colour[0] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[0], CGraphics::m_65536)), brightness);
+            colour[0] = (FixMul((int)FTOI(__int64, X87S_MUL(colour[0], CGraphics::m_65536)), brightness) >> 16);
             colour[1] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[1], CGraphics::m_65536)), brightness);
             colour[2] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[2], CGraphics::m_65536)), brightness);
             Sprite_Queue((SpriteRect *)&CFrontend::m_pLgMatrixTexture->field_0x11c, (SpriteRect *)g_frontendDrawRect,

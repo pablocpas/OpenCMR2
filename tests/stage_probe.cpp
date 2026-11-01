@@ -330,7 +330,7 @@ struct Probe : Diagnostics::TimingObserver {
             Array("contact_triangles", c.cornerTriangle); Array("surface", c.wheelSurfaceType);
             Array("wheel_load", c.wheelLoad); Array("wheel_torque", c.wheelTorque);
             Array("wheel_slip", c.wheelSlip); Array("wheel_slip_lateral", c.wheelSlipLateral);
-            Array("suspension", c.wheel0x988); Array("suspension_body", c.wheel0x9a8);
+            Array("suspension", c.wheelRideHeight); Array("suspension_body", c.bodyLeanHeight);
             Array("corner_height", c.cornerHeight); Array("disabled_corners", c.cornerFlags);
             if (g_carPartSets) {
                 const CarPartSet &parts = g_carPartSets[int(c.index)];

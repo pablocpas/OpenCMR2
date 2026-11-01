@@ -686,8 +686,8 @@ void FrontendDraw_ScrollerRow(MenuScroller *p, char active)
         x -= p->widths[i] + p->spacing;
         if (active != 0) {
             pShadow = g_colourShadowText0x00524978;
-            pColour = g_colourText0x0052496c;
             pSep = g_colourText0x0052496c;
+            pColour = g_colourText0x0052496c;
         } else {
             pShadow = g_colourShadowDim0x0052497c;
             pColour = g_colourDim0x00524970;

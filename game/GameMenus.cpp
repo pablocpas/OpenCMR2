@@ -2740,8 +2740,6 @@ void GameMenus_DrawRowFrame(short row, short yOffset, char compact)
 // FUNCTION: CMR2 0x00454df0
 void GameMenus_DrawTextRow(int x, int y, char *pText, ...)
 {
-    int width;
-
     g_menuRect[2] = 2;
     g_menuRect[1] = y - (int)(g_pGraphics->resY * 0x1e) / 0x1e0;
     g_menuRect[3] = (int)(g_pGraphics->resY * 0x29) / 0x1e0;
@@ -2756,10 +2754,10 @@ void GameMenus_DrawTextRow(int x, int y, char *pText, ...)
         if (pCur == NULL) {
             break;
         }
-        width = (int)(g_pGraphics->resX * 8) / 0x280 + x + Font_GetTextWidth(2, (BYTE *)CFrontend::m_stringDest);
-        g_menuRect[0] = (short)width;
+        x += (int)(g_pGraphics->resX * 8) / 0x280 + Font_GetTextWidth(2, (BYTE *)CFrontend::m_stringDest);
+        g_menuRect[0] = (short)x;
         Sprite_FillRect(&g_pGraphics->field309_0x150, g_menuRect, g_menuFrameColour, 2);
-        x = width + (int)(g_pGraphics->resX * 8) / 0x280 + 2;
+        x += (int)(g_pGraphics->resX * 8) / 0x280 + 2;
     }
     va_end(ppNext);
 }
@@ -2813,9 +2811,9 @@ void GameMenu_HandleNetworkResultsChatInput(Menu *pMenu)
 
     if (g_chatLineSelected) {
         pDevice = CInput::GetAvailableDeviceRecord(0);
-        if (pDevice->field_0x8 & 8)
+        if (pDevice->pressed & 8)
             pMenu->cursor = 1;
-        else if (pDevice->field_0x8 & 4)
+        else if (pDevice->pressed & 4)
             pMenu->cursor = pMenu->itemCount - 1;
     }
     if (g_unk0x00519ee4 != pMenu->cursor) {
@@ -3394,12 +3392,12 @@ void GameMenu_SetupStageResults(int param_1)
             result = 0x23;
             break;
         }
-        if (!(g_menu0x00541218.items[0].pSubMenu == &g_menu0x0053f5b0)) {
-            g_menu0x00541218.items[0].pSubMenu = &g_menu0x00541400;
-            GameMenu_BuildStageResultsMenu(1, &g_menu0x00541218);
-        } else {
+        if (g_menu0x00541218.items[0].pSubMenu == &g_menu0x0053f5b0) {
             g_menu0x0053f5b0.items[0].pSubMenu = &g_menu0x00541400;
             GameMenu_BuildStageResultsMenu(1, &g_menu0x0053f5b0);
+        } else {
+            g_menu0x00541218.items[0].pSubMenu = &g_menu0x00541400;
+            GameMenu_BuildStageResultsMenu(1, &g_menu0x00541218);
         }
         result = 0x23;
         break;
@@ -3505,8 +3503,8 @@ void GameMenu_SetupStageResults(int param_1)
     g_menu0x00541400.items[Menu_FindItem(&g_menu0x00541400, 0x3e8)].id = (short)result;
     g_menu0x005416e0.items[Menu_FindItem(&g_menu0x005416e0, 0x3e8)].id = (short)result;
     if (GameInfo_GetFrontendSessionFlag() != 0) {
-        g_pHeaderMenu = NULL;
         g_pSavedHeaderMenu = &g_menu0x005404d8;
+        g_pHeaderMenu = NULL;
     } else {
         g_pHeaderMenu = NULL;
         if ((char)param_1 != 0)
@@ -3896,7 +3894,7 @@ void GameMenu_RefreshResultsHeader(void)
     Input_TranslatePedalsToMenuKeys();
     Input_MergeAssignedJoystickButtons(0, CInput::GetAvailableDeviceRecord(0));
     pDevice = CInput::GetAvailableDeviceRecord(0);
-    flags = pDevice->field_0x8;
+    flags = pDevice->pressed;
     if ((BYTE)RallyData_IsChampionshipFinalStage() != 0)
         flags &= 0x10;
     if (g_pHeaderMenu == &g_menu0x0053ea68)

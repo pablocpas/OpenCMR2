@@ -485,7 +485,7 @@ void FrontendControls_BeginBindingCapture(Menu *pMenu, int param)
     pDevice = CInput::GetAvailableDeviceRecord(g_controlsDeviceSelection.slots[g_controlsSelectedSlot & 0xffff]);
     for (i = 0; i < 8; i++)
         g_unk0x00829428[i] = 0;
-    if (pDevice->field_0x0 == 3 || pDevice->field_0x0 == 2) {
+    if (pDevice->type == 3 || pDevice->type == 2) {
         for (i = 0; i < 8; i++) {
             if (pDevice->joystick.bindings[i].present != 0)
                 g_unk0x00829428[i] = pDevice->joystick.bindings[i].position;
@@ -509,11 +509,11 @@ void FrontendControls_EnterDeviceBindings(Menu *pMenu, char param)
         pMenu->items[1].enabled = 1;
         pMenu->items[9].enabled = 1;
         pMenu->items[9].visible = 1;
-        if (pDevice->field_0x0 == 1 || pDevice->field_0x0 == 2 || pDevice->field_0x14 < 4) {
+        if (pDevice->type == 1 || pDevice->type == 2 || pDevice->buttonCount < 4) {
             pMenu->items[9].enabled = 0;
             pMenu->items[9].visible = 0;
         }
-        if (pDevice->field_0x0 == 2) {
+        if (pDevice->type == 2) {
             pMenu->items[0].enabled = 0;
             pMenu->items[0].visible = 0;
             pMenu->items[1].enabled = 0;
@@ -535,18 +535,18 @@ void FrontendControls_LeaveDeviceBindings(Menu *pMenu, char back)
     }
     memcpy(Input_GetControllerTable(), g_controlsCopy, sizeof(g_controlsCopy));
     CInput::ApplyControllerButtonBindings(g_controlsSelectedSlot & 0xffff);
-    if (CInput::GetAvailableDeviceRecord(g_controlsDeviceSelection.slots[g_controlsSelectedSlot & 0xffff])->field_0x0 == 3)
+    if (CInput::GetAvailableDeviceRecord(g_controlsDeviceSelection.slots[g_controlsSelectedSlot & 0xffff])->type == 3)
         Menu_SetNextAction(FrontendMenu_GetDeviceCalibration());
 }
 
-// Whether the entry under the cursor is bound: entries 0/1 by field_0x110,
-// 2/3 by field_0x114 of the selected configuration.
+// Whether the entry under the cursor is bound: entries 0/1 by analogSteering,
+// 2/3 by analogPedals of the selected configuration.
 // FUNCTION: CMR2 0x004fc490
 int FrontendControls_IsSelectedAxisBound(Menu *pMenu)
 {
-    if (g_controlsCopy[g_controlsDeviceSelection.slots[g_controlsSelectedSlot & 0xffff]].field_0x110 != 0 && (pMenu->cursor == 0 || pMenu->cursor == 1))
+    if (g_controlsCopy[g_controlsDeviceSelection.slots[g_controlsSelectedSlot & 0xffff]].analogSteering != 0 && (pMenu->cursor == 0 || pMenu->cursor == 1))
         return 1;
-    if (g_controlsCopy[g_controlsDeviceSelection.slots[g_controlsSelectedSlot & 0xffff]].field_0x114 != 0 && (pMenu->cursor == 2 || pMenu->cursor == 3))
+    if (g_controlsCopy[g_controlsDeviceSelection.slots[g_controlsSelectedSlot & 0xffff]].analogPedals != 0 && (pMenu->cursor == 2 || pMenu->cursor == 3))
         return 1;
     return 0;
 }
@@ -580,23 +580,23 @@ void FrontendControls_UpdateBindingCapture(Menu *pMenu)
     } else if (key != -1 && FrontendControls_IsSelectedAxisBound(pMenu) == 0) {
         done = TRUE;
         Input_GetLastKeyName(g_controlsCopy[CONTROLS_SEL].keyNames[pMenu->cursor], 20);
-        CInput::SetIndexedByteBinding(g_controlsCopy[CONTROLS_SEL].field_0x13e, pMenu->cursor, key);
-        if (pDevice->field_0x0 != 1)
-            CInput::SetIndexedWordBinding(&g_controlsCopy[CONTROLS_SEL].field_0x128, pMenu->cursor, 0);
+        CInput::SetIndexedByteBinding(g_controlsCopy[CONTROLS_SEL].keys, pMenu->cursor, key);
+        if (pDevice->type != 1)
+            CInput::SetIndexedWordBinding(g_controlsCopy[CONTROLS_SEL].actionMasks, pMenu->cursor, 0);
     }
-    axisPair = g_controlsCopy[CONTROLS_SEL].field_0x110 != 0 && (pMenu->cursor == 0 || pMenu->cursor == 1);
-    if (((g_controlsCopy[CONTROLS_SEL].field_0x114 != 0 && (pMenu->cursor == 2 || pMenu->cursor == 3)) || axisPair)
-        && (pDevice->field_0x0 == 3 || pDevice->field_0x0 == 2)) {
+    axisPair = g_controlsCopy[CONTROLS_SEL].analogSteering != 0 && (pMenu->cursor == 0 || pMenu->cursor == 1);
+    if (((g_controlsCopy[CONTROLS_SEL].analogPedals != 0 && (pMenu->cursor == 2 || pMenu->cursor == 3)) || axisPair)
+        && (pDevice->type == 3 || pDevice->type == 2)) {
         pPosition = &pDevice->joystick.bindings[0].position;
         pReference = g_unk0x00829428;
         axis = 0;
         do {
             if (pPosition[-4] != 0 && abs(*pReference - *pPosition) > 0x4ccc) {
                 done = TRUE;
-                g_controlsCopy[CONTROLS_SEL].field_0x210[pMenu->cursor] = *(ControllerDataUnk0x210 *)(pPosition - 4);
-                g_controlsCopy[CONTROLS_SEL].field_0x2d8[pMenu->cursor] = axis;
-                CInput::SetIndexedWordBinding(&g_controlsCopy[CONTROLS_SEL].field_0x128, pMenu->cursor, 0);
-                CInput::SetIndexedByteBinding(g_controlsCopy[CONTROLS_SEL].field_0x13e, pMenu->cursor, 0);
+                g_controlsCopy[CONTROLS_SEL].axisBindings[pMenu->cursor] = *(ControllerDataUnk0x210 *)(pPosition - 4);
+                g_controlsCopy[CONTROLS_SEL].axisIndices[pMenu->cursor] = axis;
+                CInput::SetIndexedWordBinding(g_controlsCopy[CONTROLS_SEL].actionMasks, pMenu->cursor, 0);
+                CInput::SetIndexedByteBinding(g_controlsCopy[CONTROLS_SEL].keys, pMenu->cursor, 0);
                 *pReference = *pPosition;
             }
             axis++;
@@ -604,22 +604,22 @@ void FrontendControls_UpdateBindingCapture(Menu *pMenu)
             pReference++;
         } while (pReference < &g_unk0x00829428[8]);
     }
-    if (pDevice->field_0x0 == 3 || pDevice->field_0x0 == 2) {
-        if (g_controlsCopy[CONTROLS_SEL].field_0x110 != 0)
-            pDevice->field_0x8 &= ~3;
-        if (g_controlsCopy[CONTROLS_SEL].field_0x114 != 0)
-            pDevice->field_0x8 &= ~0xc;
+    if (pDevice->type == 3 || pDevice->type == 2) {
+        if (g_controlsCopy[CONTROLS_SEL].analogSteering != 0)
+            pDevice->pressed &= ~3;
+        if (g_controlsCopy[CONTROLS_SEL].analogPedals != 0)
+            pDevice->pressed &= ~0xc;
     }
-    buttons = pDevice->field_0x8;
+    buttons = pDevice->pressed;
     count = 0;
     for (i = 32; i != 0; i--) {
         if (buttons & 1)
             count++;
         buttons >>= 1;
     }
-    if (count == 1 && pDevice->field_0x0 != 1 && FrontendControls_IsSelectedAxisBound(pMenu) == 0) {
-        CInput::SetIndexedWordBinding(&g_controlsCopy[CONTROLS_SEL].field_0x128, pMenu->cursor, (unsigned short)pDevice->field_0x8);
-        CInput::SetIndexedByteBinding(g_controlsCopy[CONTROLS_SEL].field_0x13e, pMenu->cursor, 0);
+    if (count == 1 && pDevice->type != 1 && FrontendControls_IsSelectedAxisBound(pMenu) == 0) {
+        CInput::SetIndexedWordBinding(g_controlsCopy[CONTROLS_SEL].actionMasks, pMenu->cursor, (unsigned short)pDevice->pressed);
+        CInput::SetIndexedByteBinding(g_controlsCopy[CONTROLS_SEL].keys, pMenu->cursor, 0);
     } else if (!done) {
         return;
     }
@@ -656,8 +656,8 @@ void FrontendControls_EnterCalibration(Menu *pMenu, int param)
             pItem->enabled = 1;
             pItem->visible = 1;
             for (j = 0; j < 10; j++) {
-                if (pData->field_0x2d8[j] == axis && pData->field_0x210[j].present != 0)
-                    *(ControllerDataUnk0x210 *)pBinding = pData->field_0x210[j];
+                if (pData->axisIndices[j] == axis && pData->axisBindings[j].present != 0)
+                    *(ControllerDataUnk0x210 *)pBinding = pData->axisBindings[j];
             }
         } else {
             pItem->enabled = 0;
@@ -668,7 +668,7 @@ void FrontendControls_EnterCalibration(Menu *pMenu, int param)
         pFlag += 5;
         pItem++;
     } while (pBinding < &g_axisBindings[8]);
-    if (g_controlsCopy[dev].field_0x118 != 0)
+    if (g_controlsCopy[dev].forceFeedback != 0)
         pMenu->items[axis].pSubMenu = FrontendMenu_GetPadSettings();
     else
         pMenu->items[axis].pSubMenu = FrontendMenu_GetControls();
@@ -692,25 +692,25 @@ void FrontendControls_UpdateAxisCalibration(Menu *pMenu)
 
     if (g_controlsCalibrationState != 0) {
         pKeys = CInput::GetAvailableDeviceRecord(0);
-        if (pKeys->field_0x8 & 0x10) {
+        if (pKeys->pressed & 0x10) {
             pData = &Input_GetControllerTable()[CONTROLS_SEL];
             for (axis = 0; axis < 8; axis++) {
                 CInput::SetJoystickAxisSaturation(CONTROLS_SEL, axis, g_axisBindings[axis].saturation);
                 CInput::SetJoystickAxisDeadzone(CONTROLS_SEL, axis, g_axisBindings[axis].deadzone);
                 for (j = 0; j < 10; j++) {
-                    if (pData->field_0x2d8[j] == axis && pData->field_0x210[j].present != 0)
-                        pData->field_0x210[j] = *(ControllerDataUnk0x210 *)&g_axisBindings[axis];
+                    if (pData->axisIndices[j] == axis && pData->axisBindings[j].present != 0)
+                        pData->axisBindings[j] = *(ControllerDataUnk0x210 *)&g_axisBindings[axis];
                 }
             }
             g_controlsCalibrationState = 0;
         }
-        if (pKeys->field_0x8 & 0x20) {
+        if (pKeys->pressed & 0x20) {
             pDevice = CInput::GetAvailableDeviceRecord(CONTROLS_SEL);
             g_axisBindings[pMenu->cursor].deadzone = pDevice->joystick.bindings[pMenu->cursor].deadzone;
             g_controlsCalibrationState = 0;
             g_axisBindings[pMenu->cursor].saturation = pDevice->joystick.bindings[pMenu->cursor].saturation;
         }
-        held = pKeys->field_0x4;
+        held = pKeys->held;
         // PORT: up and down also set the deadzone, as Shift with left and
         // right does: a controller has no Shift (see FrontendControls_Text).
         deadzone = CInput::IsShiftPressed() != 0;
@@ -807,25 +807,25 @@ void FrontendControls_FillDeviceConfiguration(void)
         dev = (unsigned short)g_controlsSelectedSlot;
         pDevice = CInput::UpdateDevice(g_controlsSelectedSlot & 0xffff);
     }
-    pMenu->items[1].enabled = pDevice->field_0x0 == 3;
-    pMenu->items[1].max = (BYTE)g_controlsCopy[dev].field_0x110;
-    pMenu->items[2].enabled = pDevice->field_0x0 == 3;
-    pMenu->items[2].max = (BYTE)g_controlsCopy[dev].field_0x114;
-    pMenu->items[4].enabled = pDevice->field_0x0 == 3;
-    pMenu->items[5].enabled = pDevice->field_0x0 == 3;
+    pMenu->items[1].enabled = pDevice->type == 3;
+    pMenu->items[1].max = (BYTE)g_controlsCopy[dev].analogSteering;
+    pMenu->items[2].enabled = pDevice->type == 3;
+    pMenu->items[2].max = (BYTE)g_controlsCopy[dev].analogPedals;
+    pMenu->items[4].enabled = pDevice->type == 3;
+    pMenu->items[5].enabled = pDevice->type == 3;
     if (pDevice->supportsForceFeedback != 0)
         pMenu->items[3].enabled = 1;
     else
         pMenu->items[3].enabled = 0;
-    if (g_controlsCopy[dev].field_0x118 != 0)
+    if (g_controlsCopy[dev].forceFeedback != 0)
         pMenu->items[3].max = 0;
     else
         pMenu->items[3].max = 1;
-    if (g_controlsCopy[dev].field_0x120 != 0)
+    if (g_controlsCopy[dev].throttleOnPositive != 0)
         pMenu->items[4].max = 0;
     else
         pMenu->items[4].max = 1;
-    if (g_controlsCopy[dev].field_0x124 != 0)
+    if (g_controlsCopy[dev].smoothSteering != 0)
         pMenu->items[5].max = 0;
     else
         pMenu->items[5].max = 1;
@@ -877,11 +877,11 @@ void FrontendControls_UpdateDeviceConfiguration(Menu *pMenu)
     }
     if (pMenu->items[0].max == g_controlsDeviceSelection.lastDevice) {
         dev = CONTROLS_SEL;
-        g_controlsCopy[dev].field_0x110 = pMenu->items[1].max;
-        g_controlsCopy[dev].field_0x114 = pMenu->items[2].max;
-        g_controlsCopy[dev].field_0x118 = 1 - pMenu->items[3].max;
-        g_controlsCopy[dev].field_0x120 = 1 - pMenu->items[4].max;
-        g_controlsCopy[dev].field_0x124 = 1 - pMenu->items[5].max;
+        g_controlsCopy[dev].analogSteering = pMenu->items[1].max;
+        g_controlsCopy[dev].analogPedals = pMenu->items[2].max;
+        g_controlsCopy[dev].forceFeedback = 1 - pMenu->items[3].max;
+        g_controlsCopy[dev].throttleOnPositive = 1 - pMenu->items[4].max;
+        g_controlsCopy[dev].smoothSteering = 1 - pMenu->items[5].max;
         return;
     }
     if (pMenu->items[0].max == 0 && (short)g_controlsSelectedSlot == 1)
@@ -914,13 +914,13 @@ void FrontendControls_ClearDuplicateBinding(ControllerData *p, int index)
 
     i = 0;
     pName = p->keyNames[0];
-    pButton = &p->field_0x128;
+    pButton = p->actionMasks;
     do {
         if (i != index) {
-            if (*pButton == (&p->field_0x128)[index])
+            if (*pButton == p->actionMasks[index])
                 *pButton = 0;
-            if (p->field_0x13e[i] == p->field_0x13e[index]) {
-                p->field_0x13e[i] = 0;
+            if (p->keys[i] == p->keys[index]) {
+                p->keys[i] = 0;
                 *pName = 0;
             }
         }
@@ -956,30 +956,30 @@ char *FrontendControls_GetBindingDisplayText(int index)
     int i;
 
     pDevice = CInput::GetAvailableDeviceRecord(CONTROLS_SEL);
-    if (pDevice->field_0x0 == 1)
+    if (pDevice->type == 1)
         return g_controlsCopy[CONTROLS_SEL].keyNames[index];
     if (CInput::IsControllerActionBound(index, &g_controlsCopy[CONTROLS_SEL]) != 0)
         return g_controlsCopy[CONTROLS_SEL].keyNames[index];
     dev = CONTROLS_SEL;
-    if (g_controlsCopy[dev].field_0x210[index].present == 0 || pDevice->field_0x0 != 3) {
-        button = (&g_controlsCopy[dev].field_0x128)[index];
-        if (pDevice->field_0x0 == 0 && button == 1)
+    if (g_controlsCopy[dev].axisBindings[index].present == 0 || pDevice->type != 3) {
+        button = g_controlsCopy[dev].actionMasks[index];
+        if (pDevice->type == 0 && button == 1)
             return CFrontend::GetTextString(0x1f9);
-        if (pDevice->field_0x0 == 0 && button == 2)
+        if (pDevice->type == 0 && button == 2)
             return CFrontend::GetTextString(0x1fa);
-        if (pDevice->field_0x0 == 0 && button == 4)
+        if (pDevice->type == 0 && button == 4)
             return CFrontend::GetTextString(0x1fb);
-        if (pDevice->field_0x0 == 0 && button == 8)
+        if (pDevice->type == 0 && button == 8)
             return CFrontend::GetTextString(0x1fc);
-        if (pDevice->field_0x0 == 2 && index == 0)
+        if (pDevice->type == 2 && index == 0)
             return CFrontend::GetTextString(0x1f9);
-        if (pDevice->field_0x0 == 2 && index == 1)
+        if (pDevice->type == 2 && index == 1)
             return CFrontend::GetTextString(0x1fa);
         i = CInput::GetButtonIndexFromMask(button);
         if (i != -1)
             return pDevice->field_0x284[i];
-    } else if (g_controlsCopy[dev].field_0x110 == 0 && (index == 0 || index == 1)) {
-        button = (&g_controlsCopy[dev].field_0x128)[index];
+    } else if (g_controlsCopy[dev].analogSteering == 0 && (index == 0 || index == 1)) {
+        button = g_controlsCopy[dev].actionMasks[index];
         i = CInput::GetButtonIndexFromMask(button);
         if (i != -1) {
             if (strcmp(pDevice->field_0x284[i], CMain::m_logFileBlankLine) != 0)
@@ -988,11 +988,11 @@ char *FrontendControls_GetBindingDisplayText(int index)
                 return CFrontend::GetTextString(0x1f9);
             return CFrontend::GetTextString(0x1fa);
         }
-    } else if (g_controlsCopy[dev].field_0x114 != 0 || (index != 2 && index != 3)) {
-        sprintf(g_bindingText, CFrontend::GetTextString(0x77), g_controlsCopy[dev].field_0x2d8[index]);
+    } else if (g_controlsCopy[dev].analogPedals != 0 || (index != 2 && index != 3)) {
+        sprintf(g_bindingText, CFrontend::GetTextString(0x77), g_controlsCopy[dev].axisIndices[index]);
         return g_bindingText;
     } else {
-        button = (&g_controlsCopy[dev].field_0x128)[index];
+        button = g_controlsCopy[dev].actionMasks[index];
         i = CInput::GetButtonIndexFromMask(button);
         if (i != -1) {
             if (strcmp(pDevice->field_0x284[i], CMain::m_logFileBlankLine) != 0)

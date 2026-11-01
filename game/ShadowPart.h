@@ -4,6 +4,7 @@
 #include <windows.h>
 
 struct Mesh;
+struct MeshVertexF;
 struct SceneNode;
 
 // Runtime shadow work buffers; never an image of a file record.
@@ -12,12 +13,12 @@ struct ShadowPart {
     float light[12];            // 0x0 light direction and basis in mesh space
     Mesh *pMesh;                // 0x30 mesh (or its shadow cylinder)
     SceneNode *pNode;           // 0x34 node that owns the mesh
-    void *pVertexWork;          // 0x38 three floats per source vertex
-    void *pVertexWork2;         // 0x3c three floats per source vertex
-    void *pVertexFlags;         // 0x40 one float per source vertex
-    void *pVertexWork3;         // 0x44 three floats per emitted vertex
-    BYTE *pVertices;            // 0x48 0x30 bytes per emitted vertex
-    BYTE **pTriangleWork;       // 0x4c three native vertex pointers per face
+    float (*pSourceNormals)[3];    // 0x38 source normal per vertex
+    float (*pBiasedPositions)[3];   // 0x3c source position + normal * 0.005
+    float *pLightDotProducts;        // 0x40 normal dot light direction per vertex
+    float (*pEmittedPositions)[3];   // 0x44 biased position per emitted vertex
+    MeshVertexF *pVertices;     // 0x48 emitted render vertices
+    MeshVertexF **pFaceVertices; // 0x4c three native vertex pointers per face
     short faceCount;            // 0x50 emitted faces
     short vertexCount;          // 0x52 emitted vertices
     int verticesDirty;          // 0x54 regenerate vertex projection buffers

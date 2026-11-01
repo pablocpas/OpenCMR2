@@ -16,8 +16,8 @@ extern int *RallyData_GetDriverPrimaryPairRecord(int);
 extern int *RallyData_GetDriverSecondaryPairRecord(int);
 extern BYTE g_optionSlotTextureSets[20];
 extern BYTE g_unk0x0082ca18;
-extern Texture *g_unk0x0082ca20[9];
-extern void *g_unk0x0082c690;
+extern Texture *g_weatherSymbolTextures[9];
+extern void *g_symbolArrowTexture;
 extern short g_optionPreviewExpandedRect[4];
 extern short g_unk0x0082c9fe, g_unk0x0082ca02;
 
@@ -36,10 +36,10 @@ int main()
     Texture symbols[9]{}, arrow{}, map{};
     for (int i = 0; i < 9; ++i) {
         symbols[i].width = symbols[i].height = 16;
-        g_unk0x0082ca20[i] = &symbols[i];
+        g_weatherSymbolTextures[i] = &symbols[i];
     }
     arrow.width = arrow.height = 8;
-    g_unk0x0082c690 = &arrow;
+    g_symbolArrowTexture = &arrow;
     map.width = map.height = 256;
     g_optionPreviewExpandedRect[0] = 28;
     g_optionPreviewExpandedRect[1] = 114;

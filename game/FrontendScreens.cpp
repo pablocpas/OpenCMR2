@@ -1617,9 +1617,9 @@ void FrontendMenu_UpdateAndSwitchActive(void)
         if (g_pMenu0x00818abc == FrontendMenu_GetDeviceBindings())
             FrontendControls_MergeConfiguredDevice(pDevice, FALSE);
     }
-    input = pDevice->field_0x8;
+    input = pDevice->pressed;
     if (g_frontendOverlayMode == 1)
-        input |= CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(0))->field_0x8 & 0x20;
+        input |= CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(0))->pressed & 0x20;
     pNext = (Menu *)Menu_Update(g_pMenu0x00818abc, input);
     if (pNext != NULL) {
         g_menuEnterTime = CFrontend::GetFrontendTimestamp();
@@ -2038,7 +2038,7 @@ void FrontendMenu_UpdateNetworkSessionBrowser(Menu *pMenu)
                     g_selectedNetworkSession = 0;
                     Network_CopyEnumeratedSessionGUID(0, &g_unk0x00818cf0);
                     g_unk0x00819024 = 1;
-                } else if ((pDevice->field_0x8 & 0x20) != 0) {
+                } else if ((pDevice->pressed & 0x20) != 0) {
                     g_unk0x00819014 = 0;
                     g_selectedNetworkSession = -1;
                     g_unk0x00819024 = 0;
@@ -2046,11 +2046,11 @@ void FrontendMenu_UpdateNetworkSessionBrowser(Menu *pMenu)
                     g_unk0x00818ef4 = 0;
                 } else {
                     Menu_SetFlags(pMenu, 0, 0, 1, 0);
-                    if ((pDevice->field_0x8 & 4) != 0 && g_selectedNetworkSession > 0) {
+                    if ((pDevice->pressed & 4) != 0 && g_selectedNetworkSession > 0) {
                         g_selectedNetworkSession--;
                         Network_CopyEnumeratedSessionGUID((BYTE)g_selectedNetworkSession, &g_unk0x00818cf0);
                         g_unk0x00819024 = 1;
-                    } else if ((pDevice->field_0x8 & 8) != 0 && g_selectedNetworkSession < g_unk0x00819018 - 1) {
+                    } else if ((pDevice->pressed & 8) != 0 && g_selectedNetworkSession < g_unk0x00819018 - 1) {
                         g_selectedNetworkSession++;
                         Network_CopyEnumeratedSessionGUID((BYTE)g_selectedNetworkSession, &g_unk0x00818cf0);
                         g_unk0x00819024 = 1;
@@ -3051,9 +3051,9 @@ void FrontendMenu_UpdateSingleRallySelection(Menu *pMenu)
     if (g_unk0x0082aa40 > 0) {
         if (g_savedGameListSelection == -1)
             g_savedGameListSelection = 0;
-        else if ((pDevice->field_0x8 & 4) && g_savedGameListSelection > 0)
+        else if ((pDevice->pressed & 4) && g_savedGameListSelection > 0)
             g_savedGameListSelection--;
-        else if ((pDevice->field_0x8 & 8) && g_savedGameListSelection < g_unk0x0082aa40 - 1)
+        else if ((pDevice->pressed & 8) && g_savedGameListSelection < g_unk0x0082aa40 - 1)
             g_savedGameListSelection++;
     } else {
         g_savedGameListSelection = -1;
@@ -4724,14 +4724,14 @@ void FrontendAnimation_EvaluatePathSpline(int *pPoints, int t, int *pOut)
     seg = ((t << 4) >> 16) + 1;
     u = (((seg << 16) - 0x10000) / 16 - t + 0x1000) << 4;
     u2 = FixMul(u, u);
-    u3 = FixMul(u2, u);
+    u3 = FixMul(u, u2);
+    h00 = u3 * 2 + 0x10000 - u2 * 3;
     h01 = u2 * 3 - u3 * 2;
     h10 = u3 - u2 * 2 + u;
-    h00 = u3 * 2 + 0x10000 - u2 * 3;
     h11 = u3 - u2;
     p = &pPoints[seg * 2];
-    tanB = (p[4] - p[0]) * (0x10000 - g_menuPathTension) / 2;
     tanA = (p[2] - p[-2]) * (0x10000 - g_menuPathTension) / 2;
+    tanB = (p[4] - p[0]) * (0x10000 - g_menuPathTension) / 2;
     x = p[2] * h00 + (FixMul(h11, tanA) + p[0] * h01);
     x += FixMul(h10, tanB);
     tanA = (p[3] - p[-1]) * (0x10000 - g_menuPathTension) / 2;
@@ -7906,7 +7906,7 @@ char *Profile_BuildSavePath(char *pName);
 void *Profile_ReadLocalFile(char *param1, int param2);
 BYTE *RallyData_GetDriverCategoryProfile(int index);
 RallyCarDamageState *RallyData_GetDriverGroupRecord(int index);
-BYTE *RallyData_GetDriverSkillRecord(int index);
+CarSetup *RallyData_GetPlayerCarSetup(int index);
 BYTE *RallyData_GetDriverEntryRecord(int index);
 BYTE RallyData_SetCategoryAwardBit(int index, int bit);
 BYTE *RallyData_GetDriverSelectionFlagRecord(int index);
@@ -7947,7 +7947,7 @@ unsigned int FrontendProfile_ApplyDriverProfileBlock(const SavedGameImage *pBloc
         profile.setup.value4 = image.playerSetup[i].value4;
         profile.identifier = image.playerIdentifiers[i];
         memcpy(RallyData_GetDriverGroupRecord(i), &image.playerCars[i], sizeof(image.playerCars[i]));
-        memcpy(RallyData_GetDriverSkillRecord(i), &image.playerControllers[i], sizeof(image.playerControllers[i]));
+        memcpy(RallyData_GetPlayerCarSetup(i), &image.playerCarSetups[i], sizeof(image.playerCarSetups[i]));
         if ((profile.identifier.flags & 0x200000) == 0) {
             BYTE *buffer = (BYTE *)Profile_ReadLocalFile(Profile_BuildSavePath((char *)&profile.identifier), 0);
             if (buffer != NULL && CGenericFileLoader::m_fileSize == sizeof(DriverProfile)) {
@@ -8269,7 +8269,7 @@ void FrontendMenu_UpdateNetworkCarSetup(Menu *pMenu)
 
     pFlags = CGameInfo::GetGameInfoField9CAddress();
     max = Menu_GetItem(pMenu, 0)->max;
-    if (max != (BYTE)g_setupRouteIndex) {
+    if (max != g_setupRouteIndex) {
         Menu_GetItem(pMenu, 2)->max = 0;
         g_setupRouteIndex = max;
     }
@@ -8286,7 +8286,7 @@ void FrontendMenu_UpdateNetworkCarSetup(Menu *pMenu)
         count = 10;
     }
     i = 0;
-    if (count != 0) {
+    if (count > 0) {
         pDest = g_unk0x00818d84;
         do {
             i++;
@@ -8296,14 +8296,14 @@ void FrontendMenu_UpdateNetworkCarSetup(Menu *pMenu)
     }
     sprintf(&g_unk0x00818d84[i * 3], g_strFlagSS);
     if (!(CGameInfo::IsRecordFlagSet(0xd) == 0)) {
-        count = ((max & 1) != 0) + 10;
+        count = (max % 2 != 0) + 10;
     } else {
-        if ((max & 1) != 0) {
-            mask = 1 << (((char)((max + 1) / 2) - 1) & 0x1f);
+        if (max % 2 != 0) {
+            mask = 1 << ((max + 1) / 2 - 1);
             bits = (BYTE)mask;
             if ((pFlags[1] & mask & 0x1f) != 0 ||
-                (bits & (BYTE)(pFlags[1] >> 5) & 0x1f) != 0 ||
-                (bits & (BYTE)(pFlags[1] >> 10) & 0x1f) != 0)
+                ((BYTE)(pFlags[1] >> 5 & 0x1f) & bits) != 0 ||
+                ((BYTE)(pFlags[1] >> 10 & 0x1f) & bits) != 0)
                 count++;
         }
     }
@@ -8467,10 +8467,10 @@ void FrontendMenu_UpdateNetworkSessionSetup(Menu *pMenu)
     b = 1;
     if (g_unk0x00818ed0 != 0) {
         pDevice = CInput::GetAvailableDeviceRecord(0);
-        if (!((pDevice->field_0x8 & 8) == 0)) {
+        if (!((pDevice->pressed & 8) == 0)) {
             pMenu->cursor = 1;
         } else {
-            if ((pDevice->field_0x8 & 4) != 0)
+            if ((pDevice->pressed & 4) != 0)
                 pMenu->cursor = pMenu->itemCount - 1;
         }
     }
@@ -8597,22 +8597,22 @@ void FrontendMenu_UpdateNetworkSessionDetails(Menu *pMenu)
         Menu_GetItem(pMenu, 3)->min = 5;
     else
         Menu_GetItem(pMenu, 3)->min = 7;
-    if (Menu_GetItem(pMenu, 3)->min <= Menu_GetItem(pMenu, 3)->max)
+    if (Menu_GetItem(pMenu, 3)->max >= Menu_GetItem(pMenu, 3)->min)
         Menu_GetItem(pMenu, 3)->max = Menu_GetItem(pMenu, 3)->min - 1;
     value = pMenu->items[pMenu->cursor].value;
-    if (value == 0)
-        g_unk0x00818cdc = (char *)g_sessionName;
-    else if (value == 4)
-        g_unk0x00818cdc = (char *)g_sessionPassword;
     if (value == 0 || value == 4) {
+        if (pMenu->items[pMenu->cursor].value == 0)
+            g_unk0x00818cdc = (char *)g_sessionName;
+        else
+            g_unk0x00818cdc = (char *)g_sessionPassword;
         strcpy(CFrontend::m_stringDest, g_unk0x00818cdc);
         if (Input_PopQueuedCharacter(&key) != 0) {
             if (key != 8) {
                 i = Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);
+                n = ((g_pGraphics->resX < 0x400) - 1 & 0x54) + 0x8c;
                 len = strlen(CFrontend::m_stringDest);
-                if ((int)(len - 1) < 0x13 &&
-                    i < (int)(((g_pGraphics->resX < 0x400) - 1 & 0x54) + 0x8c)) {
-                    pc = strchr(g_strValidLetters, key);
+                if ((int)len < 0x13 && i < n) {
+                    pc = strchr(g_strValidLetters, (char)key);
                     if (pc != NULL) {
                         CFrontend::m_stringDest[len] = (char)key;
                         CFrontend::m_stringDest[len + 1] = 0;

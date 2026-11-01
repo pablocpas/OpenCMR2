@@ -676,7 +676,7 @@ void RallyData_LayoutPlayerSplitBars(void);
 void Frontend_LoadSplitTimeMirror(void);
 void Replay_InitRaceSlots(void);
 void StageWeather_SetupSettingTransition(void);
-void StageTiming_LoadSelectedTeamArchive(void);
+void StageTiming_LoadSelectedTimeProfile(void);
 BYTE *AI_LoadStageRouteTables(void);
 void StageObject_ForwardSessionUpdate(void);
 void RallyData_RebuildSectorStaticObjectTables(void);
@@ -761,7 +761,7 @@ BYTE Race_LoadSelectedStage(void)
     if (CGameInfo::GetGameInfoSessionFlag() == 0 && CGameInfo::GetConfiguredGameMode() == 3)
         Replay_InitRaceSlots();
     StageWeather_SetupSettingTransition();
-    StageTiming_LoadSelectedTeamArchive();
+    StageTiming_LoadSelectedTimeProfile();
     StageTiming_InitRaceDriverRecords(1);
     StageObject_ForwardSessionUpdate();
     RallyData_DrawLoadingProgress(0x3c, 1, 0xff);
@@ -780,7 +780,7 @@ int Race_GetResourceState(void)
 void Race_SetResourceStateAndCallbackMark(int value);
 int Sound_GetSampleCount(void);
 void StageTiming_InitStageFileTable(void);
-void StageObject_ClearCarStateSlots(void);
+void CarDamage_ClearModelEnabled(void);
 int StageTiming_LoadStageCarsAndEffects(void);
 void Sector_RebuildNodeLists(void);
 void Surface_LoadCarEngineSounds(void);
@@ -795,7 +795,7 @@ BYTE Race_LoadStageGeometry(void)
 
     Race_SetResourceStateAndCallbackMark(Sound_GetSampleCount());
     StageTiming_InitStageFileTable();
-    StageObject_ClearCarStateSlots();
+    CarDamage_ClearModelEnabled();
     if (StageTiming_LoadStageCarsAndEffects()) {
         Sector_RebuildNodeLists();
         Surface_LoadCarEngineSounds();
@@ -913,9 +913,10 @@ void Race_QueuePlayerCallout(unsigned int player, BYTE callId, BYTE prevCallId, 
             typeCall = 1;
         else
             typeCall = 0;
-        levelCall = 0;
         if (b3 != 0 && b1 != 0)
             levelCall = 1;
+        else
+            levelCall = 0;
         if (prev == 0) {
             if (typeCall) {
                 id -= type * 0x20000;
@@ -1035,8 +1036,8 @@ void Race_DrawPlayerCallSlots(unsigned int player, int *pViewRect)
     flagA = 0;
     flagB = 0;
     second = 0;
-    xOff = 0;
     yOff = 0;
+    xOff = 0;
     curve[0] = 0;
     curve[1] = 0xc;
     curve[2] = 0x19;
@@ -1209,10 +1210,10 @@ void Race_DrawPlayerCallSlots(unsigned int player, int *pViewRect)
 
         rectSecond.x = (short)(rectMain.x + rectMain.w);
         if (second != 0 && rectSecond.w != 0) {
-            if (flagB == 0)
-                Sprite_Queue(&rectTex, &rectSecond, texB, 2, 0, NULL, NULL, colA, 8);
-            else
+            if (flagB != 0)
                 Sprite_Queue(&rectTex, &rectSecond, texB, 2, 0, NULL, NULL, colA, 1);
+            else
+                Sprite_Queue(&rectTex, &rectSecond, texB, 2, 0, NULL, NULL, colA, 8);
         }
 
 next:
@@ -1605,9 +1606,9 @@ int Race_DecodeCallSlotIcon(unsigned int id, Texture **pTexture, SpriteRect *pRe
     int afterFirst;
 
     type = id & 0xf;
-    b3 = id >> 0x15 & 3;
-    b2 = id >> 0x11 & 0xf;
     b1 = id >> 4 & 3;
+    b2 = id >> 0x11 & 0xf;
+    b3 = id >> 0x15 & 3;
 
     if (type == 0 || type == 9)
         afterFirst = 0;
@@ -1622,14 +1623,21 @@ int Race_DecodeCallSlotIcon(unsigned int id, Texture **pTexture, SpriteRect *pRe
     pColour[1] = 0xff;
     pColour[2] = 0xff;
     pColour[3] = 0xff;
-    if (b1 == 1)
+    switch (b1) {
+    case 1:
         *pFlag = 1;
-    else
+        break;
+    default:
         *pFlag = 0;
+        break;
+    }
     if (CGameInfo::IsActiveCheatEnabled(2) != 0)
         *pFlag ^= 1;
 
     switch (type) {
+    case 1:
+        pSrc = &g_pArrowRects[6];
+        break;
     case 2:
         pSrc = &g_pArrowRects[5];
         break;
@@ -3165,7 +3173,7 @@ void StageUI_RecordRaceEndEvent(char bFlag);
 void RallyTiming_AddStagePenalties(void);
 void RallyData_SetStageSelectionAndRefreshFlags(BYTE param1);
 void RallyData_ClearDriverGroupRecords(void);
-void RallyData_CopyCountryPlayerDefaults(void);
+void RallyData_ApplyCountryCarSetups(void);
 void RallyData_SelectFirstAvailableStage(void);
 void NetPlayers_ResetBestTimes(void);
 void NetPlayers_ResetRaceReadyAndTimeState(char resetTotal, char resetTimes);
@@ -3357,7 +3365,7 @@ void Race_HandleStageReplayViewTransitions(CallbackStateMachine *param1, unsigne
             for (i = 0; i < pPlayers->count; i++)
                 CGame::PromoteCallbackEntryByRule(pPlayers, i, 0, 3);
             RallyData_ClearDriverGroupRecords();
-            RallyData_CopyCountryPlayerDefaults();
+            RallyData_ApplyCountryCarSetups();
             Race_ReleaseFrameResources();
             StageUI_ClearRaceEndLatch();
             return;
@@ -3367,7 +3375,7 @@ void Race_HandleStageReplayViewTransitions(CallbackStateMachine *param1, unsigne
             for (i = 0; i < pPlayers->count; i++)
                 CGame::PromoteCallbackEntryByRule(pPlayers, i, 0, 3);
             RallyData_ClearDriverGroupRecords();
-            RallyData_CopyCountryPlayerDefaults();
+            RallyData_ApplyCountryCarSetups();
             Race_ReleaseFrameResources();
             StageUI_ClearRaceEndLatch();
             NetPlayers_ResetBestTimes();
@@ -3978,7 +3986,7 @@ void Race_UpdatePauseState(CallbackStateMachine *p, BYTE index)
     Input_TranslatePedalsToMenuKeys();
     pDev = CInput::GetAvailableDeviceRecord(0);
     Input_MergeAssignedJoystickButtons(0, pDev);
-    Menu_Update(StageObject_GetInRaceActionMenu(), pDev->field_0x8);
+    Menu_Update(StageObject_GetInRaceActionMenu(), pDev->pressed);
     if (g_unk0x00537f94 != 0)
         CGame::PromoteCallbackEntryByRule(p, index, 1, 2);
 }
@@ -4148,7 +4156,7 @@ void Race_UpdatePlayerSelectionCursor(int param_1)
 
     if (Race_GetPlayerRecordField4((BYTE)param_1) == 0)
         return;
-    flags = (int)CInput::GetAvailableDeviceRecord(param_1)->field_0x8;
+    flags = (int)CInput::GetAvailableDeviceRecord(param_1)->pressed;
     if (Race_IsMultiplayerRecordMode10() != 0) {
         if (param_1 != 0 && Race_GetPlayerRecordField4(0) != 0)
             return;
@@ -4546,7 +4554,7 @@ void Race_UpdateCarRouteAndWrongWayState(int param_1)
             g_raceWrongWayFlags[param_1] = 0;
     }
 
-    if (g_unk0x00537198[param_1] < best)
+    if (best > g_unk0x00537198[param_1])
         g_raceWrongWayFlags[param_1] = 0;
 
     g_pendingCalloutNodeFound = 0;
@@ -4570,7 +4578,7 @@ void Race_UpdateCarRouteAndWrongWayState(int param_1)
         (char)((CallbackStateMachine *)StageUI_GetRaceResultTable())->records[param_1].packedState == '\b') {
         if (!((char)RallyData_GetFlag25() != '\0' &&
               RallyData_GetCarRecordValueRatio(Car_Get(param_1)) >= 0x10000)) {
-            if (g_unk0x0053708c[param_1] < best) {
+            if (best > g_unk0x0053708c[param_1]) {
                 node = cur + 1;
                 if (node <= best) {
                     prev = cur + 2;
@@ -4579,7 +4587,10 @@ void Race_UpdateCarRouteAndWrongWayState(int param_1)
                         if (n->callId != -1 &&
                             Race_IsFlag24Clear() != 0 && Car_IsStateC10Set(param_1) == 0) {
                             int ok = 1;
-                            if (prev >= 2) {
+                            if (prev <= 1) {
+                                callId = (BYTE)RallyData_GetAvailableRouteNodeRecord(node)->callId;
+                                prevCallId = (BYTE)RallyData_GetAvailableRouteNodeRecord(prev)->callId;
+                            } else {
                                 n = RallyData_GetAvailableRouteNodeRecord(node - 1);
                                 if (n->callId != -1) {
                                     ok = 0;
@@ -4587,9 +4598,6 @@ void Race_UpdateCarRouteAndWrongWayState(int param_1)
                                     callId = (BYTE)RallyData_GetAvailableRouteNodeRecord(node)->callId;
                                     prevCallId = (BYTE)RallyData_GetAvailableRouteNodeRecord(prev)->callId;
                                 }
-                            } else {
-                                callId = (BYTE)RallyData_GetAvailableRouteNodeRecord(node)->callId;
-                                prevCallId = (BYTE)RallyData_GetAvailableRouteNodeRecord(prev)->callId;
                             }
                             if (ok)
                                 Race_QueuePlayerCallout(param_1, callId, prevCallId, (BYTE)node);

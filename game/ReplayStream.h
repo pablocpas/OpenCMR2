@@ -51,7 +51,7 @@ struct ReplayPose {
 // g_replaySlots. Type 2 streams store a 16-byte car sample every third frame
 // and play them back by interpolating between two poses.
 struct ReplayStream {
-    DWORD steeringModeOption; // 0x00 recorded ControllerData::field_0x124, a numeric setting
+    DWORD steeringModeOption; // 0x00 recorded ControllerData::smoothSteering
     int playing;            // 0x04
     int playStarted;        // 0x08
     int recording;          // 0x0c

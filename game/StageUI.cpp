@@ -548,17 +548,18 @@ void StageUI_PublishNetworkRaceWins(void)
 BYTE g_barBackColour[4] = { 156, 180, 172, 255 };
 // GLOBAL: CMR2 0x0051c990
 BYTE g_barTextColour[4] = { 255, 255, 255, 255 };
-extern PauseMenus g_unk0x0058ca90;
+extern PauseMenus g_pauseMenus;
+// The pause menu being shown: main or stageData (Menu_Update returns the next).
 // GLOBAL: CMR2 0x0051c97c
-Menu *g_pUnk0x0051c97c = &g_unk0x0058ca90.main;
+Menu *g_pPauseMenu = &g_pauseMenus.main;
 
 // FUNCTION: CMR2 0x00475a40
-Menu *StageUI_GetStageOverlayNode(void)
+Menu *StageUI_GetCurrentPauseMenu(void)
 {
-    return g_pUnk0x0051c97c;
+    return g_pPauseMenu;
 }
 // GLOBAL: CMR2 0x0058ca90
-PauseMenus g_unk0x0058ca90;
+PauseMenus g_pauseMenus;
 // GLOBAL: CMR2 0x0058cf64
 int g_unk0x0058cf64;
 // GLOBAL: CMR2 0x0058cf7c
@@ -576,17 +577,17 @@ extern int g_unk0x0058cf6c;
 // FUNCTION: CMR2 0x00473360
 void StageUI_BuildPauseMenus(void)
 {
-    g_pUnk0x0051c97c = &g_unk0x0058ca90.main;
-    Menu_Init(&g_unk0x0058ca90.main, 0, 0, 0, NULL, NULL, 1, 0, 1);
-    Menu_AddItemType4(&g_unk0x0058ca90.main, 0, 0x13, (MenuItemAction)StageUI_NoOpPauseItemEvent, 0);
-    Menu_AddItemType2(&g_unk0x0058ca90.main, 0, 0x63, &g_unk0x0058ca90.stageData, 0, 1);
-    Menu_SetCallbacks(&g_unk0x0058ca90.main, NULL, NULL, (MenuCallback)StageObject_DrawInRacePauseMenu, NULL);
-    Menu_ValidateCursor(&g_unk0x0058ca90.main, 0);
-    Menu_Init(&g_unk0x0058ca90.stageData, 0, 0, 0, NULL, NULL, 1, 0, 1);
-    Menu_AddItemType4(&g_unk0x0058ca90.stageData, 0, 0x72, (MenuItemAction)StageUI_RequestPauseMenuExit, 0);
-    Menu_AddItemType2(&g_unk0x0058ca90.stageData, 0, 0x73, &g_unk0x0058ca90.main, 0, 1);
-    Menu_SetCallbacks(&g_unk0x0058ca90.stageData, NULL, NULL, (MenuCallback)StageObject_DrawPauseStageDataPanel, NULL);
-    Menu_ValidateCursor(&g_unk0x0058ca90.stageData, 0);
+    g_pPauseMenu = &g_pauseMenus.main;
+    Menu_Init(&g_pauseMenus.main, 0, 0, 0, NULL, NULL, 1, 0, 1);
+    Menu_AddItemType4(&g_pauseMenus.main, 0, 0x13, (MenuItemAction)StageUI_NoOpPauseItemEvent, 0);
+    Menu_AddItemType2(&g_pauseMenus.main, 0, 0x63, &g_pauseMenus.stageData, 0, 1);
+    Menu_SetCallbacks(&g_pauseMenus.main, NULL, NULL, (MenuCallback)StageObject_DrawInRacePauseMenu, NULL);
+    Menu_ValidateCursor(&g_pauseMenus.main, 0);
+    Menu_Init(&g_pauseMenus.stageData, 0, 0, 0, NULL, NULL, 1, 0, 1);
+    Menu_AddItemType4(&g_pauseMenus.stageData, 0, 0x72, (MenuItemAction)StageUI_RequestPauseMenuExit, 0);
+    Menu_AddItemType2(&g_pauseMenus.stageData, 0, 0x73, &g_pauseMenus.main, 0, 1);
+    Menu_SetCallbacks(&g_pauseMenus.stageData, NULL, NULL, (MenuCallback)StageObject_DrawPauseStageDataPanel, NULL);
+    Menu_ValidateCursor(&g_pauseMenus.stageData, 0);
     g_unk0x0058cf6c = 1;
 }
 
@@ -657,7 +658,7 @@ void StageUI_DrawChampionshipBar(void)
     Font_DrawText(2, CFrontend::m_stringDest, x, (int)(g_pGraphics->resY * 0x39) / 0x1e0,
                   (int *)g_barTextColour, 0x11);
 
-    if (g_pUnk0x0051c97c == &g_unk0x0058ca90.main) {
+    if (g_pPauseMenu == &g_pauseMenus.main) {
         if (g_knockoutRaceState > 1 && g_knockoutRaceState < 6) {
             unsigned int round;
 
@@ -930,7 +931,7 @@ void StageUI_RetireFromRace(Menu *pMenu)
 }
 
 extern int g_knockoutRaceState;
-extern PauseMenus g_unk0x0058ca90;
+extern PauseMenus g_pauseMenus;
 void Graphics_StartShapedInterpolationTimer(BYTE *p, int, int, int, int, int, BYTE);
 
 // Fade callback of the in-race state machine: releases the scene callbacks and
@@ -950,7 +951,7 @@ void StageUI_ReleaseSceneAndFadeStage(BYTE index)
     CGameInfo::SetInputAndGamePaused(0);
     StageUI_ClearRaceEndState();
     g_knockoutRaceState = 5;
-    Graphics_StartShapedInterpolationTimer(&g_unk0x0058ca90.textTimer, 2, 7, 0, 0, 0x10000, 0);
+    Graphics_StartShapedInterpolationTimer(&g_pauseMenus.textTimer, 2, 7, 0, 0, 0x10000, 0);
 }
 
 // Co-driver arrow sprites: 64-pixel cells for low resolutions, 102-pixel
@@ -1007,17 +1008,17 @@ void StageUI_UpdatePauseMenu(void)
 
     CInput::UpdateAllAvailableDevices();
     Input_TranslatePedalsToMenuKeys();
-    if (!Graphics_IsRegisteredTimerRunning(&g_unk0x0058ca90.bracketTimer) && !Graphics_IsRegisteredTimerRunning(g_unk0x0058ca8c)) {
+    if (!Graphics_IsRegisteredTimerRunning(&g_pauseMenus.bracketTimer) && !Graphics_IsRegisteredTimerRunning(g_unk0x0058ca8c)) {
         pDev = CInput::GetAvailableDeviceRecord(0);
         Input_MergeAssignedJoystickButtons(0, pDev);
-        next = Menu_Update(g_pUnk0x0051c97c, pDev->field_0x8);
+        next = Menu_Update(g_pPauseMenu, pDev->pressed);
     } else {
-        next = Menu_Update(g_pUnk0x0051c97c, 0);
+        next = Menu_Update(g_pPauseMenu, 0);
     }
     if (next != 0) {
-        g_unk0x0058ca90.main.cursor = 0;
-        g_unk0x0058ca90.stageData.cursor = 1;
-        g_pUnk0x0051c97c = next;
+        g_pauseMenus.main.cursor = 0;
+        g_pauseMenus.stageData.cursor = 1;
+        g_pPauseMenu = next;
     }
 }
 
@@ -1075,8 +1076,8 @@ void StageUI_FitMapToRoute(void)
     g_stageMapCentre.z = (maxZ + minZ) / 2;
 }
 
-extern Texture *g_unk0x0053707c;
-extern Texture *g_unk0x00537078;
+extern Texture *g_challengeMapTexture;
+extern Texture *g_challengeBlobTexture;
 extern double g_minus65536;
 int NetPlayers_GetResultPlayerIndex(int index);
 int NetPlayers_GetResultField4ByID(int id);
@@ -1143,11 +1144,11 @@ void StageUI_DrawHudRouteMap(int car, short *pRect)
     mapSrc[1] = 0;
     mapSrc[2] = 0;
     mapSrc[3] = 0;
-    if (g_unk0x0053707c != NULL) {
-        mapSrc[2] = g_unk0x0053707c->width - 1;
-        mapSrc[3] = g_unk0x0053707c->height - 1;
-        dotSrc[2] = g_unk0x00537078->width - 1;
-        dotSrc[3] = g_unk0x00537078->height - 1;
+    if (g_challengeMapTexture != NULL) {
+        mapSrc[2] = g_challengeMapTexture->width - 1;
+        mapSrc[3] = g_challengeMapTexture->height - 1;
+        dotSrc[2] = g_challengeBlobTexture->width - 1;
+        dotSrc[3] = g_challengeBlobTexture->height - 1;
         if (RallyData_IsHeadToHeadRaceMode() && CGameInfo::IsSplitBarEnabled())
             return;
         map[0] = (short)((int)(g_pGraphics->resX * 0x731) >> 16) + pRect[0];
@@ -1157,7 +1158,7 @@ void StageUI_DrawHudRouteMap(int car, short *pRect)
         map[3] = (short)((int)(g_pGraphics->resY * 0x5319) >> 16);
         map[3] = (short)((int)(mapSrc[3] * g_pGraphics->resY) / 480);
         map[1] -= map[3];
-        Sprite_Queue((SpriteRect *)mapSrc, (SpriteRect *)map, g_unk0x0053707c, 2, 0, NULL, NULL, colour, 8);
+        Sprite_Queue((SpriteRect *)mapSrc, (SpriteRect *)map, g_challengeMapTexture, 2, 0, NULL, NULL, colour, 8);
     }
     if (CGameInfo::GetConfiguredGameMode() == 11 || CGameInfo::GetConfiguredGameMode() == 12 ||
         (CGameInfo::GetGameModeOptionBit19() && (char)RallyData_GetFlag25() && CGameInfo::GetConfiguredGameMode() != 10)) {
@@ -1184,7 +1185,7 @@ void StageUI_DrawHudRouteMap(int car, short *pRect)
             dot[1] = (short)y - (short)((int)(g_pGraphics->resY * 5) / 480);
             dot[2] = (short)((int)(g_pGraphics->resX * 10) / 640);
             dot[3] = (short)((int)(g_pGraphics->resY * 10) / 480);
-            Sprite_Queue((SpriteRect *)dotSrc, (SpriteRect *)dot, g_unk0x00537078, 2, 0, NULL, NULL,
+            Sprite_Queue((SpriteRect *)dotSrc, (SpriteRect *)dot, g_challengeBlobTexture, 2, 0, NULL, NULL,
                          (BYTE *)&netColour, 8);
         }
     } else {
@@ -1202,7 +1203,7 @@ void StageUI_DrawHudRouteMap(int car, short *pRect)
             dot[1] = (short)y - (short)((int)(g_pGraphics->resY * 6) / 480);
             dot[2] = (short)((int)(g_pGraphics->resX * 12) / 640);
             dot[3] = (short)((int)(g_pGraphics->resY * 12) / 480);
-            Sprite_Queue((SpriteRect *)dotSrc, (SpriteRect *)dot, g_unk0x00537078, 2, 0, NULL, NULL,
+            Sprite_Queue((SpriteRect *)dotSrc, (SpriteRect *)dot, g_challengeBlobTexture, 2, 0, NULL, NULL,
                          g_stageMapCarColours[i], 8);
         }
     }

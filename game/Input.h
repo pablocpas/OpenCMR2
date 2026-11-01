@@ -23,17 +23,20 @@ struct JoystickInfo {
     JoystickBinding bindings[8];
 };
 
+// Key (DIK_*) of each button bit of a keyboard device: bit 1 << n for the
+// first ten (the actions of ControllerData::actionMasks), then Escape and
+// function keys.
 struct KeyboardInfo {
-    BYTE field_0x468;
-    BYTE field_0x469;
-    BYTE field_0x46a;
-    BYTE field_0x46b;
-    BYTE field_0x46c;
-    BYTE field_0x46d;
-    BYTE field_0x46e;
-    BYTE field_0x46f;
-    BYTE field_0x470;
-    BYTE field_0x471;
+    BYTE steerLeftKey;
+    BYTE steerRightKey;
+    BYTE throttleKey;
+    BYTE brakeKey;
+    BYTE handbrakeKey;
+    BYTE shiftUpKey;
+    BYTE shiftDownKey;
+    BYTE cameraCycleKey;
+    BYTE driverCycleKey;
+    BYTE backKey;
     BYTE field_0x472;
     BYTE field_0x473;
     BYTE field_0x474;
@@ -43,13 +46,13 @@ struct KeyboardInfo {
 };
 
 struct DeviceInfo {
-    DWORD field_0x0;        // device type: 0/3 joystick, 1 keyboard, 2 mouse
-    unsigned int field_0x4; // buttons held
-    unsigned int field_0x8; // buttons pressed this frame
-    unsigned int field_0xc; // direction buttons auto-repeated this frame
-    int field_0x10;         // next auto-repeat time
-    int field_0x14;
-    int field_0x18;
+    DWORD type;             // 0/3 joystick, 1 keyboard, 2 mouse, -1 none
+    unsigned int held;      // buttons held
+    unsigned int pressed;   // buttons pressed this frame
+    unsigned int repeated;  // direction buttons auto-repeated this frame
+    int repeatTime;         // next auto-repeat time
+    int buttonCount;        // joystick buttons read (names in field_0x284)
+    int joystickIndex;      // into CInput::m_joysticks, -1 without one
     int field_0x1c;
     BYTE pad2[92];
     char deviceInstanceName[MAX_PATH];
@@ -67,11 +70,11 @@ struct DeviceInfo {
     };
 };
 
-struct Unk0x0059f8cc {
-    BYTE field_0x0;
-    BYTE field_0x1;
-    BYTE field_0x2;
-    BYTE field_0x3;
+struct DeviceCounts {
+    BYTE nextDevice;
+    BYTE keyboardCount;
+    BYTE joystickCount;
+    BYTE attachedJoystickCount;
 };
 
 struct ForceFeedbackDevice {
@@ -94,29 +97,34 @@ struct ControllerData {
     unsigned int field_0x0;
     unsigned int field_0x4;
     char name[MAX_PATH];
-    DWORD field_0x10c;
-    DWORD field_0x110;
-    DWORD field_0x114;
-    DWORD field_0x118;
+    DWORD hasAxes;              // a joystick or mouse
+    DWORD analogSteering;       // steering from axisIndices[0], [1]
+    DWORD analogPedals;         // throttle and brake from axisIndices[2], [3]
+    DWORD forceFeedback;        // the device has force feedback
     DWORD field_0x11c;
-    DWORD field_0x120;
-    DWORD field_0x124;
-    unsigned short field_0x128; // are you actually a struct?
-    unsigned short field_0x12a;
-    unsigned short field_0x12c;
-    unsigned short field_0x12e;
-    unsigned short field_0x130;
-    unsigned short field_0x132;
-    unsigned short field_0x134;
-    unsigned short field_0x136;
-    unsigned short field_0x138;
-    unsigned short field_0x13a;
+    DWORD throttleOnPositive;   // one pedal axis: throttle on its positive half
+    DWORD smoothSteering;       // Car::steeringInputMode 1 (eased), else 2 (direct)
+    union {
+        unsigned short actionMasks[10]; // 0x128 indexed action/device masks
+        struct {
+            unsigned short steerLeftMask;
+            unsigned short steerRightMask;
+            unsigned short throttleMask;
+            unsigned short brakeMask;
+            unsigned short handbrakeMask;
+            unsigned short shiftUpMask;
+            unsigned short shiftDownMask;
+            unsigned short cameraCycleMask;
+            unsigned short driverCycleMask;
+            unsigned short backMask;
+        };
+    };
     unsigned short field_0x13c;
-    BYTE field_0x13e[9];            // key (DIK_*) of each keyboard binding
+    BYTE keys[9];            // key (DIK_*) of each keyboard binding
     char keyNames[9][20];           // 0x147 text shown for each binding
     BYTE field_0x1fb[0x15];
-    ControllerDataUnk0x210 field_0x210[10];
-    unsigned short field_0x2d8[10];
+    ControllerDataUnk0x210 axisBindings[10];
+    unsigned short axisIndices[10];
     BYTE index;                     // 0x2ec
     BYTE field_0x2ed[3];
 };
@@ -161,7 +169,7 @@ CMR2_LAYOUT_CHECK(InputFeedbackStateSize, sizeof(InputFeedbackState) == 0x1c0);
 class CInput {
 public:
     static void *m_lpDirectInput7;          // PORT: unused (IDirectInput7)
-    static Unk0x0059f8cc m_unk0x0059f8cc;
+    static DeviceCounts m_deviceCounts;
     static char m_strKeyboard[12];
     static InputDeviceState m_deviceState;
     static unsigned int m_keyboardDelay;
@@ -173,8 +181,8 @@ public:
     
 
     
-    static USHORT m_unk0x00511400[8];
-    static InputDevice *m_unk0x0059f6b0[8];
+    static USHORT m_axisOffsets[8];
+    static InputDevice *m_joysticks[8];
     static CHAR m_strD[4];
     static CHAR m_strU[4];
     static CHAR m_strR[4];
@@ -211,7 +219,7 @@ public:
     static ControllerData m_controllerInfo[6];
 
     // GLOBAL: CMR2 0x005168f4
-    static unsigned short m_unk0x005168f4[8];
+    static unsigned short m_playerControllers[8];
 
     static BOOL DInputCreate(void);
     static InputDevice *DInputCreateDevice(int type, int index);
@@ -235,7 +243,7 @@ public:
     static void DInputReleaseDevices(void);
     static void LoadControllerInfo(void);
     static void ApplyControllerButtonBindings(unsigned short param1);
-    static void AssignUnmappedControllerActions(unsigned int param1, ControllerData * param2);
+    static void AssignUnmappedControllerActions(unsigned int deviceIndex, ControllerData *pController);
     static void SetDeviceKeyBinding(int param1, unsigned int param2, unsigned int param3);
     static DeviceInfo *GetAvailableDeviceRecord(int index);
     static BYTE FindFirstClearBindingBit(unsigned int param1);
@@ -258,7 +266,7 @@ public:
     static DWORD GetControllerField120(unsigned int param1);
     static DWORD GetControllerField124(unsigned short param1);
     static unsigned int GetEnabledControllerAxisBinding(unsigned int param1, int param2);
-    static BOOL IsControllerActionBound(int param1, ControllerData *param2);
+    static BOOL IsControllerActionBound(int action, ControllerData *pController);
     static void SetForceFeedbackDeviceValue(DWORD param1, int index);
     static void StartForceFeedbackEffect(int effectIndex, int deviceIndex);
     static char *FormatString(LPCSTR format, ...);
@@ -271,7 +279,7 @@ public:
     static int CreateForceFeedbackEffect(int effectType, DWORD duration, LONG coefficient, LONG offset, int triggerButton, int deviceIndex);
     static int CreateSpringEffect(DWORD duration, LONG coefficient, LONG offset, int triggerButton, int deviceIndex);
     static int CreateDamperEffect(DWORD duration, LONG coefficient, LONG offset, int triggerButton, int deviceIndex);
-    static short GetButtonMapping(unsigned short controller, int button);
+    static short GetButtonMapping(unsigned short controllerSlot, int action);
     static HRESULT SetEffectGain(int effectIndex, DWORD gain, int deviceIndex);
     static HRESULT SetEffectGainAndDirection(int effectIndex, DWORD gain, LONG direction, int deviceIndex);
     static int CreateConstantForceEffect(DWORD duration, LONG direction, LONG magnitude, DWORD attackTime, DWORD attackLevel, DWORD fadeTime, DWORD fadeLevel, int triggerButton, int deviceIndex);

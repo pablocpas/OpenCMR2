@@ -477,7 +477,7 @@ void CarPhysics_DrawBodyWheelAndSkidShadows(Car *pCar, int view)
     colour[3] = 0x32;
     count = *g_physSkidCount[pCar->index];
     all = TRUE;
-    if (StageTiming_GetCarReplayRecord(pCar->index)->partHidden[3] != 0) {
+    if (CarPart_GetSet(pCar->index)->partHidden[3] != 0) {
         all = FALSE;
         count -= g_physSkidRange[pCar->index][1];
     }

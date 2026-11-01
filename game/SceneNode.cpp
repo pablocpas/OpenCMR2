@@ -1191,14 +1191,14 @@ static __forceinline void ShadowPart_Init(ShadowPart *pPart)
 {
     int i;
 
-    pPart->pVertexWork = CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * 0xc);
-    pPart->pVertexFlags = CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * 4);
-    pPart->pVertexWork2 = CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * 0xc);
-    pPart->pTriangleWork = (BYTE **)CFileBuffer::AllocateLockedBuffer(pPart->pMesh->triangleCount * 3 * sizeof(*pPart->pTriangleWork));
-    pPart->pVertices = (BYTE *)CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * 0x30);
+    pPart->pSourceNormals = (float (*)[3])CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * sizeof(*pPart->pSourceNormals));
+    pPart->pLightDotProducts = (float *)CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * sizeof(*pPart->pLightDotProducts));
+    pPart->pBiasedPositions = (float (*)[3])CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * sizeof(*pPart->pBiasedPositions));
+    pPart->pFaceVertices = (MeshVertexF **)CFileBuffer::AllocateLockedBuffer(pPart->pMesh->triangleCount * 3 * sizeof(*pPart->pFaceVertices));
+    pPart->pVertices = (MeshVertexF *)CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * sizeof(*pPart->pVertices));
     for (i = 0; i < pPart->pMesh->field_0x10; i++)
-        *(DWORD *)(pPart->pVertices + i * 0x30 + 0x1c) = 0xff000000;
-    pPart->pVertexWork3 = CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * 0xc);
+        pPart->pVertices[i].specularColour = 0xff000000;
+    pPart->pEmittedPositions = (float (*)[3])CFileBuffer::AllocateLockedBuffer(pPart->pMesh->field_0x10 * sizeof(*pPart->pEmittedPositions));
     pPart->verticesDirty = 1;
 }
 
@@ -1748,8 +1748,8 @@ void Scene_ProjectCasterIntoLightZone(LightZoneItem *pItem, ShadowCaster *pCaste
     ShadowPart *pPart;
     float *pVert;
     float *pf;
-    float *pIn;
-    float *pOut;
+    float (*pIn)[3];
+    MeshVertexF *pOut;
     MeshVertexF **pTri;
     MeshVertexF *pv0;
     MeshVertexF *pv1;
@@ -1886,13 +1886,13 @@ void Scene_ProjectCasterIntoLightZone(LightZoneItem *pItem, ShadowCaster *pCaste
                     ray[0] = plane[0] * inv;
                     ray[1] = plane[1] * inv;
                     ray[2] = plane[2] * inv;
-                    pIn = (float *)pPart->pVertexWork3;
-                    pOut = (float *)((BYTE *)pPart->pVertices + 0x24);
+                    pOut = pPart->pVertices;
+                    pIn = pPart->pEmittedPositions;
                     for (vi = 0; vi < (unsigned short)pPart->vertexCount; vi++) {
                         {
-                            dx = pIn[0] - pos[0];
-                            dy = pIn[1] - pos[1];
-                            dz = pIn[2] - pos[2];
+                            dx = (*pIn)[0] - pos[0];
+                            dy = (*pIn)[1] - pos[1];
+                            dz = (*pIn)[2] - pos[2];
                             t = dx * ray[0] + dy * ray[1] + dz * ray[2];
                             delta[0] = t * axis[0];
                             delta[1] = t * axis[1];
@@ -1901,13 +1901,13 @@ void Scene_ProjectCasterIntoLightZone(LightZoneItem *pItem, ShadowCaster *pCaste
                             qy = dy + delta[1];
                             qz = dz + delta[2];
                             depth = qx * projX[0] + qy * projX[1] + qz * projX[2];
-                            pOut[-1] = depth - minX + minZ;
-                            pOut[0] = minY - (qx * projY[0] + qy * projY[1] + qz * projY[2]) + minW;
-                            pIn += 3;
-                            pOut += 0xc;
+                            pOut->textureCoordinates[0][0] = depth - minX + minZ;
+                            pOut->textureCoordinates[0][1] = minY - (qx * projY[0] + qy * projY[1] + qz * projY[2]) + minW;
+                            pIn++;
+                            pOut++;
                         }
                     }
-                    pTri = (MeshVertexF **)pPart->pTriangleWork;
+                    pTri = pPart->pFaceVertices;
                     for (triIndex = 0; triIndex < (unsigned short)pPart->faceCount; triIndex++) {
                         {
                             pv0 = pTri[0];
@@ -1954,39 +1954,39 @@ extern const float g_float0_005 = 0.005f;
 // cleared; then every part whose geometry was still pending is emitted with the
 // shadow mesh builder.
 // FUNCTION: CMR2 0x004b4490
-void Scene_ProjectDirtyShadowParts(ShadowCaster *pCaster, int param2)
+void Scene_ProjectDirtyShadowParts(ShadowCaster *pCaster, int intensity)
 {
     ShadowPart *pPart;
-    int i;
-    int j;
+    int partIndex;
+    int vertexIndex;
     float scaled[3];
 
     if (pCaster->projectionDirty != 0) {
-        for (i = 0; i < pCaster->partCount; i++) {
-            pPart = &pCaster->pParts[i];
+        for (partIndex = 0; partIndex < pCaster->partCount; partIndex++) {
+            pPart = &pCaster->pParts[partIndex];
             if (pPart->verticesDirty != 0) {
                 {
-                    float *pSrc = (float *)pPart->pMesh->pVertexData;
-                    float *pWork2 = (float *)pPart->pVertexWork2;
-                    float *pWork = (float *)pPart->pVertexWork;
-                    for (j = 0; j < pPart->pMesh->field_0x10; j++) {
-                        pWork2[0] = pSrc[0];
-                        pWork2[1] = pSrc[1];
-                        pWork2[2] = pSrc[2];
-                        pWork[0] = pSrc[3];
-                        pWork[1] = pSrc[4];
-                        pWork[2] = pSrc[5];
-                        scaled[0] = pWork[0];
+                    MeshVertexF *pSrc = (MeshVertexF *)pPart->pMesh->pVertexData;
+                    float (*pBiasedPosition)[3] = pPart->pBiasedPositions;
+                    float (*pNormal)[3] = pPart->pSourceNormals;
+                    for (vertexIndex = 0; vertexIndex < pPart->pMesh->field_0x10; vertexIndex++) {
+                        (*pBiasedPosition)[0] = pSrc->x;
+                        (*pBiasedPosition)[1] = pSrc->y;
+                        (*pBiasedPosition)[2] = pSrc->z;
+                        (*pNormal)[0] = pSrc->nx;
+                        (*pNormal)[1] = pSrc->ny;
+                        (*pNormal)[2] = pSrc->nz;
+                        scaled[0] = (*pNormal)[0];
                         scaled[0] *= g_float0_005;
-                        scaled[1] = pWork[1];
+                        scaled[1] = (*pNormal)[1];
                         scaled[1] *= g_float0_005;
-                        scaled[2] = pWork[2] * g_float0_005;
-                        pWork2[0] += scaled[0];
-                        pWork2[1] += scaled[1];
-                        pWork2[2] += scaled[2];
-                        pWork += 3;
-                        pSrc += 12;
-                        pWork2 += 3;
+                        scaled[2] = (*pNormal)[2] * g_float0_005;
+                        (*pBiasedPosition)[0] += scaled[0];
+                        (*pBiasedPosition)[1] += scaled[1];
+                        (*pBiasedPosition)[2] += scaled[2];
+                        pNormal++;
+                        pSrc++;
+                        pBiasedPosition++;
                     }
                 }
             }
@@ -1995,8 +1995,8 @@ void Scene_ProjectDirtyShadowParts(ShadowCaster *pCaster, int param2)
     }
     pCaster->projectionDirty = 0;
     if (pCaster->meshDirty != 0) {
-        for (i = 0; i < pCaster->partCount; i++)
-            Scene_EmitProjectedShadowMesh(pCaster->pParts + i, param2);
+        for (partIndex = 0; partIndex < pCaster->partCount; partIndex++)
+            Scene_EmitProjectedShadowMesh(pCaster->pParts + partIndex, intensity);
     }
     pCaster->meshDirty = 0;
 }
@@ -2290,29 +2290,29 @@ void Scene_FreeShadowCasters(void)
         if (g_shadowCasters[n] != NULL) {
             if (g_shadowCasters[n]->pParts != NULL) {
                 for (i = 0; i < g_shadowCasters[n]->partCount; i++) {
-                    if (g_shadowCasters[n]->pParts[i].pVertexWork != NULL) {
-                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pVertexWork);
-                        g_shadowCasters[n]->pParts[i].pVertexWork = NULL;
+                    if (g_shadowCasters[n]->pParts[i].pSourceNormals != NULL) {
+                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pSourceNormals);
+                        g_shadowCasters[n]->pParts[i].pSourceNormals = NULL;
                     }
-                    if (g_shadowCasters[n]->pParts[i].pVertexFlags != NULL) {
-                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pVertexFlags);
-                        g_shadowCasters[n]->pParts[i].pVertexFlags = NULL;
+                    if (g_shadowCasters[n]->pParts[i].pLightDotProducts != NULL) {
+                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pLightDotProducts);
+                        g_shadowCasters[n]->pParts[i].pLightDotProducts = NULL;
                     }
-                    if (g_shadowCasters[n]->pParts[i].pVertexWork2 != NULL) {
-                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pVertexWork2);
-                        g_shadowCasters[n]->pParts[i].pVertexWork2 = NULL;
+                    if (g_shadowCasters[n]->pParts[i].pBiasedPositions != NULL) {
+                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pBiasedPositions);
+                        g_shadowCasters[n]->pParts[i].pBiasedPositions = NULL;
                     }
                     if (g_shadowCasters[n]->pParts[i].pVertices != NULL) {
                         CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pVertices);
                         g_shadowCasters[n]->pParts[i].pVertices = NULL;
                     }
-                    if (g_shadowCasters[n]->pParts[i].pVertexWork3 != NULL) {
-                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pVertexWork3);
-                        g_shadowCasters[n]->pParts[i].pVertexWork3 = NULL;
+                    if (g_shadowCasters[n]->pParts[i].pEmittedPositions != NULL) {
+                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pEmittedPositions);
+                        g_shadowCasters[n]->pParts[i].pEmittedPositions = NULL;
                     }
-                    if (g_shadowCasters[n]->pParts[i].pTriangleWork != NULL) {
-                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pTriangleWork);
-                        g_shadowCasters[n]->pParts[i].pTriangleWork = NULL;
+                    if (g_shadowCasters[n]->pParts[i].pFaceVertices != NULL) {
+                        CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts[i].pFaceVertices);
+                        g_shadowCasters[n]->pParts[i].pFaceVertices = NULL;
                     }
                 }
                 CFileBuffer::FreeGenericFileBuffer(g_shadowCasters[n]->pParts);
@@ -2645,50 +2645,48 @@ extern const float g_float0_1;    // 0x00511ce8, 0.1f
 // GLOBAL: CMR2 0x006e0354
 unsigned short g_shadowVertexRemap[0x3f0];
 
-// Emits the shadow mesh of a scene node: transforms the light direction and
-// basis by the node matrix, projects every vertex of the mesh, then walks the
-// faces: a face whose three vertices are behind the light plane is dropped,
-// and the vertices of the others are emitted once with their lit position and
-// their colour, sharing the emitted vertex of duplicated vertices.
+// Transforms the light into mesh space and dots it with the source normals.
+// Faces whose three normal/light dots are negative are dropped; accepted
+// faces share remapped render vertices, with alpha ramped by each light dot.
 // FUNCTION: CMR2 0x004b4180
-void Scene_EmitProjectedShadowMesh(ShadowPart *pPart, int param_2)
+void Scene_EmitProjectedShadowMesh(ShadowPart *pPart, int intensity)
 {
-    int *pi;
-    BYTE **pEdge;
-    float scale;
-    BYTE *pOut;
-    INT_PTR off;
-    int k;
+    int *pSourceIndex;
+    MeshVertexF **pFaceVertex;
+    float alphaScale;
+    float (*pEmittedPosition)[3];
+    INT_PTR referenceOffset;
+    int verticesLeft;
     unsigned short *pFace;
-    int i;
+    int remaining;
     BYTE colour[4];
-    BYTE baseColour;
-    float light[3];
-    int index[3];
-    float lightOffset[3];
-    int v;
-    short s;
-    BYTE *pVtx;
-    float *pPos;
-    float *pDst;
+    BYTE baseAlpha;
+    float worldPosition[3];
+    int sourceIndices[3];
+    float nodePosition[3];
+    int sourceVertexIndex;
+    short emittedIndex;
+    MeshVertexF *pVertex;
+    float (*pNormal)[3];
+    float *pLightDot;
 
     *(DWORD *)colour = g_shadowColour;
-    if (param_2 > 0x10000)
-        param_2 = 0x10000;
-    param_2 = FixMul(g_shadowLevel, param_2);
-    scale = (float)(X87S_MUL((double)param_2, CGraphics::m_oneOver65536));
-    baseColour = (BYTE)FTOI(__int64, scale);
+    if (intensity > 0x10000)
+        intensity = 0x10000;
+    intensity = FixMul(g_shadowLevel, intensity);
+    alphaScale = (float)(X87S_MUL((double)intensity, CGraphics::m_oneOver65536));
+    baseAlpha = (BYTE)FTOI(__int64, alphaScale);
     pPart->faceCount = 0;
     pPart->vertexCount = 0;
     {
         unsigned short *pw = g_shadowVertexRemap;
-        for (i = pPart->pMesh->field_0x10; i > 0; i--)
+        for (remaining = pPart->pMesh->field_0x10; remaining > 0; remaining--)
             *pw++ = 0xffff;
     }
 
-    lightOffset[0] = pPart->pNode->worldF[12];
-    lightOffset[1] = pPart->pNode->worldF[13];
-    lightOffset[2] = pPart->pNode->worldF[14];
+    nodePosition[0] = pPart->pNode->worldF[12];
+    nodePosition[1] = pPart->pNode->worldF[13];
+    nodePosition[2] = pPart->pNode->worldF[14];
     FloatMatrix_InverseRotateVector(pPart->light, g_sceneLightDirF,
                                     pPart->pNode->worldF);
     FloatMatrix_InverseRotateVector(pPart->light + 3, g_sceneLightBasisF,
@@ -2699,74 +2697,74 @@ void Scene_EmitProjectedShadowMesh(ShadowPart *pPart, int param_2)
                                     pPart->pNode->worldF);
 
     {
-        pPos = (float *)pPart->pVertexWork;
-        pDst = (float *)pPart->pVertexFlags;
-        for (i = pPart->pMesh->field_0x10; i > 0; i--) {
-            *pDst = pPos[2] * pPart->light[2] + pPos[1] * pPart->light[1] + pPos[0] * pPart->light[0];
-            pDst++;
-            pPos += 3;
+        pNormal = pPart->pSourceNormals;
+        pLightDot = pPart->pLightDotProducts;
+        for (remaining = pPart->pMesh->field_0x10; remaining > 0; remaining--) {
+            *pLightDot = (*pNormal)[2] * pPart->light[2] + (*pNormal)[1] * pPart->light[1] + (*pNormal)[0] * pPart->light[0];
+            pLightDot++;
+            pNormal++;
         }
     }
 
-    pEdge = pPart->pTriangleWork;
-    pOut = (BYTE *)pPart->pVertexWork3;
-    pVtx = pPart->pVertices;
-    i = pPart->pMesh->triangleCount;
-    if (i > 0) {
+    pFaceVertex = pPart->pFaceVertices;
+    pEmittedPosition = pPart->pEmittedPositions;
+    pVertex = pPart->pVertices;
+    remaining = pPart->pMesh->triangleCount;
+    if (remaining > 0) {
         pFace = &pPart->pMesh->pTriangles->vertexIndex[1];
         do {
-            index[0] = pFace[-1];
-            index[1] = pFace[0];
-            index[2] = pFace[1];
-            if (((float *)pPart->pVertexFlags)[index[0]] >= g_netZero ||
-                ((float *)pPart->pVertexFlags)[index[1]] >= g_netZero ||
-                ((float *)pPart->pVertexFlags)[index[2]] >= g_netZero) {
-                pi = index;
-                // 64BIT: retain MSVC6's shared index/destination cursor, but
+            sourceIndices[0] = pFace[-1];
+            sourceIndices[1] = pFace[0];
+            sourceIndices[2] = pFace[1];
+            if (pPart->pLightDotProducts[sourceIndices[0]] >= g_netZero ||
+                pPart->pLightDotProducts[sourceIndices[1]] >= g_netZero ||
+                pPart->pLightDotProducts[sourceIndices[2]] >= g_netZero) {
+                pSourceIndex = sourceIndices;
+                // 64BIT: retain MSVC6'emittedIndex shared sourceIndices/destination cursor, but
                 // account for native pointer slots being wider than ints.
-                off = (INT_PTR)pEdge - (INT_PTR)index;
-                k = 3;
+                referenceOffset = (INT_PTR)pFaceVertex - (INT_PTR)sourceIndices;
+                verticesLeft = 3;
                 do {
-                    v = *pi;
-                    s = g_shadowVertexRemap[v];
-                    if (s == -1) {
-                        DWORD *pSrcD = (DWORD *)((BYTE *)pPart->pVertexWork2 + v * 0xc);
-                        DWORD *pOutD = (DWORD *)pOut;
+                    sourceVertexIndex = *pSourceIndex;
+                    emittedIndex = g_shadowVertexRemap[sourceVertexIndex];
+                    if (emittedIndex == -1) {
+                        DWORD *pSrcD = (DWORD *)pPart->pBiasedPositions[sourceVertexIndex];
+                        DWORD *pOutD = (DWORD *)*pEmittedPosition;
                         pOutD[0] = pSrcD[0];
                         pOutD[1] = pSrcD[1];
                         pOutD[2] = pSrcD[2];
-                        *(BYTE **)((char *)pi + off + (pi - index) * (sizeof(*pEdge) - sizeof(*pi))) = pVtx;
-                        g_shadowVertexRemap[v] = pPart->vertexCount;
+                        *(MeshVertexF **)((char *)pSourceIndex + referenceOffset + (pSourceIndex - sourceIndices) * (sizeof(*pFaceVertex) - sizeof(*pSourceIndex))) = pVertex;
+                        g_shadowVertexRemap[sourceVertexIndex] = pPart->vertexCount;
                         {
-                            float vy = ((float *)pPart->pVertexFlags)[v];
-                            colour[3] = baseColour;
-                            if (vy < g_netZero)
+                            float lightDot = pPart->pLightDotProducts[sourceVertexIndex];
+                            colour[3] = baseAlpha;
+                            if (lightDot < g_netZero)
                                 colour[3] = 0;
-                            else if (vy < g_float0_1)
-                                colour[3] = (BYTE)FTOI(__int64, vy * g_float10 * scale);
+                            else if (lightDot < g_float0_1)
+                                colour[3] = (BYTE)FTOI(__int64, lightDot * g_float10 * alphaScale);
                         }
-                        *(DWORD *)(pVtx + 0x18) =
+                        pVertex->diffuseColour =
                             ((((DWORD)colour[3] << 8 | colour[0]) << 8 | colour[1]) << 8) | colour[2];
-                        FloatMatrix_RotateVector(light, (float *)pOut,
+                        FloatMatrix_RotateVector(worldPosition, *pEmittedPosition,
                                                  pPart->pNode->worldF);
-                        light[0] = light[0] + lightOffset[0];
-                        light[1] = light[1] + lightOffset[1];
-                        light[2] = light[2] + lightOffset[2];
-                        *(float *)pVtx = light[0];
-                        *(float *)(pVtx + 4) = light[1];
-                        *(float *)(pVtx + 8) = light[2];
-                        pOut += 0xc;
-                        pVtx += 0x30;
+                        worldPosition[0] = worldPosition[0] + nodePosition[0];
+                        worldPosition[1] = worldPosition[1] + nodePosition[1];
+                        worldPosition[2] = worldPosition[2] + nodePosition[2];
+                        pVertex->x = worldPosition[0];
+                        pVertex->y = worldPosition[1];
+                        pVertex->z = worldPosition[2];
+                        pEmittedPosition++;
+                        pVertex++;
                         (pPart->vertexCount)++;
                     } else {
-                        *(BYTE **)((char *)pi + off + (pi - index) * (sizeof(*pEdge) - sizeof(*pi))) = pPart->pVertices + s * 0x30;
+                        *(MeshVertexF **)((char *)pSourceIndex + referenceOffset + (pSourceIndex - sourceIndices) * (sizeof(*pFaceVertex) - sizeof(*pSourceIndex))) = pPart->pVertices + emittedIndex;
                     }
-                    pi++;
-                } while (--k);
-                pEdge += 3;
+                    pSourceIndex++;
+                } while (--verticesLeft);
+                pFaceVertex += 3;
                 (pPart->faceCount)++;
             }
             pFace += 0x26;
-        } while (--i);
+        } while (--remaining);
     }
 }

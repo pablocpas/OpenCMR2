@@ -1168,16 +1168,16 @@ extern double g_fixedDegreesToAngle12;
 // FUNCTION: CMR2 0x00493ed0
 void CarPhysics_DampSurfaceSteeringAngle(void)
 {
-    int scaleRight;
-    int scaleLeft;
+    int outwardRate;
+    int centringRate;
     int value;
     int other;
     short target;
     short current;
     short delta;
 
-    scaleRight = g_pAutoGearCar->field_0x7fc;
-    scaleLeft = g_pAutoGearCar->field_0x800;
+    outwardRate = g_pAutoGearCar->steeringOutwardRate;
+    centringRate = g_pAutoGearCar->steeringCentringRate;
     other = FixMul(*(BYTE *)&g_pAutoGearCar->flag0x1d0[1] << 16, 0x410);
     if (other > 0x10000)
         other = 0x10000;
@@ -1209,17 +1209,17 @@ void CarPhysics_DampSurfaceSteeringAngle(void)
         delta = 0x1000 - delta;
     if (delta >= 0x20 || delta <= -0x20) {
         if (current == 0)
-            delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleRight), g_fixedDegreesToAngle12));
+            delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, outwardRate), g_fixedDegreesToAngle12));
         else if (current > 0) {
             if (delta < 0)
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleRight), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, outwardRate), g_fixedDegreesToAngle12));
             else
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleLeft), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, centringRate), g_fixedDegreesToAngle12));
         } else {
             if (delta > 0)
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleRight), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, outwardRate), g_fixedDegreesToAngle12));
             else
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleLeft), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, centringRate), g_fixedDegreesToAngle12));
         }
     }
     *(short *)&g_pAutoGearCar->wheelSteeringAngle -= delta;
@@ -1262,8 +1262,8 @@ void AutoGear_IntegrateSteeringAccumulator(void)
                          g_pAutoGearCar->cornerGrip[0].field_0x14, 0x8000);
     g_unk0x00592164 = FixMul(g_unk0x00592164, v);
     g_unk0x00592168 = FixMul(g_unk0x00592168, v);
-    g_unk0x00592164 = FixMul(g_unk0x00592164, g_pAutoGearCar->field_0x804);
-    g_unk0x00592168 = FixMul(g_unk0x00592168, g_pAutoGearCar->field_0x804);
+    g_unk0x00592164 = FixMul(g_unk0x00592164, g_pAutoGearCar->steeringForceScale);
+    g_unk0x00592168 = FixMul(g_unk0x00592168, g_pAutoGearCar->steeringForceScale);
 
     if ((g_pAutoGearCar->flag0x1d0[0] == 0 &&
          g_pAutoGearCar->flag0x1d0[1] == 0) ||
@@ -1314,7 +1314,7 @@ convert:
         *(short *)&g_pAutoGearCar->wheelSteeringAngle -= limit;
 }
 
-CarPartSet *StageTiming_GetCarReplayRecord(int index);
+CarPartSet *CarPart_GetSet(int carIndex);
 extern double g_fixedDegreesToAngle12;
 
 // Applies the automatic-gear state to the car for one frame: rebuilds the body
@@ -1330,7 +1330,7 @@ void AutoGear_UpdateCarGearState(Car *pCar)
     int v;
 
     g_pAutoGearCar = pCar;
-    g_autoGearPartSet = StageTiming_GetCarReplayRecord((int)pCar->index);
+    g_autoGearPartSet = CarPart_GetSet((int)pCar->index);
     AutoGear_ApplyShiftBodyNudge();
     if (g_pAutoGearCar->analogThrottle != 0) {
         if (*(BYTE *)&g_pAutoGearCar->flag0x1d0[2] != 0) {
