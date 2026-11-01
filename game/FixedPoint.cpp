@@ -789,25 +789,25 @@ void View_SetPlayerProjection(unsigned int player)
 
 // Layout of one force-feedback slot (0x539200). The full definition lives in
 // StageTiming.cpp; keep both copies in sync.
-struct Unk0x00539278 {
-    int field_0x0;
-    int field_0x4;
-    int field_0x8;
-    int field_0xc;
-    int field_0x10;
-    int field_0x14;
-    int field_0x18;
-    int field_0x1c;
-    int field_0x20;
-    int field_0x24;
-    int field_0x28;
-    signed char field_0x2c;         // device index, < 0 when none
+struct ForceFeedbackSlot {
+    int appliedSpring;          // the forces last sent: spring, damper, constant
+    int appliedDamper;
+    int appliedConstant;
+    int spring;                 // the forces of this step
+    int damper;
+    int constant;               // the steering force
+    int textureForce;           // ControllerData::textureForce, scales the steering force
+    int effectsForce;           // ControllerData::effectsForce, scales spring and damper
+    int roadNoise;              // random force of the road surface, alternating sign
+    int impactKick;             // fading kick of a front or rear impact
+    int impactShake;            // strength of the last impact, added to the road noise
+    signed char device;         // device index, < 0 when none
     BYTE pad_0x2d[3];
-    int field_0x30;
-    int field_0x34;                 // slot in use
+    int impactKickReversed;     // the kick pushes the other way
+    int active;                 // slot in use
 };
-extern Unk0x00539278 g_forceFeedbackSlots[2];
-extern Unk0x00539278 *g_pForceFeedbackSlot;
+extern ForceFeedbackSlot g_forceFeedbackSlots[2];
+extern ForceFeedbackSlot *g_pForceFeedbackSlot;
 extern Car *g_pForceFeedbackCar;
 
 // Rebuilds the rotation part of a matrix as an orthonormal basis that keeps
@@ -851,7 +851,7 @@ void ForceFeedback_UpdateSlot(Car *pCar, FixVector *pIn, int nonzero)
     // this for every car; the original indexes past the array with AI cars
     // (index >= 2) and overwrites the globals that follow, g_pForceFeedbackSlot
     // among them. Those updates go to a scratch slot instead.
-    static Unk0x00539278 s_otherCarSlot;
+    static ForceFeedbackSlot s_otherCarSlot;
     g_pForceFeedbackCar = pCar;
     if (pCar->index >= 0 && pCar->index < 2)
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[pCar->index];
@@ -867,12 +867,12 @@ void ForceFeedback_UpdateSlot(Car *pCar, FixVector *pIn, int nonzero)
             x = 0;
         else if (x > 0x10000)
             x = 0x10000;
-        if (x > g_pForceFeedbackSlot->field_0x24) {
-            g_pForceFeedbackSlot->field_0x24 = x;
+        if (x > g_pForceFeedbackSlot->impactKick) {
+            g_pForceFeedbackSlot->impactKick = x;
             if (v.z >= 0)
-                g_pForceFeedbackSlot->field_0x30 = 0;
+                g_pForceFeedbackSlot->impactKickReversed = 0;
             else
-                g_pForceFeedbackSlot->field_0x30 = 1;
+                g_pForceFeedbackSlot->impactKickReversed = 1;
         }
     }
     x = (unsigned int)FixVecLength(&v);
@@ -882,8 +882,8 @@ void ForceFeedback_UpdateSlot(Car *pCar, FixVector *pIn, int nonzero)
         x = 0;
     else if (x > 0x10000)
         x = 0x10000;
-    if (x > g_pForceFeedbackSlot->field_0x28)
-        g_pForceFeedbackSlot->field_0x28 = x;
+    if (x > g_pForceFeedbackSlot->impactShake)
+        g_pForceFeedbackSlot->impactShake = x;
 }
 
 // Chase camera state (HudDash.cpp): mode per view record, the records' up and

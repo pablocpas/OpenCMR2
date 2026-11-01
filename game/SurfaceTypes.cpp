@@ -1380,8 +1380,8 @@ void Surface_ConfigureMenuInput(void)
     int rate;
 
     g_unk0x0058dc5c = -1;
-    CInput::SetInputRepeatTimingState(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
-    CInput::SetInputRepeatTimingParameters(g_unk0x0058dc58, g_unk0x0058dc58 + 1, g_unk0x0058dc58 + 2, g_unk0x0058dc58 + 3,
+    CInput::SetMenuSoundVolume(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
+    CInput::SetMenuSounds(g_unk0x0058dc58, g_unk0x0058dc58 + 1, g_unk0x0058dc58 + 2, g_unk0x0058dc58 + 3,
                          g_unk0x0058dc58 + 4);
     Menu_SetInputStateFlag(1);
 }

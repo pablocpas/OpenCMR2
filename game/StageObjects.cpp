@@ -7943,7 +7943,7 @@ void StageObject_ResetCarStartControls(int index)
     FixVecScale(&g_controlCar->velocity, &g_controlCar->velocity, 0xf851);
 }
 
-DWORD Input_GetControllerField110(unsigned short slot);
+DWORD Input_GetControllerAnalogSteering(unsigned short slot);
 
 // Reads the controller mapping of a slot into the car control masks and the
 // analogue flags.
@@ -7959,15 +7959,15 @@ void StageObject_ReadCarControllerMapping(int slot)
     g_carButtonMasks[6] = CInput::GetButtonMapping(slot, 6);
     g_carButtonMasks[7] = CInput::GetButtonMapping(slot, 7);
     g_carButtonMasks[8] = CInput::GetButtonMapping(slot, 8);
-    if (Input_GetControllerField110(slot) == 0 || (int)CInput::GetEnabledControllerAxisBinding(slot, 0) == -1)
+    if (Input_GetControllerAnalogSteering(slot) == 0 || (int)CInput::GetEnabledControllerAxisBinding(slot, 0) == -1)
         g_carAxisInputEnabled[0] = 0;
     else
         g_carAxisInputEnabled[0] = 1;
-    if (CInput::GetControllerField114(slot) == 0 || (int)CInput::GetEnabledControllerAxisBinding(slot, 2) == -1)
+    if (CInput::GetControllerAnalogPedals(slot) == 0 || (int)CInput::GetEnabledControllerAxisBinding(slot, 2) == -1)
         g_carAxisInputEnabled[1] = 0;
     else
         g_carAxisInputEnabled[1] = 1;
-    if (CInput::GetControllerField114(slot) != 0 && (int)CInput::GetEnabledControllerAxisBinding(slot, 3) != -1) {
+    if (CInput::GetControllerAnalogPedals(slot) != 0 && (int)CInput::GetEnabledControllerAxisBinding(slot, 3) != -1) {
         g_carAxisInputEnabled[2] = 1;
         return;
     }
@@ -10893,7 +10893,7 @@ int Replay_InitCarStreamState(ReplayStream *p, int unused, BYTE car)
         return 0;
     p->steeringModeOption = 0;
     if (car < 2)
-        p->steeringModeOption = CInput::GetControllerField124(car);
+        p->steeringModeOption = CInput::GetControllerSmoothSteering(car);
     p->car = car;
     p->recording = 1;
     p->laneCount = 0;
@@ -12485,7 +12485,7 @@ void StageObject_UpdatePlayerControlIndicators(int player, int device)
                 axisBrake = -1;
             }
             if (axisSteer != -1) {
-                if (CInput::GetControllerField124((short)g_controlCar->index) != 0)
+                if (CInput::GetControllerSmoothSteering((short)g_controlCar->index) != 0)
                     g_controlCar->steeringInputMode = 1;
                 else
                     g_controlCar->steeringInputMode = 2;
@@ -12514,8 +12514,8 @@ void StageObject_UpdatePlayerControlIndicators(int player, int device)
                 half = *pAxis < 0 ? -*pAxis : *pAxis;
                 half = FixMul(half, 0x3f0000) >> 16;
                 raw = *pAxis;
-                if ((raw <= 0 && axisThrottle == axisBrake && CInput::GetControllerField120(device) == 0) ||
-                    (raw > 0 && axisThrottle == axisBrake && CInput::GetControllerField120(device) != 0)) {
+                if ((raw <= 0 && axisThrottle == axisBrake && CInput::GetControllerThrottleOnPositive(device) == 0) ||
+                    (raw > 0 && axisThrottle == axisBrake && CInput::GetControllerThrottleOnPositive(device) != 0)) {
                     g_controlCar->flag0x1d0[2] = (char)half;
                 } else if (axisThrottle == axisBrake) {
                     g_controlCar->analogBrake = 1;

@@ -1355,36 +1355,36 @@ void StageTiming_AllocateCarPartNodeTables(int count)
     CGame::RegisterCallback(StageTiming_FreeCarPartNodeTables, NULL);
 }
 
-struct Unk0x00539278 {
-    int field_0x0;
-    int field_0x4;
-    int field_0x8;
-    int field_0xc;
-    int field_0x10;
-    int field_0x14;
-    int field_0x18;
-    int field_0x1c;
-    int field_0x20;
-    int field_0x24;
-    int field_0x28;
-    signed char field_0x2c;         // device index, < 0 when none
+struct ForceFeedbackSlot {
+    int appliedSpring;          // the forces last sent: spring, damper, constant
+    int appliedDamper;
+    int appliedConstant;
+    int spring;                 // the forces of this step
+    int damper;
+    int constant;               // the steering force
+    int textureForce;           // ControllerData::textureForce, scales the steering force
+    int effectsForce;           // ControllerData::effectsForce, scales spring and damper
+    int roadNoise;              // random force of the road surface, alternating sign
+    int impactKick;             // fading kick of a front or rear impact
+    int impactShake;            // strength of the last impact, added to the road noise
+    signed char device;         // device index, < 0 when none
     BYTE pad_0x2d[3];
-    int field_0x30;
-    int field_0x34;                 // slot in use
+    int impactKickReversed;     // the kick pushes the other way
+    int active;                 // slot in use
 };
 
 // Force-feedback state of the two local players.
 // GLOBAL: CMR2 0x00539200
-Unk0x00539278 g_forceFeedbackSlots[2];
+ForceFeedbackSlot g_forceFeedbackSlots[2];
 // GLOBAL: CMR2 0x00539278
-Unk0x00539278 *g_pForceFeedbackSlot;
+ForceFeedbackSlot *g_pForceFeedbackSlot;
 
 // FUNCTION: CMR2 0x004246a0
 void ForceFeedback_CacheAppliedForces(void)
 {
     int i;
     for (i = 0; i < 3; i++)
-        (&g_pForceFeedbackSlot->field_0x0)[i] = (&g_pForceFeedbackSlot->field_0xc)[i];
+        (&g_pForceFeedbackSlot->appliedSpring)[i] = (&g_pForceFeedbackSlot->spring)[i];
 }
 
 // Re-applies the stored force-feedback values to the selected device.
@@ -1392,24 +1392,24 @@ void ForceFeedback_CacheAppliedForces(void)
 // FUNCTION: CMR2 0x00424560
 void ForceFeedback_ApplyStoredForces(void)
 {
-    if (g_pForceFeedbackSlot->field_0x10 != g_pForceFeedbackSlot->field_0x4)
-        CInput::SetConditionCoefficient(1, g_pForceFeedbackSlot->field_0x10,
-                                        g_pForceFeedbackSlot->field_0x2c);
-    if (g_pForceFeedbackSlot->field_0xc != g_pForceFeedbackSlot->field_0x0)
-        CInput::SetConditionCoefficient(0, g_pForceFeedbackSlot->field_0xc,
-                                        g_pForceFeedbackSlot->field_0x2c);
-    if (g_pForceFeedbackSlot->field_0x14 != g_pForceFeedbackSlot->field_0x8) {
+    if (g_pForceFeedbackSlot->damper != g_pForceFeedbackSlot->appliedDamper)
+        CInput::SetConditionCoefficient(1, g_pForceFeedbackSlot->damper,
+                                        g_pForceFeedbackSlot->device);
+    if (g_pForceFeedbackSlot->spring != g_pForceFeedbackSlot->appliedSpring)
+        CInput::SetConditionCoefficient(0, g_pForceFeedbackSlot->spring,
+                                        g_pForceFeedbackSlot->device);
+    if (g_pForceFeedbackSlot->constant != g_pForceFeedbackSlot->appliedConstant) {
         int gain;
         int direction;
 
-        gain = g_pForceFeedbackSlot->field_0x14;
+        gain = g_pForceFeedbackSlot->constant;
         if (gain < 0) {
             gain = -gain;
             direction = 0x2328;
         } else {
             direction = 0x6978;
         }
-        CInput::SetEffectGainAndDirection(2, gain, direction, g_pForceFeedbackSlot->field_0x2c);
+        CInput::SetEffectGainAndDirection(2, gain, direction, g_pForceFeedbackSlot->device);
     }
 }
 
@@ -1422,16 +1422,16 @@ void ForceFeedback_ActivateIdleSlots(void)
 
     for (slot = 0; slot < 2; slot++) {
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[slot];
-        if (g_pForceFeedbackSlot->field_0x34 == 0) {
-            if (g_pForceFeedbackSlot->field_0x2c >= 0) {
-                g_pForceFeedbackSlot->field_0x28 = 0;
-                g_pForceFeedbackSlot->field_0x24 = 0;
+        if (g_pForceFeedbackSlot->active == 0) {
+            if (g_pForceFeedbackSlot->device >= 0) {
+                g_pForceFeedbackSlot->impactShake = 0;
+                g_pForceFeedbackSlot->impactKick = 0;
                 for (i = 0; i < 3; i++) {
-                    (&g_pForceFeedbackSlot->field_0x0)[i] = 0;
-                    (&g_pForceFeedbackSlot->field_0xc)[i] = 0;
+                    (&g_pForceFeedbackSlot->appliedSpring)[i] = 0;
+                    (&g_pForceFeedbackSlot->spring)[i] = 0;
                 }
             }
-            g_pForceFeedbackSlot->field_0x34 = 1;
+            g_pForceFeedbackSlot->active = 1;
         }
     }
 }
@@ -1445,14 +1445,14 @@ void ForceFeedback_DeactivateSlots(void)
 
     for (slot = 0; slot < 2; slot++) {
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[slot];
-        if (g_pForceFeedbackSlot->field_0x34 != 0) {
-            if (g_pForceFeedbackSlot->field_0x2c >= 0) {
+        if (g_pForceFeedbackSlot->active != 0) {
+            if (g_pForceFeedbackSlot->device >= 0) {
                 ForceFeedback_CacheAppliedForces();
                 for (i = 0; i < 3; i++)
-                    (&g_pForceFeedbackSlot->field_0xc)[i] = 0;
+                    (&g_pForceFeedbackSlot->spring)[i] = 0;
                 ForceFeedback_ApplyStoredForces();
             }
-            g_pForceFeedbackSlot->field_0x34 = 0;
+            g_pForceFeedbackSlot->active = 0;
         }
     }
 }
@@ -1466,10 +1466,10 @@ void ForceFeedback_StopSlotForces(void)
 
     for (slot = 0; slot < 2; slot++) {
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[slot];
-        if (g_pForceFeedbackSlot->field_0x34 != 0 && g_pForceFeedbackSlot->field_0x2c >= 0) {
+        if (g_pForceFeedbackSlot->active != 0 && g_pForceFeedbackSlot->device >= 0) {
             ForceFeedback_CacheAppliedForces();
             for (i = 0; i < 3; i++)
-                (&g_pForceFeedbackSlot->field_0xc)[i] = 0;
+                (&g_pForceFeedbackSlot->spring)[i] = 0;
             ForceFeedback_ApplyStoredForces();
         }
     }
@@ -1481,7 +1481,7 @@ void ForceFeedback_ComputeConditionCoefficients(void);
 void ForceFeedback_ComputeRoadNoise(void);
 void ForceFeedback_FadeImpulseForces(void);
 
-extern int g_unk0x00539270[2];
+extern int g_forceFeedbackFrontOnGround[2];
 extern Car *g_pForceFeedbackCar;
 
 // PORT: gamepads have rumble motors rather than a wheel's forces. They
@@ -1496,7 +1496,7 @@ static void ForceFeedback_UpdateRumble(int view)
     int surface;
     int impact;
 
-    if (g_pForceFeedbackSlot->field_0x2c < 0)
+    if (g_pForceFeedbackSlot->device < 0)
         return;
     speed = g_pForceFeedbackCar->speed;
     if (speed > 0x10000)
@@ -1504,7 +1504,7 @@ static void ForceFeedback_UpdateRumble(int view)
     else if (speed < 0)
         speed = 0;
     surface = FixMul(g_pForceFeedbackCar->cornerGrip[0].field_0x1c + g_pForceFeedbackCar->cornerGrip[1].field_0x1c, speed);
-    impact = g_pForceFeedbackSlot->field_0x28;
+    impact = g_pForceFeedbackSlot->impactShake;
     Input_SetRumble(view, impact, surface + impact / 2);
 }
 
@@ -1517,13 +1517,13 @@ void ForceFeedback_UpdatePlayerSlot(int view)
     g_pForceFeedbackSlot = &g_forceFeedbackSlots[view];
     g_pForceFeedbackCar = Car_Get(view);
     if (g_pForceFeedbackCar->field_0xb74 != 0) {
-        g_unk0x00539270[0] = g_pForceFeedbackCar->cornerOnGround[0];
-        g_unk0x00539270[1] = g_pForceFeedbackCar->cornerOnGround[1];
+        g_forceFeedbackFrontOnGround[0] = g_pForceFeedbackCar->cornerOnGround[0];
+        g_forceFeedbackFrontOnGround[1] = g_pForceFeedbackCar->cornerOnGround[1];
     } else {
-        g_unk0x00539270[0] = 0;
-        g_unk0x00539270[1] = 0;
+        g_forceFeedbackFrontOnGround[0] = 0;
+        g_forceFeedbackFrontOnGround[1] = 0;
     }
-    if (g_pForceFeedbackSlot->field_0x34 != 0) {
+    if (g_pForceFeedbackSlot->active != 0) {
         ForceFeedback_CacheAppliedForces();
         ForceFeedback_ComputeAxleRumble();
         ForceFeedback_ComputeRoadNoise();
@@ -1539,15 +1539,15 @@ void ForceFeedback_UpdatePlayerSlot(int view)
 // FUNCTION: CMR2 0x00424c00
 void ForceFeedback_FadeImpulseForces(void)
 {
-    if (g_pForceFeedbackSlot->field_0x24 > 0) {
-        g_pForceFeedbackSlot->field_0x24 -= 0x1999;
-        if (g_pForceFeedbackSlot->field_0x24 < 0)
-            g_pForceFeedbackSlot->field_0x24 = 0;
+    if (g_pForceFeedbackSlot->impactKick > 0) {
+        g_pForceFeedbackSlot->impactKick -= 0x1999;
+        if (g_pForceFeedbackSlot->impactKick < 0)
+            g_pForceFeedbackSlot->impactKick = 0;
     }
-    if (g_pForceFeedbackSlot->field_0x28 > 0) {
-        g_pForceFeedbackSlot->field_0x28 -= 0x1999;
-        if (g_pForceFeedbackSlot->field_0x28 < 0)
-            g_pForceFeedbackSlot->field_0x28 = 0;
+    if (g_pForceFeedbackSlot->impactShake > 0) {
+        g_pForceFeedbackSlot->impactShake -= 0x1999;
+        if (g_pForceFeedbackSlot->impactShake < 0)
+            g_pForceFeedbackSlot->impactShake = 0;
     }
 }
 
@@ -1675,15 +1675,15 @@ void ForceFeedback_CreateEffects(void)
 {
     int i;
 
-    CInput::CreateSpringEffect(-1, 0x2710, 0, -1, g_pForceFeedbackSlot->field_0x2c);
-    CInput::SetConditionCoefficient(0, 0, g_pForceFeedbackSlot->field_0x2c);
-    CInput::CreateDamperEffect(-1, 0, 0, -1, g_pForceFeedbackSlot->field_0x2c);
-    CInput::SetConditionCoefficient(1, 0, g_pForceFeedbackSlot->field_0x2c);
+    CInput::CreateSpringEffect(-1, 0x2710, 0, -1, g_pForceFeedbackSlot->device);
+    CInput::SetConditionCoefficient(0, 0, g_pForceFeedbackSlot->device);
+    CInput::CreateDamperEffect(-1, 0, 0, -1, g_pForceFeedbackSlot->device);
+    CInput::SetConditionCoefficient(1, 0, g_pForceFeedbackSlot->device);
     CInput::CreateConstantForceEffect(-1, 0, 0x2710, 0, 0, 0, 0, -1,
-                                      g_pForceFeedbackSlot->field_0x2c);
-    CInput::SetEffectGain(2, 0, g_pForceFeedbackSlot->field_0x2c);
+                                      g_pForceFeedbackSlot->device);
+    CInput::SetEffectGain(2, 0, g_pForceFeedbackSlot->device);
     for (i = 0; i < 3; i++)
-        CInput::StartForceFeedbackEffect(i, g_pForceFeedbackSlot->field_0x2c);
+        CInput::StartForceFeedbackEffect(i, g_pForceFeedbackSlot->device);
 }
 
 // GLOBAL: CMR2 0x00591af0
@@ -4791,11 +4791,11 @@ void StageTiming_RecordPassedCarSplit(int car, int driver)
 // GLOBAL: CMR2 0x005391f8
 int g_roadRumbleStrength[2];
 // GLOBAL: CMR2 0x00539270
-int g_unk0x00539270[2];
+int g_forceFeedbackFrontOnGround[2];
 // GLOBAL: CMR2 0x0053937c
 Car *g_pForceFeedbackCar;
 // GLOBAL: CMR2 0x00539380
-int g_unk0x00539380;
+int g_forceFeedbackRoadRumble;
 
 // Builds the steering force from the two front-corner axes, the wheel speed,
 // and the force-feedback slot's current centring/impact state.
@@ -4810,14 +4810,14 @@ void ForceFeedback_ComputeSteeringForce(void)
     int speed;
 
     force = g_roadRumbleStrength[1] - g_roadRumbleStrength[0];
-    if (g_unk0x00539270[0] != 0) {
+    if (g_forceFeedbackFrontOnGround[0] != 0) {
         pAxis = &g_pForceFeedbackCar->cornerAxis[0];
         pForward = &g_pForceFeedbackCar->forward;
         left = FixVecDot(pForward, pAxis);
     } else {
         left = 0;
     }
-    if (g_unk0x00539270[1] != 0) {
+    if (g_forceFeedbackFrontOnGround[1] != 0) {
         pAxis = &g_pForceFeedbackCar->cornerAxis[1];
         pForward = &g_pForceFeedbackCar->forward;
         right = FixVecDot(pForward, pAxis);
@@ -4835,19 +4835,19 @@ void ForceFeedback_ComputeSteeringForce(void)
         speed = 0;
     force = FixMul(speed, force);
     force = FixMul(force, 0x6666);
-    force += g_pForceFeedbackSlot->field_0x20;
-    if (g_pForceFeedbackSlot->field_0x30 != 0)
-        force += g_pForceFeedbackSlot->field_0x24;
+    force += g_pForceFeedbackSlot->roadNoise;
+    if (g_pForceFeedbackSlot->impactKickReversed != 0)
+        force += g_pForceFeedbackSlot->impactKick;
     else
-        force -= g_pForceFeedbackSlot->field_0x24;
+        force -= g_pForceFeedbackSlot->impactKick;
     if (FIX_ABS(force) > 0x10000)
         force = force > 0 ? 0x10000 : -0x10000;
 
-    speed = FixMul(0x40000, g_pForceFeedbackSlot->field_0x18);
+    speed = FixMul(0x40000, g_pForceFeedbackSlot->textureForce);
     force = FixMul(force, speed);
     if (FIX_ABS(force) > 0x10000)
         force = force > 0 ? 0x10000 : -0x10000;
-    g_pForceFeedbackSlot->field_0x14 = FixMul(force, 0x27100000) >> 16;
+    g_pForceFeedbackSlot->constant = FixMul(force, 0x27100000) >> 16;
 }
 
 // Computes each axle's rumble from its suspension travel and stiffness,
@@ -4861,7 +4861,7 @@ void ForceFeedback_ComputeAxleRumble(void)
     Car *p = g_pForceFeedbackCar;
 
     for (i = 0; i < 2; i++) {
-        if (g_unk0x00539270[i] == 0) {
+        if (g_forceFeedbackFrontOnGround[i] == 0) {
             g_roadRumbleStrength[i] = 0;
         } else {
             g_roadRumbleStrength[i] = p->wheelSurfaceFx[i].extraGrip + p->cornerGrip[i].grip2B;
@@ -4880,7 +4880,7 @@ void ForceFeedback_ComputeAxleRumble(void)
                 g_roadRumbleStrength[i] = 0x10000;
         }
     }
-    g_unk0x00539380 = FixMul(g_roadRumbleStrength[1] + g_roadRumbleStrength[0], 0x8000);
+    g_forceFeedbackRoadRumble = FixMul(g_roadRumbleStrength[1] + g_roadRumbleStrength[0], 0x8000);
 }
 
 // Builds the two condition-effect coefficients from the car's velocity,
@@ -4895,9 +4895,9 @@ void ForceFeedback_ComputeConditionCoefficients(void)
     int damper;
     int speed;
 
-    spring = FixMul(g_unk0x00539380, 0x6666) + 0x1999;
-    damper = FixMul(g_unk0x00539380, 0x4ccc);
-    if (g_unk0x00539270[0] != 0 && g_unk0x00539270[1] != 0) {
+    spring = FixMul(g_forceFeedbackRoadRumble, 0x6666) + 0x1999;
+    damper = FixMul(g_forceFeedbackRoadRumble, 0x4ccc);
+    if (g_forceFeedbackFrontOnGround[0] != 0 && g_forceFeedbackFrontOnGround[1] != 0) {
         pForward = &g_pForceFeedbackCar->forward;
         pVelocity = &g_pForceFeedbackCar->velocity;
         contact = FixVecDot(pForward, pVelocity);
@@ -4925,16 +4925,16 @@ void ForceFeedback_ComputeConditionCoefficients(void)
         }
     }
 
-    speed = FixMul(0x40000, g_pForceFeedbackSlot->field_0x1c);
+    speed = FixMul(0x40000, g_pForceFeedbackSlot->effectsForce);
     spring = FixMul(spring, speed);
     if (FIX_ABS(spring) > 0x10000)
         spring = spring > 0 ? 0x10000 : -0x10000;
-    speed = FixMul(0x40000, g_pForceFeedbackSlot->field_0x1c);
+    speed = FixMul(0x40000, g_pForceFeedbackSlot->effectsForce);
     damper = FixMul(damper, speed);
     if (FIX_ABS(damper) > 0x10000)
         damper = damper > 0 ? 0x10000 : -0x10000;
-    g_pForceFeedbackSlot->field_0xc = FixMul(spring, 0x27100000) >> 16;
-    g_pForceFeedbackSlot->field_0x10 = FixMul(damper, 0x27100000) >> 16;
+    g_pForceFeedbackSlot->spring = FixMul(spring, 0x27100000) >> 16;
+    g_pForceFeedbackSlot->damper = FixMul(damper, 0x27100000) >> 16;
 }
 
 // Releases the stage's files (registered callback of 0x455080).
@@ -4993,21 +4993,21 @@ void ForceFeedback_ComputeRoadNoise(void)
     int speed;
     int k;
 
-    if (g_pForceFeedbackSlot->field_0x20 == 0)
-        g_pForceFeedbackSlot->field_0x20 = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
-    else if (g_pForceFeedbackSlot->field_0x20 > 0)
-        g_pForceFeedbackSlot->field_0x20 = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), g_minus65536));
+    if (g_pForceFeedbackSlot->roadNoise == 0)
+        g_pForceFeedbackSlot->roadNoise = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
+    else if (g_pForceFeedbackSlot->roadNoise > 0)
+        g_pForceFeedbackSlot->roadNoise = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), g_minus65536));
     else
-        g_pForceFeedbackSlot->field_0x20 = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
+        g_pForceFeedbackSlot->roadNoise = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
     k = g_pForceFeedbackCar->cornerGrip[1].field_0x1c + g_pForceFeedbackCar->cornerGrip[0].field_0x1c;
     speed = FixMul(g_pForceFeedbackCar->speed, 0x10000);
     if (speed > 0x10000)
         speed = 0x10000;
     k = FixMul(k, speed);
-    k += g_pForceFeedbackSlot->field_0x28;
+    k += g_pForceFeedbackSlot->impactShake;
     if (k > 0x10000)
         k = 0x10000;
-    g_pForceFeedbackSlot->field_0x20 = FixMul(g_pForceFeedbackSlot->field_0x20, k);
+    g_pForceFeedbackSlot->roadNoise = FixMul(g_pForceFeedbackSlot->roadNoise, k);
 }
 
 // Attaches a stage object to the current car and copies its matrices.
@@ -5120,10 +5120,10 @@ void CarPart_UpdateVibrationAngle(void)
 
 BYTE Car_GetDrawnFlag(int index);
 unsigned short Input_GetControllerSlotMapping(unsigned short slot);
-unsigned int Input_GetControllerPrimaryFlags(unsigned short slot);
-unsigned int Input_GetControllerSecondaryFlags(unsigned short slot);
-DWORD Input_GetControllerField11C(unsigned short slot);
-DWORD Input_GetControllerField118(unsigned short slot);
+unsigned int Input_GetControllerTextureForce(unsigned short slot);
+unsigned int Input_GetControllerEffectsForce(unsigned short slot);
+DWORD Input_GetControllerQuickForceUpdate(unsigned short slot);
+DWORD Input_GetControllerForceFeedback(unsigned short slot);
 
 // Initializes the two force feedback slots and registers their stop callback.
 // FUNCTION: CMR2 0x00423ff0
@@ -5133,8 +5133,8 @@ void StageTiming_InitForceFeedbackSlots(void)
 
     CInput::ResetForceFeedbackEffects();
     for (i = 0; i < 2; i++) {
-        g_forceFeedbackSlots[i].field_0x2c = -1;
-        g_forceFeedbackSlots[i].field_0x34 = 0;
+        g_forceFeedbackSlots[i].device = -1;
+        g_forceFeedbackSlots[i].active = 0;
     }
     for (i = 0; i < (BYTE)RallyDataState(); i++) {
         BYTE device;
@@ -5142,21 +5142,21 @@ void StageTiming_InitForceFeedbackSlots(void)
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[i];
         device = Car_GetDrawnFlag(Car_Get(i)->index);
         CInput::GetAvailableDeviceRecord((signed char)device);
-        if (Input_GetControllerField118(i) != 0) {
+        if (Input_GetControllerForceFeedback(i) != 0) {
             device = Car_GetDrawnFlag(Car_Get(i)->index);
-            CInput::SetForceFeedbackDeviceValue(Input_GetControllerField11C(i), (signed char)device);
-            g_pForceFeedbackSlot->field_0x18 = Input_GetControllerPrimaryFlags(i);
-            g_pForceFeedbackSlot->field_0x1c = Input_GetControllerSecondaryFlags(i);
-            g_pForceFeedbackSlot->field_0x2c = (signed char)Input_GetControllerSlotMapping(i);
-            if (g_pForceFeedbackSlot->field_0x2c >= 0) {
+            CInput::SetQuickForceUpdate(Input_GetControllerQuickForceUpdate(i), (signed char)device);
+            g_pForceFeedbackSlot->textureForce = Input_GetControllerTextureForce(i);
+            g_pForceFeedbackSlot->effectsForce = Input_GetControllerEffectsForce(i);
+            g_pForceFeedbackSlot->device = (signed char)Input_GetControllerSlotMapping(i);
+            if (g_pForceFeedbackSlot->device >= 0) {
                 ForceFeedback_CreateEffects();
                 for (int j = 0; j < 3; j++) {
-                    (&g_pForceFeedbackSlot->field_0x0)[j] = 0;
-                    (&g_pForceFeedbackSlot->field_0xc)[j] = 0;
+                    (&g_pForceFeedbackSlot->appliedSpring)[j] = 0;
+                    (&g_pForceFeedbackSlot->spring)[j] = 0;
                 }
-                g_pForceFeedbackSlot->field_0x20 = 0;
-                g_pForceFeedbackSlot->field_0x24 = 0;
-                g_pForceFeedbackSlot->field_0x28 = 0;
+                g_pForceFeedbackSlot->roadNoise = 0;
+                g_pForceFeedbackSlot->impactKick = 0;
+                g_pForceFeedbackSlot->impactShake = 0;
             }
         }
     }

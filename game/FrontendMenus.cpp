@@ -386,11 +386,11 @@ JoystickBinding g_axisBindings[8];
 
 void FrontendControls_ClearDuplicateBinding(ControllerData *p, int index);
 void Input_GetLastKeyName(LPSTR pName, unsigned int size);
-unsigned int Input_GetControllerSecondaryFlags(unsigned short slot);
-unsigned int Input_GetControllerPrimaryFlags(unsigned short slot);
-DWORD Input_GetControllerField11C(unsigned short slot);
-void Input_SetControllerSecondaryFlags(unsigned short slot, unsigned int value);
-void Input_SetControllerPrimaryFlags(unsigned short slot, unsigned int value);
+unsigned int Input_GetControllerEffectsForce(unsigned short slot);
+unsigned int Input_GetControllerTextureForce(unsigned short slot);
+DWORD Input_GetControllerQuickForceUpdate(unsigned short slot);
+void Input_SetControllerEffectsForce(unsigned short slot, unsigned int value);
+void Input_SetControllerTextureForce(unsigned short slot, unsigned int value);
 void Input_RescanChangedJoysticks(void);
 void Input_SetControllerSlotMapping(unsigned short slot, unsigned short index);
 unsigned short Input_GetControllerSlotMapping(unsigned short slot);
@@ -741,9 +741,9 @@ void FrontendControls_UpdateAxisCalibration(Menu *pMenu)
 // FUNCTION: CMR2 0x004fc880
 void FrontendControls_EnterPadSettings(Menu *pMenu, int param)
 {
-    pMenu->items[0].max = (char)((int)(Input_GetControllerSecondaryFlags((unsigned short)g_controlsSelectedSlot) * 10) / 0x10000);
-    pMenu->items[1].max = (char)((int)(Input_GetControllerPrimaryFlags((unsigned short)g_controlsSelectedSlot) * 10) / 0x10000);
-    if (Input_GetControllerField11C((unsigned short)g_controlsSelectedSlot) != 0)
+    pMenu->items[0].max = (char)((int)(Input_GetControllerEffectsForce((unsigned short)g_controlsSelectedSlot) * 10) / 0x10000);
+    pMenu->items[1].max = (char)((int)(Input_GetControllerTextureForce((unsigned short)g_controlsSelectedSlot) * 10) / 0x10000);
+    if (Input_GetControllerQuickForceUpdate((unsigned short)g_controlsSelectedSlot) != 0)
         pMenu->items[2].max = 0;
     else
         pMenu->items[2].max = 1;
@@ -754,9 +754,9 @@ void FrontendControls_EnterPadSettings(Menu *pMenu, int param)
 void FrontendControls_LeavePadSettings(Menu *pMenu, char back)
 {
     if (back == 0) {
-        Input_SetControllerSecondaryFlags((unsigned short)g_controlsSelectedSlot, (pMenu->items[0].max << 16) / 10);
-        Input_SetControllerPrimaryFlags((unsigned short)g_controlsSelectedSlot, (pMenu->items[1].max << 16) / 10);
-        CInput::SetControllerForceFeedbackValue((unsigned short)g_controlsSelectedSlot, 1 - pMenu->items[2].max);
+        Input_SetControllerEffectsForce((unsigned short)g_controlsSelectedSlot, (pMenu->items[0].max << 16) / 10);
+        Input_SetControllerTextureForce((unsigned short)g_controlsSelectedSlot, (pMenu->items[1].max << 16) / 10);
+        CInput::SetControllerQuickForceUpdate((unsigned short)g_controlsSelectedSlot, 1 - pMenu->items[2].max);
     }
 }
 

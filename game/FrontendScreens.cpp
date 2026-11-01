@@ -1424,7 +1424,7 @@ void FrontendMenu_BuildPagesAndSelectInitial(BYTE param1, BYTE back)
         GameInfo_SetSoundOptionBit22(1);
     Menu_QueueDefaultAction();
     Menu_SetInputStateFlag(0);
-    CInput::SetInputRepeatTimingParameters(-1, -1, -1, -1, -1);
+    CInput::SetMenuSounds(-1, -1, -1, -1, -1);
     FrontendMenu_BuildMain();
     g_unk0x00818ac4 = 0;
     FrontendMenu_BuildNetworkWaitingRoom();
@@ -4131,7 +4131,7 @@ void FrontendMenu_LeaveSoundOptions(Menu *pMenu, char param)
         CGameInfo::SetMasterSoundVolume(g_unk0x0081903c);
         CGameInfo::SetEffectsSoundVolume(g_unk0x00819860);
         CGameInfo::SetCoDriverSoundVolume(g_unk0x00819754);
-        CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+        CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
         CSound::NoOpSoundDeviceCallback();
         return;
     }
@@ -4575,8 +4575,8 @@ BYTE FrontendAudio_LoadSounds(void)
 void FrontendAudio_ConfigureMenuSounds(void)
 {
     g_unk0x0081988c = -1;
-    CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
-    CInput::SetInputRepeatTimingParameters(g_menuSoundBase, g_menuSoundBase + 1, g_menuSoundBase + 2, g_menuSoundBase + 3,
+    CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+    CInput::SetMenuSounds(g_menuSoundBase, g_menuSoundBase + 1, g_menuSoundBase + 2, g_menuSoundBase + 3,
                          g_menuSoundBase + 4);
     Menu_SetInputStateFlag(1);
 }

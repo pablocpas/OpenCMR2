@@ -2338,7 +2338,7 @@ void Race_EnterCurrentModeScene(CallbackStateMachine *param1, int param2)
         NetPlayers_RebuildStageResults(0, 0, 0);
     if ((char)param2 == 0) {
         Menu_SetInputStateFlag(0);
-        CInput::SetInputRepeatTimingParameters(-1, -1, -1, -1, -1);
+        CInput::SetMenuSounds(-1, -1, -1, -1, -1);
         if (CGameInfo::GetConfiguredGameMode() == 4)
             Knockout_ClearRoundActiveFlag();
         switch (CGameInfo::GetConfiguredGameMode()) {

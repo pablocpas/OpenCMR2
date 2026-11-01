@@ -83,8 +83,8 @@ static void Input_InitKeyboardConfiguration(int index)
     memset(pController, 0, sizeof(*pController));
     pController->index = (BYTE)index;
     strcpy(pController->name, CInput::m_availableDevices[index].deviceInstanceName);
-    pController->field_0x0 = 0x8000;
-    pController->field_0x4 = 0x8000;
+    pController->textureForce = 0x8000;
+    pController->effectsForce = 0x8000;
 }
 
 // The configuration of a player's joystick (records 2 and 3): its axes,
@@ -101,8 +101,8 @@ static void Input_InitPlayerConfiguration(int index)
     memset(pController, 0, sizeof(*pController));
     pController->index = (BYTE)index;
     strcpy(pController->name, pDevice->deviceInstanceName);
-    pController->field_0x0 = 0x8000;
-    pController->field_0x4 = 0x8000;
+    pController->textureForce = 0x8000;
+    pController->effectsForce = 0x8000;
     pController->hasAxes = 1;
     pController->analogSteering = 1;
     pController->analogPedals = 1;
@@ -174,12 +174,12 @@ DWORD CInput::m_buttonMasks[24] = {
 unsigned int CInput::m_directionButtonMask = 0xf;
 BOOL CInput::m_unk0x0052086c = TRUE;
 InputEffectParams CInput::m_forceFeedbackEffects[80];
-DWORD CInput::m_unk0x0059f8f0;
-DWORD CInput::m_unk0x0059f8f4;
-DWORD CInput::m_unk0x0059f8f8;
-DWORD CInput::m_unk0x0059f900;
-DWORD CInput::m_unk0x0059f90c;
-DWORD CInput::m_unk0x0059f910;
+DWORD CInput::m_menuErrorSound;
+DWORD CInput::m_menuBackSound;
+DWORD CInput::m_menuMoveSound;
+DWORD CInput::m_menuSoundVolume;
+DWORD CInput::m_menuChangeSound;
+DWORD CInput::m_menuSelectSound;
 
 unsigned short CInput::m_controllerCount = 1;
 char CInput::m_strControllerInfoDir[32] = "%s\\Configuration\\Controller.rcf";
@@ -301,7 +301,7 @@ BOOL CInput::SetupKeyboard(void) {
         m_availableDevices[uVar1].keyboard.field_0x475 = 0x3c;
         m_availableDevices[uVar1].keyboard.field_0x476 = 0x3e;
         m_availableDevices[uVar1].keyboard.field_0x477 = 0x0;
-        m_availableDevices[uVar1].keyboard.field_0x472 = 0x1;
+        m_availableDevices[uVar1].keyboard.escapeKey = 0x1;
         m_availableDevices[uVar1].keyboard.field_0x473 = 0x0;
 
         m_deviceCounts.nextDevice = m_deviceCounts.nextDevice + 1;
@@ -444,13 +444,13 @@ void CInput::SetJoystickAxisSaturation(int deviceID, int axisID, DWORD saturatio
 
 // FUNCTION: CMR2 0x004aae20
 BOOL CInput::InitializeForceFeedbackDevice(int deviceID, InputDevice *pDevice) {
-    if (m_forceFeedbackDevices[deviceID].field_0x0 == 0) {
+    if (m_forceFeedbackDevices[deviceID].active == 0) {
         m_forceFeedbackDevices[deviceID].device = pDevice;
         if (g_pGraphics->isFullscreen)
             Input_StopAllEffects(pDevice);
 
         SetForceFeedbackAutocenter(0, deviceID);
-        m_forceFeedbackDevices[deviceID].field_0x0 = TRUE;
+        m_forceFeedbackDevices[deviceID].active = TRUE;
         ResetForceFeedbackEffects();
     }
 
@@ -469,7 +469,7 @@ bool CInput::IsForceFeedbackCallSuccessful(HRESULT hr) {
 
 // FUNCTION: CMR2 0x004aafd0
 void CInput::SetForceFeedbackAutocenter(DWORD param1, int deviceID) {
-    if (m_forceFeedbackDevices[deviceID].field_0x0 != FALSE)
+    if (m_forceFeedbackDevices[deviceID].active != FALSE)
         Input_SetAutocenter(m_forceFeedbackDevices[deviceID].device, param1 != 0);
 }
 
@@ -484,7 +484,7 @@ void CInput::ResetForceFeedbackEffects(void) {
     for (device = 0; device < 8; device++) {
         ForceFeedbackDevice *pDevice = &m_forceFeedbackDevices[device];
 
-        if (pDevice->field_0x0 != FALSE) {
+        if (pDevice->active != FALSE) {
             for (i = 0; i < 10; i++) {
                 if (pDevice->effects[i] != NULL) {
                     Input_DestroyEffect(pDevice->effects[i]);
@@ -507,7 +507,7 @@ BOOL CInput::ResetForceFeedbackEffectsAlt(void) {
     for (device = 0; device < 8; device++) {
         ForceFeedbackDevice *pDevice = &m_forceFeedbackDevices[device];
 
-        if (pDevice->field_0x0 != FALSE) {
+        if (pDevice->active != FALSE) {
             for (i = 0; i < 10; i++) {
                 if (pDevice->effects[i] != NULL) {
                     Input_DestroyEffect(pDevice->effects[i]);
@@ -515,7 +515,7 @@ BOOL CInput::ResetForceFeedbackEffectsAlt(void) {
                 }
             }
             pDevice->field_0x8 = 0;
-            pDevice->field_0x0 = 0;
+            pDevice->active = 0;
         }
     }
     m_unk0x00666ee8 = FALSE;
@@ -654,7 +654,7 @@ void CInput::SetDeviceKeyBinding(int param1, unsigned int param2, unsigned int p
             break;
 
         case 0x400:
-            device->keyboard.field_0x472 = param3;
+            device->keyboard.escapeKey = param3;
             break;
 
         case 0x800:
@@ -788,35 +788,35 @@ int CInput::GetButtonIndexFromMask(unsigned int mask)
 }
 
 // FUNCTION: CMR2 0x0049ff80
-void CInput::SetInputRepeatTimingParameters(DWORD p1, DWORD p2, DWORD p3, DWORD p4, DWORD p5)
+void CInput::SetMenuSounds(DWORD p1, DWORD p2, DWORD p3, DWORD p4, DWORD p5)
 {
-    m_unk0x0059f8f8 = p1;
-    m_unk0x0059f910 = p2;
-    m_unk0x0059f8f4 = p3;
-    m_unk0x0059f8f0 = p4;
-    m_unk0x0059f90c = p5;
+    m_menuMoveSound = p1;
+    m_menuSelectSound = p2;
+    m_menuBackSound = p3;
+    m_menuErrorSound = p4;
+    m_menuChangeSound = p5;
 }
 
 // FUNCTION: CMR2 0x0049ffc0
-void CInput::SetInputRepeatTimingState(DWORD param1)
+void CInput::SetMenuSoundVolume(DWORD param1)
 {
-    m_unk0x0059f900 = param1;
+    m_menuSoundVolume = param1;
 }
 
 // FUNCTION: CMR2 0x0040be00
-DWORD CInput::GetControllerField114(unsigned int param1)
+DWORD CInput::GetControllerAnalogPedals(unsigned int param1)
 {
     return m_controllerInfo[m_playerControllers[(unsigned short)param1]].analogPedals;
 }
 
 // FUNCTION: CMR2 0x0040be30
-DWORD CInput::GetControllerField120(unsigned int param1)
+DWORD CInput::GetControllerThrottleOnPositive(unsigned int param1)
 {
     return m_controllerInfo[m_playerControllers[(unsigned short)param1]].throttleOnPositive;
 }
 
 // FUNCTION: CMR2 0x0040be60
-DWORD CInput::GetControllerField124(unsigned short param1)
+DWORD CInput::GetControllerSmoothSteering(unsigned short param1)
 {
     return m_controllerInfo[m_playerControllers[(unsigned short)param1]].smoothSteering;
 }
@@ -841,9 +841,9 @@ BOOL CInput::IsControllerActionBound(int action, ControllerData *pController)
 }
 
 // FUNCTION: CMR2 0x004aaf50
-void CInput::SetForceFeedbackDeviceValue(DWORD param1, int index)
+void CInput::SetQuickForceUpdate(DWORD param1, int index)
 {
-    m_unk0x00666ec8[index] = param1;
+    m_quickForceUpdate[index] = param1;
 }
 
 // FUNCTION: CMR2 0x004aaf70
@@ -853,7 +853,7 @@ void CInput::StartForceFeedbackEffect(int effectIndex, int deviceIndex)
     InputEffect *pEffect;
 
     pDevice = &m_forceFeedbackDevices[deviceIndex];
-    if (pDevice->field_0x0 != 0) {
+    if (pDevice->active != 0) {
         pEffect = pDevice->effects[effectIndex];
         if (pEffect != NULL && !Input_IsEffectPlaying(pEffect))
             Input_StartEffect(pEffect);
@@ -1038,7 +1038,7 @@ int CInput::CreateForceFeedbackEffect(int effectType, DWORD duration, LONG coeff
 
     i = 0;
     pDevice = &m_forceFeedbackDevices[deviceIndex];
-    if (pDevice->field_0x0 == 0)
+    if (pDevice->active == 0)
         return -1;
 
     while (pDevice->effects[i] != NULL) {
@@ -1146,7 +1146,7 @@ HRESULT CInput::SetEffectGain(int effectIndex, DWORD gain, int deviceIndex)
     InputEffectParams *pParams;
 
     pDevice = &m_forceFeedbackDevices[deviceIndex];
-    if (pDevice->field_0x0 != 0 && pDevice->effects[effectIndex] != NULL) {
+    if (pDevice->active != 0 && pDevice->effects[effectIndex] != NULL) {
         pParams = &m_forceFeedbackEffects[deviceIndex * 10 + effectIndex];
         pParams->gain = gain;
         Input_UpdateEffect(pDevice->effects[effectIndex], pParams);
@@ -1162,7 +1162,7 @@ HRESULT CInput::SetEffectGainAndDirection(int effectIndex, DWORD gain, LONG dire
     InputEffectParams *pParams;
 
     pDevice = &m_forceFeedbackDevices[deviceIndex];
-    if (pDevice->field_0x0 != 0 && pDevice->effects[effectIndex] != NULL) {
+    if (pDevice->active != 0 && pDevice->effects[effectIndex] != NULL) {
         pParams = &m_forceFeedbackEffects[deviceIndex * 10 + effectIndex];
         pParams->gain = gain;
         pParams->direction = direction;
@@ -1181,7 +1181,7 @@ int CInput::CreateConstantForceEffect(DWORD duration, LONG direction, LONG magni
 
     i = 0;
     pDevice = &m_forceFeedbackDevices[deviceIndex];
-    if (pDevice->field_0x0 == 0)
+    if (pDevice->active == 0)
         return -1;
 
     while (pDevice->effects[i] != NULL) {
@@ -1217,7 +1217,7 @@ HRESULT CInput::SetConditionCoefficient(int effectIndex, LONG coefficient, int d
     InputEffectParams *pParams;
 
     pDevice = &m_forceFeedbackDevices[deviceIndex];
-    if (pDevice->field_0x0 != 0 && pDevice->effects[effectIndex] != NULL) {
+    if (pDevice->active != 0 && pDevice->effects[effectIndex] != NULL) {
         pParams = &m_forceFeedbackEffects[deviceIndex * 10 + effectIndex];
         pParams->offset = 0;
         pParams->coefficient = coefficient;
@@ -1278,8 +1278,8 @@ void CInput::InitDetectedControllerSlot(DeviceInfo *pDevice, int index)
     pController->analogSteering = (pDevice->type == 3 || pDevice->type == 2) ? 1 : 0;
     pController->analogPedals = (pDevice->type == 3 || pDevice->type == 2) ? 1 : 0;
     pController->forceFeedback = pDevice->supportsForceFeedback;
-    m_controllerInfo[index].field_0x4 = 0x8000;
-    m_controllerInfo[index].field_0x0 = 0x8000;
+    m_controllerInfo[index].effectsForce = 0x8000;
+    m_controllerInfo[index].textureForce = 0x8000;
     if (pDevice->type == 1) {
         if (index == 0) {
             m_controllerInfo[0].keys[0] = pDevice->keyboard.steerLeftKey;
@@ -1539,12 +1539,12 @@ void CInput::UpdateRaceDevices(unsigned int readyDevices)
 
 // match 57%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
 // FUNCTION: CMR2 0x0040bc90
-void CInput::SetControllerForceFeedbackValue(unsigned short param1, DWORD param2)
+void CInput::SetControllerQuickForceUpdate(unsigned short param1, DWORD param2)
 {
     unsigned short index;
 
     index = CInput::m_playerControllers[param1];
-    SetForceFeedbackDeviceValue(m_controllerInfo[index].field_0x11c = param2, index);
+    SetQuickForceUpdate(m_controllerInfo[index].quickForceUpdate = param2, index);
 }
 
 
@@ -1620,37 +1620,37 @@ void Input_SetControllerSlotMapping(unsigned short slot, unsigned short index)
 }
 
 // FUNCTION: CMR2 0x0040bc00
-unsigned int Input_GetControllerPrimaryFlags(unsigned short slot)
+unsigned int Input_GetControllerTextureForce(unsigned short slot)
 {
-    return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].field_0x0;
+    return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].textureForce;
 }
 
 // FUNCTION: CMR2 0x0040bc30
-unsigned int Input_GetControllerSecondaryFlags(unsigned short slot)
+unsigned int Input_GetControllerEffectsForce(unsigned short slot)
 {
-    return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].field_0x4;
+    return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].effectsForce;
 }
 
 // FUNCTION: CMR2 0x0040bc60
-void Input_SetControllerPrimaryFlags(unsigned short slot, unsigned int value)
+void Input_SetControllerTextureForce(unsigned short slot, unsigned int value)
 {
-    CInput::m_controllerInfo[CInput::m_playerControllers[slot]].field_0x0 = value;
+    CInput::m_controllerInfo[CInput::m_playerControllers[slot]].textureForce = value;
 }
 
 // FUNCTION: CMR2 0x0040bcd0
-DWORD Input_GetControllerField11C(unsigned short slot)
+DWORD Input_GetControllerQuickForceUpdate(unsigned short slot)
 {
-    return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].field_0x11c;
+    return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].quickForceUpdate;
 }
 
 // FUNCTION: CMR2 0x0040bd00
-void Input_SetControllerSecondaryFlags(unsigned short slot, unsigned int value)
+void Input_SetControllerEffectsForce(unsigned short slot, unsigned int value)
 {
-    CInput::m_controllerInfo[CInput::m_playerControllers[slot]].field_0x4 = value;
+    CInput::m_controllerInfo[CInput::m_playerControllers[slot]].effectsForce = value;
 }
 
 // FUNCTION: CMR2 0x0040bd30
-DWORD Input_GetControllerField118(unsigned short slot)
+DWORD Input_GetControllerForceFeedback(unsigned short slot)
 {
     return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].forceFeedback;
 }
@@ -1673,7 +1673,7 @@ void Input_MergeAssignedJoystickButtons(int slot, DeviceInfo *pOut)
 
 
 // FUNCTION: CMR2 0x0040bdd0
-DWORD Input_GetControllerField110(unsigned short slot)
+DWORD Input_GetControllerAnalogSteering(unsigned short slot)
 {
     return CInput::m_controllerInfo[CInput::m_playerControllers[slot]].analogSteering;
 }

@@ -1837,7 +1837,7 @@ void OptionMenu_EnterStartState(CallbackStateMachine *p1, BYTE state)
     if (CGameInfo::GetGameModeOptionBit19() != 0)
         NetPlayers_SendCarClass(1);
     Menu_SetInputStateFlag(0);
-    CInput::SetInputRepeatTimingParameters(0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
+    CInput::SetMenuSounds(0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
     g_optionPlayerSlotOffset = CGameInfo::GetConfiguredPlayerCount() & 0xff;
     OptionMenu_RefreshStageSetup();
     OptionMenu_LoadRallyRecords();
@@ -3020,7 +3020,7 @@ void FrontendMenu_UpdateSoundOptions(Menu *pMenu)
     CGameInfo::SetMasterSoundVolume(pMenu->items[0].max * 10);
     CGameInfo::SetEffectsSoundVolume(pMenu->items[1].max * 10);
     CGameInfo::SetCoDriverSoundVolume(pMenu->items[2].max * 10);
-    CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+    CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
     CSound::NoOpSoundDeviceCallback();
 }
 
@@ -3984,7 +3984,7 @@ void InRaceMenu_ApplySoundVolumes(Menu *pMenu)
     CGameInfo::SetEffectsSoundVolume(pMenu->items[Menu_FindItem(pMenu, 1)].max * 10);
     if (Race_IsFlag24Clear())
         CGameInfo::SetCoDriverSoundVolume(pMenu->items[Menu_FindItem(pMenu, 2)].max * 10);
-    CInput::SetInputRepeatTimingState(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
+    CInput::SetMenuSoundVolume(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
 }
 
 // Values the in-race option menus started with (restored on cancel).
@@ -4318,7 +4318,7 @@ void InRaceMenu_LeaveSoundOptions(Menu *pMenu, char cancel)
         if (Race_IsFlag24Clear())
             CGameInfo::SetCoDriverSoundVolume(pMenu->items[Menu_FindItem(pMenu, 2)].max * 10);
     }
-    CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+    CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
     NetRace_InitializeRaceSoundVolumes();
 }
 
@@ -5915,8 +5915,8 @@ void OptionMenu_ConfigureSoundHandles(void)
 {
     g_unk0x0083188c = -1;
     // option menu volume: the stored 0..0x7f setting scaled to 16.16 and quartered
-    CInput::SetInputRepeatTimingState((((int)CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
-    CInput::SetInputRepeatTimingParameters(g_unk0x00831888, g_unk0x00831888 + 1, g_unk0x00831888 + 2,
+    CInput::SetMenuSoundVolume((((int)CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
+    CInput::SetMenuSounds(g_unk0x00831888, g_unk0x00831888 + 1, g_unk0x00831888 + 2,
                          g_unk0x00831888 + 3, g_unk0x00831888 + 4);
     Menu_SetInputStateFlag(1);
 }

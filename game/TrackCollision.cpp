@@ -917,11 +917,11 @@ void Track_SetFogAndSkyAlpha(DWORD *pColour, int start, int end)
     g_stageColourAlpha = a;
 }
 
-// Integrates the throttle phase and torque from the accelerator, or from
-// the brake pedal in automatic reverse. Latches accelerator input while
-// the forward throttle ramp is decaying.
+// Digital throttle: integrates the throttle phase and torque from the
+// accelerator, or from the brake pedal in automatic reverse. Latches
+// accelerator input while the forward throttle ramp is decaying.
 // FUNCTION: CMR2 0x004946c0
-void AutoGear_UpdateRollingFollowRate(void)
+void AutoGear_RampDigitalThrottle(void)
 {
     unsigned short angle;
 
@@ -952,10 +952,11 @@ void AutoGear_UpdateRollingFollowRate(void)
     }
 }
 
-// Swings field 0x838 of the auto-gear car toward 0x82c over time while its
-// flag 3 is set and the shift is unlocked; else resets it.
+// Digital brake: brakePhase rises by brakeRampStep while the brake is held
+// (not in automatic reverse) and brakeInput follows a sine of it up to
+// maxBrakeForce; both reset on release.
 // FUNCTION: CMR2 0x00494880
-void AutoGear_UpdateSteeringSwing(void)
+void AutoGear_RampDigitalBrake(void)
 {
     unsigned short angle;
 
@@ -1161,12 +1162,14 @@ void AutoGear_ApplyShiftBodyNudge(void)
 
 extern double g_fixedDegreesToAngle12;
 
-// Eases the car's steering angle towards the value taken from its track
-// surface, then stores the damped angle into 0xb10/0xb12.
+// Steering of an analogue device (steeringInputMode 1 or 2): the target
+// angle from the steering values (flag0x1d0[0..1], 0..63), taken at once in
+// mode 2, eased by the setup's outward and centring rates in mode 1; stored
+// into 0xb10/0xb12.
 // match 87%: implemented; MSVC keeps the two scale factors in different registers and
 // reorders the fixpoint intermediates
 // FUNCTION: CMR2 0x00493ed0
-void CarPhysics_DampSurfaceSteeringAngle(void)
+void AutoGear_FollowAnalogSteering(void)
 {
     int outwardRate;
     int centringRate;
@@ -1231,12 +1234,13 @@ int g_unk0x00592168;
 // GLOBAL: CMR2 0x00511308
 double g_minusFixedDegreesToAngle12 = -4096.0 / (360.0 * 65536.0);
 
-// Integrates the auto-gear steering accumulator for the current surface and
-// eases the signed 12-bit wheel angle towards the new target.
+// Steering of keys and buttons (steeringInputMode 0): integrates the steering
+// accumulator for the current surface and eases the signed 12-bit wheel
+// angle towards the new target.
 // Keeps the original intermediate forces and materialized zero bounds.
 // Differential coverage: guarded car, signed limits, angles and real helpers.
 // FUNCTION: CMR2 0x00494110
-void AutoGear_IntegrateSteeringAccumulator(void)
+void AutoGear_IntegrateDigitalSteering(void)
 {
     int v;
     int sum;
@@ -1342,7 +1346,7 @@ void AutoGear_UpdateCarGearState(Car *pCar)
             g_pAutoGearCar->throttleTorque = 0;
         }
     } else {
-        AutoGear_UpdateRollingFollowRate();
+        AutoGear_RampDigitalThrottle();
     }
     if (g_pAutoGearCar->gearRatio[g_pAutoGearCar->gear] < 0)
         g_pAutoGearCar->reversing = 1;
@@ -1373,9 +1377,9 @@ void AutoGear_UpdateCarGearState(Car *pCar)
         }
     }
     if (g_pAutoGearCar->steeringInputMode != 0)
-        CarPhysics_DampSurfaceSteeringAngle();
+        AutoGear_FollowAnalogSteering();
     else
-        AutoGear_IntegrateSteeringAccumulator();
+        AutoGear_IntegrateDigitalSteering();
     if (g_pAutoGearCar->analogBrake != 0) {
         if (*(BYTE *)&g_pAutoGearCar->flag0x1d0[3] != 0) {
             t = FixMul((int)((unsigned int)*(BYTE *)&g_pAutoGearCar->flag0x1d0[3] << 16), 0x410);
@@ -1397,7 +1401,7 @@ void AutoGear_UpdateCarGearState(Car *pCar)
             g_pAutoGearCar->brakeInput = 0;
         }
     } else {
-        AutoGear_UpdateSteeringSwing();
+        AutoGear_RampDigitalBrake();
         if ((g_pAutoGearCar->analogThrottle != 0) && (g_pAutoGearCar->automaticReverse != 0)) {
             t = FixMul((int)((unsigned int)*(BYTE *)&g_pAutoGearCar->flag0x1d0[3] << 16), 0x410);
             if (t > 0x10000)
