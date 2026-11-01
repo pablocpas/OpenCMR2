@@ -12397,26 +12397,30 @@ void SurfaceSound_UpdateNearestNetworkCarEngines(void)
         pHandle++;
     } while (--limit);
 }
-// PORT: the share of a thumbstick's travel (eased steering, a gamepad's,
-// steeringInputMode 1) given to the wheels at a speed. With keys, the
-// wheels turn gradually and return to the centre, so the faster the car the
-// less they are turned: the recorded runs of the super specials, driven with
+// PORT: a thumbstick's travel (eased steering, a gamepad's, steeringInputMode
+// 1) spread over the lock by speed. With keys the wheels turn gradually and
+// return to the centre: the recorded runs of the super specials, driven with
 // keys, kept under 220 of the about 460 of full lock 99% of the time at
-// speeds of 1 to 1.5, and under 101 at 1.5 to 2. A thumbstick at the end of
-// its few millimetres gives full lock at any speed, so its useful travel at
-// speed was the first fifth. Full lock up to 0.5, then 0.45 less per unit of
-// speed, down to 0.35: above what the keys' drivers ever used but at speed
-// rarely, across the whole travel of the stick.
-static int StageObject_ThumbstickSteeringScale(int speed)
+// speeds of 1 to 1.5, and under 101 at 1.5 to 2, yet a key held long enough
+// still reaches full lock there, to throw the car into a corner. Followed
+// linearly, a thumbstick left only the first fifth of its few millimetres
+// for the steering used at speed. Its response turns from linear at a speed
+// of 0.5 to cubic from 1.5: the end of its travel still gives full lock, the
+// first 60% of it the lock used at top speed.
+static int StageObject_ShapeThumbstickSteering(int value, int speed)
 {
-    int scale;
+    int blend;
+    int cubic;
 
-    scale = 0x10000 - FixMul(speed - 0x8000, 0x7333);
-    if (scale > 0x10000)
-        scale = 0x10000;
-    else if (scale < 0x5999)
-        scale = 0x5999;
-    return scale;
+    if (value > 0x10000)
+        value = 0x10000;
+    blend = speed - 0x8000;
+    if (blend < 0)
+        blend = 0;
+    else if (blend > 0x10000)
+        blend = 0x10000;
+    cubic = FixMul(FixMul(value, value), value);
+    return value + FixMul(cubic - value, blend);
 }
 
 // Refreshes the on-screen control indicators of the active car (steer, throttle,
@@ -12488,7 +12492,7 @@ void StageObject_UpdatePlayerControlIndicators(int player, int device)
                 pAxis = &((int *)pDev)[axisSteer * 5 + 0x11f];
                 half = *pAxis < 0 ? -*pAxis : *pAxis;
                 if (g_controlCar->steeringInputMode == 1)   // PORT
-                    half = FixMul(half, StageObject_ThumbstickSteeringScale(g_controlCar->speed));
+                    half = StageObject_ShapeThumbstickSteering(half, g_controlCar->speed);
                 half = FixMul(half, 0x3f0000) >> 16;
                 if (*pAxis < 0)
                     g_controlCar->flag0x1d0[0] = (char)half;

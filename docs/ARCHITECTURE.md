@@ -152,10 +152,11 @@ record reads as a keyboard while both come from keys or buttons, and its
 configuration takes from its axes only those that come from axes, so a D-pad
 steers as keys do (the car's progressive steering) while the triggers stay
 analogue (`PORT:` in `StageObject_UpdatePlayerControlIndicators`). A
-gamepad's thumbstick is eased (steering mode 1) and its travel is scaled down
-with speed before the game's 0..63 conversion, following how little lock the
-keyboard-driven recorded runs used at speed
-(`StageObject_ThumbstickSteeringScale`). Everything after the game's
+gamepad's thumbstick is eased (steering mode 1) and its response turns from
+linear to cubic with speed before the game's 0..63 conversion, following how
+little lock the keyboard-driven recorded runs mostly used at speed while
+keeping full lock at the end of the travel
+(`StageObject_ShapeThumbstickSteering`). Everything after the game's
 conversion of these values to its 0..63 controls, which replays and network
 races record, is unchanged.
 
