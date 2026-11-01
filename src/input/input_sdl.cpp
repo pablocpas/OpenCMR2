@@ -445,8 +445,6 @@ int SourceValue(const InputDevice *device, const Profile &profile, const Source 
     return 0;
 }
 
-// Takes the larger value of each action from one profile into the player's,
-// and notes whether a driving action came from a key or button or an axis.
 // Blends the linear response with a cubic one, which moves less near the
 // centre and reaches the full value at the same end.
 int Curve(int value, int percent)
@@ -456,6 +454,9 @@ int Curve(int value, int percent)
     return (int)((v * (100 - percent) + cubic * percent) / 100);
 }
 
+// Takes the larger value of each action from one profile into the player's,
+// and notes whether the steering and the pedals came from keys and buttons
+// or from axes.
 void Accumulate(Player &player, InputDevice *device, const Profile &profile, ChannelUse *use)
 {
     for (int action = 0; action < INPUT_ACTION_COUNT; action++) {
