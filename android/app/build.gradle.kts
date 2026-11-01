@@ -59,6 +59,7 @@ android {
         // Android 10: Vulkan 1.1 on every 64-bit device.
         minSdk = 29
         targetSdk = 37
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
         versionName = git("describe", "--tags", "--always").removePrefix("v").ifEmpty { "dev" }
 
@@ -156,4 +157,9 @@ dependencies {
         // Only its build used the old Android extensions plugin.
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-android-extensions-runtime")
     }
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test)
 }

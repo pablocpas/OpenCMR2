@@ -1,5 +1,6 @@
 package io.github.pablocpas.opencmr2
 
+import android.content.Intent
 import android.hardware.input.InputManager
 import android.os.Bundle
 import android.os.Handler
@@ -64,6 +65,9 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
                             Switch(checked = touch, onCheckedChange = { touch = it; ControllerProfiles.showTouch(this@ControllerActivity, it) })
                             Text(stringResource(R.string.controllers_touch), Modifier.padding(start = 12.dp))
                         }
+                        OutlinedButton(onClick = {
+                            startActivity(Intent(this@ControllerActivity, TouchLayoutActivity::class.java))
+                        }) { Text(stringResource(R.string.touch_edit)) }
                         if (devices.isEmpty()) Text(stringResource(R.string.controllers_connect))
                         for (pad in devices) {
                             OutlinedButton(onClick = { selected = pad.id; waiting = null; reload() }, modifier = Modifier.fillMaxWidth()) {

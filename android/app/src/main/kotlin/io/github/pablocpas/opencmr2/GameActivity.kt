@@ -60,6 +60,11 @@ class GameActivity : SDLActivity() {
         super.onPause()
     }
 
+    override fun onResume() {
+        super.onResume()
+        controls?.reloadLayout()
+    }
+
     override fun onDestroy() {
         controls?.close()
         controls = null

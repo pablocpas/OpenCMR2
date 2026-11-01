@@ -12,6 +12,7 @@
     <string name="setup_no_space">Nicht genug freier Speicher: Das Spiel braucht %1$s, frei sind %2$s.</string>
     <string name="setup_failed">Die Spieldateien konnten nicht kopiert werden.\n%1$s</string>
     <string name="touch_pause">Pause</string>
+    <string name="touch_back">Zurück / Pause</string>
     <string name="touch_ok">OK</string>
     <string name="touch_accelerate">Gas geben</string>
     <string name="touch_brake">Bremsen</string>
@@ -45,4 +46,20 @@
     <string name="controllers_stick_right">Lenkung · Stick nach rechts bewegen</string>
     <string name="controllers_stick_down">Menüs · Stick nach unten bewegen</string>
     <string name="controllers_touch_only">Touch-Steuerung statt Controller verwenden</string>
+    <string name="touch_edit">Touch-Steuerung bearbeiten</string>
+    <string name="touch_save">Speichern</string>
+    <string name="touch_test">Tasten testen</string>
+    <string name="touch_edit_mode">Anordnung bearbeiten</string>
+    <string name="touch_adjustments">Einstellungen</string>
+    <string name="touch_reset">Anordnung zurücksetzen</string>
+    <string name="touch_left">Linke Gruppe</string>
+    <string name="touch_right">Rechte Gruppe</string>
+    <string name="touch_size">Größe</string>
+    <string name="touch_horizontal">Abstand zum Seitenrand</string>
+    <string name="touch_vertical">Höhe über dem unteren Rand</string>
+    <string name="touch_rotation">Winkel der Zusatztasten</string>
+    <string name="touch_opacity">Deckkraft</string>
+    <string name="touch_cutout">Kameraaussparungen freihalten</string>
+    <string name="touch_test_hint">Mehrere Tasten zum Testen gedrückt halten. Es werden keine Eingaben an das Spiel gesendet.</string>
+    <string name="touch_drag_hint">Jede Seite ziehen, um die Steuerung zu verschieben. Mit zwei Fingern die Größe und den Winkel der Zusatztasten ändern.</string>
 </resources>

@@ -126,6 +126,21 @@ disconnect controllers in the menus (or pause first during a stage) to rescan.
 Controller firmware must expose its input to Android; buttons intercepted by
 system shortcuts cannot be mapped by the app.
 
+The touch controls use one layout for the menus and the stages. The left group
+has Left and Right, with Confirm and Back/Pause above them. The right group
+puts brake and accelerate next to each other on the bottom row, with the
+handbrake above and smaller gear and camera buttons around it; accelerate and
+brake also move up and down through the menus.
+
+In **Controls > Edit touch controls**, drag either half of the preview to move
+its group, pinch to resize, or twist to rotate the auxiliary buttons.
+**Adjustments** sets the size, position, auxiliary-button angle and opacity of
+each side, plus camera cutout avoidance. **Test buttons** checks simultaneous
+presses without starting the game. **Save** keeps the layout; **Cancel**
+discards edits, including a reset. The editor uses the same RadialGamePad views
+as the game, following the approach of
+[Lemuroid's control editor](https://github.com/Swordfish90/Lemuroid/blob/1.16.2/retrograde-app-shared/src/main/java/com/swordfish/lemuroid/lib/controller/TouchControllerCustomizer.kt).
+
 The Linux packages are built on Ubuntu 24.04 and need a distribution of
 similar age or newer. The macOS package is not signed: after extracting it,
 run `xattr -dr com.apple.quarantine OpenCMR2-macOS-arm64` once.

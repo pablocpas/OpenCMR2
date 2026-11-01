@@ -162,7 +162,7 @@ jobs:
           OPENCMR2_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           OPENCMR2_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           OPENCMR2_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew testDebugUnitTest assembleRelease
       - name: Package
         run: |
           mkdir -p dist

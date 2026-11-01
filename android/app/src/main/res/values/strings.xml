@@ -13,6 +13,7 @@
     <string name="setup_no_space">Not enough free space: the game needs %1$s and %2$s are free.</string>
     <string name="setup_failed">The game files could not be copied.\n%1$s</string>
     <string name="touch_pause">Pause</string>
+    <string name="touch_back">Back / Pause</string>
     <string name="touch_ok">OK</string>
     <string name="touch_accelerate">Accelerate</string>
     <string name="touch_brake">Brake</string>
@@ -46,4 +47,20 @@
     <string name="controllers_stick_right">Steering · Move stick right</string>
     <string name="controllers_stick_down">Menus · Move stick down</string>
     <string name="controllers_touch_only">Use touch controls instead of a controller</string>
+    <string name="touch_edit">Edit touch controls</string>
+    <string name="touch_save">Save</string>
+    <string name="touch_test">Test buttons</string>
+    <string name="touch_edit_mode">Edit layout</string>
+    <string name="touch_adjustments">Adjustments</string>
+    <string name="touch_reset">Reset layout</string>
+    <string name="touch_left">Left group</string>
+    <string name="touch_right">Right group</string>
+    <string name="touch_size">Size</string>
+    <string name="touch_horizontal">Distance from side</string>
+    <string name="touch_vertical">Height from bottom</string>
+    <string name="touch_rotation">Auxiliary button angle</string>
+    <string name="touch_opacity">Opacity</string>
+    <string name="touch_cutout">Keep clear of camera cutouts</string>
+    <string name="touch_test_hint">Press and hold several buttons to test them. No input is sent to the game.</string>
+    <string name="touch_drag_hint">Drag either side to move its controls. Pinch to resize; twist to rotate auxiliary buttons.</string>
 </resources>

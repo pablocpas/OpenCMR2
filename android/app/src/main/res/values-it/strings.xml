@@ -12,6 +12,7 @@
     <string name="setup_no_space">Spazio libero insufficiente: il gioco richiede %1$s e sono liberi %2$s.</string>
     <string name="setup_failed">Impossibile copiare i file del gioco.\n%1$s</string>
     <string name="touch_pause">Pausa</string>
+    <string name="touch_back">Indietro / Pausa</string>
     <string name="touch_ok">OK</string>
     <string name="touch_accelerate">Accelera</string>
     <string name="touch_brake">Frena</string>
@@ -45,4 +46,20 @@
     <string name="controllers_stick_right">Sterzo · Muovi lo stick a destra</string>
     <string name="controllers_stick_down">Menu · Muovi lo stick in basso</string>
     <string name="controllers_touch_only">Usa i controlli touch al posto del controller</string>
+    <string name="touch_edit">Modifica comandi touch</string>
+    <string name="touch_save">Salva</string>
+    <string name="touch_test">Prova pulsanti</string>
+    <string name="touch_edit_mode">Modifica disposizione</string>
+    <string name="touch_adjustments">Regolazioni</string>
+    <string name="touch_reset">Ripristina disposizione</string>
+    <string name="touch_left">Gruppo sinistro</string>
+    <string name="touch_right">Gruppo destro</string>
+    <string name="touch_size">Dimensione</string>
+    <string name="touch_horizontal">Distanza dal bordo laterale</string>
+    <string name="touch_vertical">Altezza dal basso</string>
+    <string name="touch_rotation">Angolo dei pulsanti ausiliari</string>
+    <string name="touch_opacity">Opacità</string>
+    <string name="touch_cutout">Evita le aperture della fotocamera</string>
+    <string name="touch_test_hint">Tieni premuti più pulsanti per provarli. Nessun comando viene inviato al gioco.</string>
+    <string name="touch_drag_hint">Trascina ciascun lato per spostare i comandi. Usa due dita per ridimensionarli e ruotare i pulsanti ausiliari.</string>
 </resources>
