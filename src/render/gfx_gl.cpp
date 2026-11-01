@@ -219,11 +219,17 @@ struct Executor : GfxExecutor {
     int anisotropy = 1, smoothScaling = 1;
     int swapInterval = -2;          // as last set
     int presentWidth = 0, presentHeight = 0;
-    // The back buffer read of the last presented frame (the lens flare test),
-    // into a pixel buffer, collected when the game reads it.
-    GLuint readbackBuffer = 0;
-    GLsync readbackFence = nullptr;
-    int readbackWidth = 0, readbackHeight = 0;
+    // Back buffer reads of recently presented frames (the lens flare test),
+    // into pixel buffers. The game gets the newest one the GPU has finished,
+    // a frame or two old, rather than waiting for the last frame's.
+    struct Readback {
+        GLuint buffer = 0;
+        GLsync fence = nullptr;
+        uint64_t serial = 0;
+        int width = 0, height = 0;
+    };
+    Readback readbacks[3];
+    uint64_t readbackSerial = 0;
     std::vector<uint8_t> uniformData;
     std::vector<DrawUniforms> drawUniforms;
 
@@ -248,13 +254,16 @@ struct Executor : GfxExecutor {
         gl.DeleteTextures(4, textures);
         gl.DeleteRenderbuffers(1, &backDepth);
         gl.DeleteFramebuffers(1, &backFramebuffer);
-        GLuint buffers[] = { vertexBuffer, indexBuffer, uniformBuffer, readbackBuffer };
-        gl.DeleteBuffers(4, buffers);
+        GLuint buffers[] = { vertexBuffer, indexBuffer, uniformBuffer };
+        gl.DeleteBuffers(3, buffers);
         gl.DeleteVertexArrays(1, &vertexArray);
         gl.DeleteProgram(program3d);
         gl.DeleteProgram(programTL);
-        if (readbackFence != nullptr)
-            gl.DeleteSync(readbackFence);
+        for (Readback &r : readbacks) {
+            gl.DeleteBuffers(1, &r.buffer);
+            if (r.fence != nullptr)
+                gl.DeleteSync(r.fence);
+        }
         SDL_GL_DestroyContext(context);
     }
 
@@ -375,12 +384,13 @@ struct Executor : GfxExecutor {
         whiteCube = WhiteTexture(GL_TEXTURE_CUBE_MAP);
         gl.GenVertexArrays(1, &vertexArray);
         gl.BindVertexArray(vertexArray);
-        GLuint buffers[4];
-        gl.GenBuffers(4, buffers);
+        GLuint buffers[3];
+        gl.GenBuffers(3, buffers);
         vertexBuffer = buffers[0];
         indexBuffer = buffers[1];
         uniformBuffer = buffers[2];
-        readbackBuffer = buffers[3];
+        for (Readback &r : readbacks)
+            gl.GenBuffers(1, &r.buffer);
         // The index buffer belongs to the vertex array.
         gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
         gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1210,13 +1220,15 @@ struct Executor : GfxExecutor {
             int x = std::max(0, std::min(readback.x, backWidth - 1));
             int y = std::max(0, std::min(readback.y, backHeight - 1));
             int w = std::min(readback.width, backWidth - x), h = std::min(readback.height, backHeight - y);
-            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, readbackBuffer);
+            Readback &r = FreeReadback(readback);
+            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, r.buffer);
             gl.BufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)w * h * 4, NULL, GL_STREAM_READ);
             gl.ReadPixels(x, y, w, h, GL_BGRA, GL_UNSIGNED_BYTE, (void *)0);
             gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-            readbackFence = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-            readbackWidth = w;
-            readbackHeight = h;
+            r.fence = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            r.serial = ++readbackSerial;
+            r.width = w;
+            r.height = h;
             readback.requested = false;
         }
         HashFrame();
@@ -1254,24 +1266,59 @@ struct Executor : GfxExecutor {
         bound.framebuffer = ~0u;
     }
 
+    // Takes the reads the GPU has finished, oldest first, so the newest
+    // stays. Frame hashing waits for them all: its frames must not depend on
+    // the GPU's timing.
     void CollectReadback(GfxReadback &readback) override
     {
-        if (readbackFence == nullptr)
-            return;
-        gl.ClientWaitSync(readbackFence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000ull);
-        gl.DeleteSync(readbackFence);
-        readbackFence = nullptr;
-        gl.BindBuffer(GL_PIXEL_PACK_BUFFER, readbackBuffer);
+        bool wait = Gfx_FrameHashWanted();
+        for (;;) {
+            Readback *oldest = NULL;
+            for (Readback &r : readbacks)
+                if (r.fence != nullptr && (oldest == NULL || r.serial < oldest->serial))
+                    oldest = &r;
+            if (oldest == NULL)
+                return;
+            if (!wait) {
+                GLenum status = gl.ClientWaitSync(oldest->fence, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
+                if (status != GL_ALREADY_SIGNALED && status != GL_CONDITION_SATISFIED)
+                    return;
+            }
+            FinishReadback(*oldest, readback);
+        }
+    }
+
+    void FinishReadback(Readback &r, GfxReadback &readback)
+    {
+        gl.ClientWaitSync(r.fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000ull);
+        gl.DeleteSync(r.fence);
+        r.fence = nullptr;
+        gl.BindBuffer(GL_PIXEL_PACK_BUFFER, r.buffer);
         const uint32_t *map = (const uint32_t *)gl.MapBufferRange(
-            GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)readbackWidth * readbackHeight * 4, GL_MAP_READ_BIT);
+            GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)r.width * r.height * 4, GL_MAP_READ_BIT);
         if (map != NULL) {
-            readback.pixels.assign(map, map + (size_t)readbackWidth * readbackHeight);
+            readback.pixels.assign(map, map + (size_t)r.width * r.height);
             gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
-            readback.readyWidth = readbackWidth;
-            readback.readyHeight = readbackHeight;
+            readback.readyWidth = r.width;
+            readback.readyHeight = r.height;
             readback.ready = true;
         }
         gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    }
+
+    // A pixel buffer for a new read. With all of them in flight, the GPU is
+    // far behind: the oldest is finished first.
+    Readback &FreeReadback(GfxReadback &readback)
+    {
+        Readback *oldest = NULL;
+        for (Readback &r : readbacks) {
+            if (r.fence == nullptr)
+                return r;
+            if (oldest == NULL || r.serial < oldest->serial)
+                oldest = &r;
+        }
+        FinishReadback(*oldest, readback);
+        return *oldest;
     }
 
     // The back buffer's pixels for Gfx_HashFrame.

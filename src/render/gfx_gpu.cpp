@@ -202,21 +202,29 @@ struct Executor : GfxExecutor {
     bool presentModeVsync = true;
     int anisotropy = 1, smoothScaling = 1;    // video.anisotropy, video.smooth_scaling
     Uint32 presentWidth = 0, presentHeight = 0; // the window's pixels, as last logged
-    // The back buffer read of the last presented frame (the lens flare test):
-    // it runs with that frame, and CollectReadback waits for it only when the
-    // game reads the pixels, during the next frame.
-    SDL_GPUTransferBuffer *readbackBuffer = nullptr;
-    uint32_t readbackCapacity = 0;
-    SDL_GPUFence *readbackFence = nullptr;
-    int readbackWidth = 0, readbackHeight = 0;
+    // Back buffer reads of recently presented frames (the lens flare test).
+    // The game gets the newest one the GPU has finished, a frame or two old:
+    // waiting for the last frame instead stopped the CPU from working ahead
+    // of the GPU, which halved the frame rate on phones with the sun in view.
+    struct Readback {
+        SDL_GPUTransferBuffer *buffer = nullptr;
+        uint32_t capacity = 0;
+        SDL_GPUFence *fence = nullptr;
+        uint64_t serial = 0;
+        int width = 0, height = 0;
+    };
+    Readback readbacks[3];
+    uint64_t readbackSerial = 0;
 
     ~Executor() override
     {
         if (device == NULL)
             return;
         SDL_WaitForGPUIdle(device);
-        SDL_ReleaseGPUFence(device, readbackFence);
-        SDL_ReleaseGPUTransferBuffer(device, readbackBuffer);
+        for (Readback &r : readbacks) {
+            SDL_ReleaseGPUFence(device, r.fence);
+            SDL_ReleaseGPUTransferBuffer(device, r.buffer);
+        }
         for (auto &p : pipelines)
             SDL_ReleaseGPUGraphicsPipeline(device, p.second);
         for (auto &s : samplers)
@@ -1269,16 +1277,17 @@ struct Executor : GfxExecutor {
 
         // Read back before the frame is shown (the lens flare test).
         CollectReadback(readback);
-        bool reading = false;
+        Readback *reading = NULL;
         if (readback.requested && readback.width > 0 && readback.height > 0) {
             int x = std::max(0, std::min(readback.x, backWidth - 1));
             int y = std::max(0, std::min(readback.y, backHeight - 1));
             int w = std::min(readback.width, backWidth - x), h = std::min(readback.height, backHeight - y);
-            if ((uint32_t)(w * h * 4) > readbackCapacity) {
-                SDL_ReleaseGPUTransferBuffer(device, readbackBuffer);
-                readbackCapacity = (uint32_t)(w * h * 4);
-                SDL_GPUTransferBufferCreateInfo tbi = { SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, readbackCapacity, 0 };
-                readbackBuffer = SDL_CreateGPUTransferBuffer(device, &tbi);
+            reading = FreeReadback(readback);
+            if ((uint32_t)(w * h * 4) > reading->capacity) {
+                SDL_ReleaseGPUTransferBuffer(device, reading->buffer);
+                reading->capacity = (uint32_t)(w * h * 4);
+                SDL_GPUTransferBufferCreateInfo tbi = { SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, reading->capacity, 0 };
+                reading->buffer = SDL_CreateGPUTransferBuffer(device, &tbi);
             }
             SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
             SDL_GPUTextureRegion src = {};
@@ -1288,13 +1297,12 @@ struct Executor : GfxExecutor {
             src.w = w;
             src.h = h;
             src.d = 1;
-            SDL_GPUTextureTransferInfo dst = { readbackBuffer, 0, 0, 0 };
+            SDL_GPUTextureTransferInfo dst = { reading->buffer, 0, 0, 0 };
             SDL_DownloadFromGPUTexture(copy, &src, &dst);
             SDL_EndGPUCopyPass(copy);
-            readbackWidth = w;
-            readbackHeight = h;
+            reading->width = w;
+            reading->height = h;
             readback.requested = false;
-            reading = true;
         }
 
         if (vsync != presentModeVsync) {
@@ -1331,26 +1339,58 @@ struct Executor : GfxExecutor {
             SDL_BlitGPUTexture(cmd, &blit);
         }
 
-        if (reading)
-            readbackFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
-        else
+        if (reading != NULL) {
+            reading->fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+            reading->serial = ++readbackSerial;
+        } else {
             SDL_SubmitGPUCommandBuffer(cmd);
+        }
         HashFrame();
     }
 
+    // Takes the reads the GPU has finished, oldest first, so the newest
+    // stays. Frame hashing waits for them all: its frames must not depend on
+    // the GPU's timing.
     void CollectReadback(GfxReadback &readback) override
     {
-        if (readbackFence == NULL)
-            return;
-        SDL_WaitForGPUFences(device, true, &readbackFence, 1);
-        SDL_ReleaseGPUFence(device, readbackFence);
-        readbackFence = NULL;
-        const uint32_t *map = (const uint32_t *)SDL_MapGPUTransferBuffer(device, readbackBuffer, false);
-        readback.pixels.assign(map, map + (size_t)readbackWidth * readbackHeight);
-        SDL_UnmapGPUTransferBuffer(device, readbackBuffer);
-        readback.readyWidth = readbackWidth;
-        readback.readyHeight = readbackHeight;
+        bool wait = Gfx_FrameHashWanted();
+        for (;;) {
+            Readback *oldest = NULL;
+            for (Readback &r : readbacks)
+                if (r.fence != NULL && (oldest == NULL || r.serial < oldest->serial))
+                    oldest = &r;
+            if (oldest == NULL || (!wait && !SDL_QueryGPUFence(device, oldest->fence)))
+                return;
+            FinishReadback(*oldest, readback);
+        }
+    }
+
+    void FinishReadback(Readback &r, GfxReadback &readback)
+    {
+        SDL_WaitForGPUFences(device, true, &r.fence, 1);
+        SDL_ReleaseGPUFence(device, r.fence);
+        r.fence = NULL;
+        const uint32_t *map = (const uint32_t *)SDL_MapGPUTransferBuffer(device, r.buffer, false);
+        readback.pixels.assign(map, map + (size_t)r.width * r.height);
+        SDL_UnmapGPUTransferBuffer(device, r.buffer);
+        readback.readyWidth = r.width;
+        readback.readyHeight = r.height;
         readback.ready = true;
+    }
+
+    // A slot for a new read. With all of them in flight, the GPU is far
+    // behind: the oldest is finished first.
+    Readback *FreeReadback(GfxReadback &readback)
+    {
+        Readback *oldest = NULL;
+        for (Readback &r : readbacks) {
+            if (r.fence == NULL)
+                return &r;
+            if (oldest == NULL || r.serial < oldest->serial)
+                oldest = &r;
+        }
+        FinishReadback(*oldest, readback);
+        return oldest;
     }
 
     // The back buffer's pixels for Gfx_HashFrame.
