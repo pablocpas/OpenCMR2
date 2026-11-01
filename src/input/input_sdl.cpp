@@ -34,6 +34,10 @@ struct InputDevice {
     Profile *profile = nullptr;
     int order = 0;                      // connection order
     bool wheel = false;
+    bool rumble = false;                // a gamepad with rumble motors
+    bool used = false;                  // gave an input since it was connected
+    Uint16 rumbleLow = 0, rumbleHigh = 0;
+    Uint64 rumbleSent = 0;              // when the rumble was last sent, ms
     std::vector<InputEffect *> effects;
 };
 
@@ -81,6 +85,7 @@ int s_nextOrder;
 bool s_devicesChanged;
 int s_localPlayers = 1;
 Player s_players[INPUT_PLAYERS];
+int s_pausePulse[INPUT_PLAYERS];        // updates the pause is held for after a disconnection
 
 void EnsureInit()
 {
@@ -225,8 +230,19 @@ void Open(SDL_JoystickID id)
     const char *name = gamepad ? SDL_GetGamepadName(gamepad) : SDL_GetJoystickName(joystick);
     device->name = name ? name : "Joystick";
     device->profile = Bindings_ForJoystick(joystick, gamepad != NULL);
+    device->used = false;
+    device->rumble = gamepad != NULL &&
+        SDL_GetBooleanProperty(SDL_GetGamepadProperties(gamepad), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
+    device->rumbleLow = device->rumbleHigh = 0;
+    // The game's effects are a wheel's forces; a gamepad whose haptic device
+    // has only rumble motors gets SDL's rumble instead (Input_SetRumble).
     if (SDL_IsJoystickHaptic(joystick)) {
         device->haptic = SDL_OpenHapticFromJoystick(joystick);
+        if (device->haptic != NULL &&
+            (SDL_GetHapticFeatures(device->haptic) & (SDL_HAPTIC_CONSTANT | SDL_HAPTIC_SPRING | SDL_HAPTIC_DAMPER)) == 0) {
+            SDL_CloseHaptic(device->haptic);
+            device->haptic = NULL;
+        }
         if (device->haptic != NULL)
             SDL_SetHapticAutocenter(device->haptic, 0);
     }
@@ -236,19 +252,28 @@ void Open(SDL_JoystickID id)
     char guid[33];
     SDL_GUIDToString(SDL_GetJoystickGUID(joystick), guid, sizeof(guid));
     const char *path = SDL_GetJoystickPath(joystick);
-    Sys_Log("controller: %s (%04x:%04x), %s, %d axes, %d buttons, %d hats%s%s; GUID %s, %s; [%s]", device->name.c_str(),
+    Sys_Log("controller: %s (%04x:%04x), %s, %d axes, %d buttons, %d hats%s%s%s; GUID %s, %s; [%s]", device->name.c_str(),
             SDL_GetJoystickVendor(joystick), SDL_GetJoystickProduct(joystick), JoystickKind(joystick, gamepad != NULL),
             SDL_GetNumJoystickAxes(joystick), SDL_GetNumJoystickButtons(joystick), SDL_GetNumJoystickHats(joystick),
-            device->haptic != NULL ? ", force feedback" : "",
+            device->haptic != NULL ? ", force feedback" : "", device->rumble ? ", rumble" : "",
             (SDL_GetJoystickVendor(joystick) == 0x28de && SDL_GetJoystickProduct(joystick) == 0x11ff) ||
                     (gamepad && SDL_GetGamepadSteamHandle(gamepad)) ? ", Steam virtual gamepad" : "",
             guid, path ? path : "no path", device->profile->section.c_str());
     s_devicesChanged = true;
 }
 
+int Owner(const InputDevice &device);
+bool Plays(int owner, int player);
+
 void Close(InputDevice &device)
 {
     Sys_Log("controller: %s disconnected", device.name.c_str());
+    // Losing the controller a player drives with pauses a stage, as the
+    // pause action held briefly (nothing in the menus).
+    if (device.used)
+        for (int player = 0; player < INPUT_PLAYERS; player++)
+            if (Plays(Owner(device), player))
+                s_pausePulse[player] = 2;
     for (InputEffect *effect : device.effects)
         effect->id = -1;
     if (device.haptic != NULL)
@@ -354,12 +379,25 @@ int SourceValue(const InputDevice *device, const Profile &profile, const Source 
 
 // Takes the larger value of each action from one profile into the player's,
 // and notes whether a driving action came from a key or button or an axis.
-void Accumulate(Player &player, const InputDevice *device, const Profile &profile, bool *digital, bool *analog)
+// Blends the linear response with a cubic one, which moves less near the
+// centre and reaches the full value at the same end.
+int Curve(int value, int percent)
+{
+    long long v = value;
+    long long cubic = v * v / INPUT_FULL * v / INPUT_FULL;
+    return (int)((v * (100 - percent) + cubic * percent) / 100);
+}
+
+void Accumulate(Player &player, InputDevice *device, const Profile &profile, bool *digital, bool *analog)
 {
     for (int action = 0; action < INPUT_ACTION_COUNT; action++) {
         for (const Source &source : profile.actions[action]) {
             int value = SourceValue(device, profile, source);
+            if (action <= INPUT_STEER_RIGHT && IsAnalog(source) && profile.steeringCurve != 0)
+                value = Curve(value, profile.steeringCurve);
             player.values[action] = std::max(player.values[action], value);
+            if (device != NULL && value > INPUT_FULL / 4)
+                device->used = true;
             if (action > INPUT_BRAKE)
                 continue;
             if (IsAnalog(source) && value > INPUT_FULL / 4)
@@ -391,11 +429,15 @@ void UpdatePlayer(int index)
     for (Profile &profile : profiles)
         if ((profile.section == "keyboard" && Plays(0, index)) || (profile.section == "keyboard2" && Plays(1, index)))
             Accumulate(player, NULL, profile, &digital, &analog);
-    for (const InputDevice &device : s_devices) {
+    for (InputDevice &device : s_devices) {
         if (device.id == 0 || !Plays(Owner(device), index))
             continue;
         Accumulate(player, &device, *device.profile, &digital, &analog);
         hasAxis = hasAxis || SteersWithAxis(*device.profile);
+    }
+    if (s_pausePulse[index] > 0) {
+        player.values[INPUT_PAUSE] = INPUT_FULL;
+        s_pausePulse[index]--;
     }
     // The device kind last used decides; before any input, an axis if the
     // player has one.
@@ -594,17 +636,38 @@ extern "C" InputDevice *Input_GetFeedbackDevice(int player)
 {
     InputDevice *best = NULL;
     for (InputDevice &device : s_devices) {
-        if (device.id == 0 || device.haptic == NULL || !Plays(Owner(device), player))
+        if (device.id == 0 || (device.haptic == NULL && !device.rumble) || !Plays(Owner(device), player))
             continue;
-        if (best == NULL || (device.wheel && !best->wheel) || (device.wheel == best->wheel && device.order < best->order))
+        // A device with force feedback first, wheels first among them.
+        int rank = device.haptic != NULL ? (device.wheel ? 3 : 2) : 1;
+        int bestRank = best == NULL ? 0 : best->haptic != NULL ? (best->wheel ? 3 : 2) : 1;
+        if (rank > bestRank || (rank == bestRank && device.order < best->order))
             best = &device;
     }
     return best;
 }
 
-extern "C" BOOL Input_HasFeedback(int player)
+extern "C" void Input_SetRumble(int player, int low, int high)
 {
-    return Input_GetFeedbackDevice(player) != NULL;
+    const Uint32 duration = 250;
+    Uint64 now = SDL_GetTicks();
+    for (InputDevice &device : s_devices) {
+        if (device.id == 0 || !device.rumble || !Plays(Owner(device), player))
+            continue;
+        int scale = device.profile->rumble;
+        Uint16 l = (Uint16)(SDL_clamp(low, 0, INPUT_FULL) * (Sint64)scale * 0xffff / (100 * (Sint64)INPUT_FULL));
+        Uint16 h = (Uint16)(SDL_clamp(high, 0, INPUT_FULL) * (Sint64)scale * 0xffff / (100 * (Sint64)INPUT_FULL));
+        // Sent when it changes noticeably, and renewed before it runs out.
+        bool changed = abs(l - device.rumbleLow) > 0x400 || abs(h - device.rumbleHigh) > 0x400 ||
+                       ((l == 0) != (device.rumbleLow == 0)) || ((h == 0) != (device.rumbleHigh == 0));
+        bool renew = (l != 0 || h != 0) && now - device.rumbleSent >= duration / 2;
+        if (!changed && !renew)
+            continue;
+        SDL_RumbleGamepad(device.gamepad, l, h, duration);
+        device.rumbleLow = l;
+        device.rumbleHigh = h;
+        device.rumbleSent = now;
+    }
 }
 
 // ---- raw keyboard and mouse ------------------------------------------------------

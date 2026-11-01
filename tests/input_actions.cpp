@@ -10,6 +10,7 @@
 #include "Menu.h"
 #include "platform/platform.h"
 #include "platform/testing.h"
+#include "input/input_internal.h"
 #include "main.h"
 #include "Car.h"
 
@@ -138,6 +139,14 @@ void CheckGamepadActions(Pad &pad)
     Input_Update();
     int right = Input_GetAction(0, INPUT_STEER_RIGHT);
     Check(right > INPUT_FULL * 45 / 100 && right < INPUT_FULL * 50 / 100, "half right, less the deadzone");
+    Bindings_Find("gamepad")->steeringCurve = 100;
+    Input_Update();
+    int curved = Input_GetAction(0, INPUT_STEER_RIGHT);
+    Check(curved > right / 5 && curved < right / 3, "a cubic curve is gentler half way");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_RIGHT) == INPUT_FULL, "and still reaches full lock");
+    Bindings_Find("gamepad")->steeringCurve = 0;
     SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTX, 300);
     Input_Update();
     Check(Input_GetAction(0, INPUT_STEER_RIGHT) == 0, "inside the deadzone");
@@ -404,6 +413,88 @@ void CheckWheel()
     Input_Update();
 }
 
+// Losing the controller a player drives with pauses a stage; an unused one,
+// or one lost in the menus, does nothing.
+void CheckDisconnectPause()
+{
+    Pad pad = AttachPad("Virtual Pad D", 0x0b12);
+    RaceFrame();
+    Detach(pad);
+    RaceFrame();
+    Check((Device(0).pressed & 0x400) == 0, "an unused controller does not pause");
+
+    pad = AttachPad("Virtual Pad D", 0x0b12);
+    RaceFrame();
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    RaceFrame();
+    Release(pad);
+    RaceFrame();
+    Detach(pad);
+    RaceFrame();
+    Check((Device(0).pressed & 0x400) != 0 && (Device(2).pressed & 0x200) != 0, "losing the driving controller pauses");
+    RaceFrame();
+    RaceFrame();
+    Check((Device(0).held & 0x600) == 0, "the pause is let go");
+
+    pad = AttachPad("Virtual Pad D", 0x0b12);
+    MenuFrame();
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    MenuFrame();
+    Release(pad);
+    MenuFrame();
+    Detach(pad);
+    MenuFrame();
+    Check((Device(0).pressed & 0x3f) == 0, "in the menus nothing is pressed");
+    MenuFrame();
+    MenuFrame();
+}
+
+Uint16 s_rumble[2];
+int s_rumbleCalls;
+
+bool SDLCALL RecordRumble(void *, Uint16 low, Uint16 high)
+{
+    s_rumble[0] = low;
+    s_rumble[1] = high;
+    s_rumbleCalls++;
+    return true;
+}
+
+// A gamepad with rumble is the player's force-feedback device and rumbles
+// with Input_SetRumble, scaled by its setting.
+void CheckRumble(Pad &first)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x045e;
+    desc.product_id = 0x0b13;
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.name = "Virtual Rumble Pad";
+    desc.Rumble = RecordRumble;
+    SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    SDL_Joystick *virt = SDL_OpenJoystick(id);
+    Detach(first);
+    Input_Update();
+    Check(Input_GetFeedbackDevice(0) != NULL, "a gamepad with rumble takes the force feedback");
+    Input_SetRumble(0, INPUT_FULL / 2, INPUT_FULL);
+    Check(s_rumbleCalls == 1 && s_rumble[0] > 0x7f00 && s_rumble[0] < 0x8100 && s_rumble[1] == 0xffff, "it rumbles");
+    Input_SetRumble(0, INPUT_FULL / 2, INPUT_FULL);
+    Check(s_rumbleCalls == 1, "an unchanged rumble is not sent again at once");
+    Input_SetRumble(0, 0, 0);
+    Check(s_rumbleCalls == 2 && s_rumble[0] == 0 && s_rumble[1] == 0, "it stops");
+    Bindings_Find("gamepad")->rumble = 50;
+    Input_SetRumble(0, 0, INPUT_FULL);
+    Check(s_rumble[1] > 0x7f00 && s_rumble[1] < 0x8100, "rumble = 50 halves it");
+    Bindings_Find("gamepad")->rumble = 100;
+    Input_SetRumble(0, 0, 0);
+    SDL_CloseJoystick(virt);
+    SDL_DetachVirtualJoystick(id);
+    first = AttachPad("Virtual Xbox 360 Controller", 0x028e);
+    Input_Update();
+}
+
 // controls.ini is written with the defaults and read back; an edited file
 // rebinds the actions.
 void CheckBindingsFile(Pad &pad)
@@ -481,6 +572,8 @@ int main()
     CheckTwoPlayers(pad);
     CheckManualMapping();
     CheckWheel();
+    CheckDisconnectPause();
+    CheckRumble(pad);
     CheckBindingsFile(pad);
 
     Detach(pad);

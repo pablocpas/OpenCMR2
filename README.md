@@ -113,7 +113,8 @@ Keyboards, gamepads and wheels work in the menus and on the stages. Every
 connected controller drives player 1, together with the keyboard; when two
 players race, the second controller connected is player 2's, with the
 numeric keypad. Controllers connected or disconnected while the game runs
-are taken at once. A player switches between keys and an axis freely: the
+are taken at once; losing the controller a player drives with pauses the
+stage. A player switches between keys and an axis freely: the
 game steers as with a keyboard after a key, and follows the stick or wheel
 after it moves. Without a physical keyboard (Steam Deck Game Mode), the
 on-screen keyboard opens only to type a name.
@@ -128,9 +129,15 @@ their axes rest. All of them are set in `controls.ini` in the user directory,
 written with the defaults and an explanation on first launch: each action
 lists the keys, buttons and axes bound to it, with a section for each
 keyboard player, for gamepads, for other joysticks, and for each model of
-wheel or joystick connected, which also sets its deadzone, its saturation
-and the player it belongs to. The keys of an older `Controller.rcf` are
-taken when `controls.ini` does not exist yet.
+wheel or joystick connected, which also sets its deadzone, its saturation,
+a steering curve for finer corrections around the centre, the strength of a
+gamepad's rumble and the player it belongs to. The keys of an older
+`Controller.rcf` are taken when `controls.ini` does not exist yet.
+
+Gamepads rumble on the stages: the high frequency motor with the roughness
+of the surface under the front wheels, more with speed, the low frequency
+one with impacts. Wheels and joysticks with force feedback get the game's
+own forces.
 
 On Android, install the APK and copy the installation folder to the
 device first. On first launch, choose it in the system's folder picker: the

@@ -1484,6 +1484,29 @@ void ForceFeedback_FadeImpulseForces(void);
 extern int g_unk0x00539270[2];
 extern Car *g_pForceFeedbackCar;
 
+// PORT: gamepads have rumble motors rather than a wheel's forces. They
+// follow the amplitude the game gives its road noise (ComputeRoadNoise): the
+// roughness of the surface under the front wheels, growing with speed up to
+// about 90 km/h, plus impacts. The high frequency motor takes mostly the
+// surface, the low frequency one mostly the impacts.
+static void ForceFeedback_UpdateRumble(int view)
+{
+    int speed;
+    int surface;
+    int impact;
+
+    if (g_pForceFeedbackSlot->field_0x2c < 0)
+        return;
+    speed = g_pForceFeedbackCar->speed;
+    if (speed > 0x10000)
+        speed = 0x10000;
+    else if (speed < 0)
+        speed = 0;
+    surface = FixMul(g_pForceFeedbackCar->cornerGrip[0].field_0x1c + g_pForceFeedbackCar->cornerGrip[1].field_0x1c, speed);
+    impact = g_pForceFeedbackSlot->field_0x28;
+    Input_SetRumble(view, surface + surface / 2 + impact, surface * 3 + impact / 2);
+}
+
 // Selects the force-feedback slot and car of a player, copies the car's
 // centring state into the shared road-rumble values and re-applies the slot's
 // forces when it is in use.
@@ -1507,6 +1530,7 @@ void ForceFeedback_UpdatePlayerSlot(int view)
         ForceFeedback_ComputeConditionCoefficients();
         ForceFeedback_FadeImpulseForces();
         ForceFeedback_ApplyStoredForces();
+        ForceFeedback_UpdateRumble(view);   // PORT
     }
 }
 

@@ -38,7 +38,10 @@ const char *const s_header =
     "# its rest, and the part that gives the full value. player is 1 or 2 for a\n"
     "# device, or auto: the second controller connected plays as player 2 when two\n"
     "# players race. smooth_steering eases the steering towards the axis instead of\n"
-    "# following it directly.\n"
+    "# following it directly. steering_curve, 0 to 100, makes a steering axis\n"
+    "# gentler around its centre for finer corrections, keeping full lock at its\n"
+    "# end (0 follows the axis linearly, as the original). rumble is the strength\n"
+    "# of a gamepad's vibration in percent (0 turns it off).\n"
     "#\n"
     "# [keyboard] is player 1's keys and [keyboard2] player 2's. [gamepad] applies\n"
     "# to every controller SDL knows the layout of, [joystick] is the default for\n"
@@ -247,6 +250,10 @@ void Read(const char *text)
             profile->player = value == "1" ? 1 : value == "2" ? 2 : 0;
         else if (key == "smooth_steering")
             profile->smoothSteering = SDL_atoi(value.c_str()) != 0;
+        else if (key == "steering_curve")
+            profile->steeringCurve = SDL_clamp(SDL_atoi(value.c_str()), 0, 100);
+        else if (key == "rumble")
+            profile->rumble = SDL_clamp(SDL_atoi(value.c_str()), 0, 100);
         else
             Sys_Log("controls.ini: [%s] unknown setting '%s'", profile->section.c_str(), key.c_str());
     }
@@ -269,6 +276,8 @@ std::string Write(void)
             text += "deadzone = " + std::to_string(profile.deadzone) + "\n";
             text += "saturation = " + std::to_string(profile.saturation) + "\n";
             text += "smooth_steering = " + std::to_string(profile.smoothSteering ? 1 : 0) + "\n";
+            text += "steering_curve = " + std::to_string(profile.steeringCurve) + "\n";
+            text += "rumble = " + std::to_string(profile.rumble) + "\n";
             if (profile.section.compare(0, 7, "device ") == 0)
                 text += std::string("player = ") + (profile.player ? std::to_string(profile.player) : "auto") + "\n";
         }

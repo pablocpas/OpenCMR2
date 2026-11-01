@@ -83,10 +83,14 @@ BOOL Input_IsSmoothSteering(int player);
 /* Whether a joystick or controller was connected or disconnected since the
    previous call. */
 BOOL Input_DevicesChanged(void);
-/* A device of the player that has force feedback, or NULL. */
+/* The device the game sends a player's force feedback to: a wheel or
+   joystick with force feedback, else a gamepad that can rumble; NULL
+   without either. */
 InputDevice *Input_GetFeedbackDevice(int player);
-/* Whether the player has a device with force feedback or rumble. */
-BOOL Input_HasFeedback(int player);
+/* Rumble of the player's gamepads, 0..INPUT_FULL for the low and the high
+   frequency motor, scaled by the rumble setting of each. Fades out unless
+   it is set again within a quarter of a second. */
+void Input_SetRumble(int player, int low, int high);
 
 /* Keyboard keys (DIK_*) of the nine driving actions of the two keyboard
    players, from an older configuration (Controller.rcf): used only while
