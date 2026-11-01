@@ -1,5 +1,6 @@
 package io.github.pablocpas.opencmr2
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.annotation.Keep
 import android.view.KeyEvent
@@ -18,6 +19,11 @@ class GameActivity : SDLActivity() {
 
     @Keep
     fun useTouchControlsOnly(): Boolean = ControllerProfiles.touchOnly(this)
+
+    // Called by input_sdl.cpp: the controls pages list the keyboard players
+    // only with a physical keyboard; the touch controls are edited here.
+    @Keep
+    fun hasHardwareKeyboard(): Boolean = resources.configuration.keyboard == Configuration.KEYBOARD_QWERTY
 
     override fun getLibraries() = arrayOf("SDL3", "main")
 

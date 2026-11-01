@@ -99,6 +99,25 @@ bool AndroidTouchOnly()
     env->DeleteLocalRef(activity);
     return result;
 }
+
+// Whether a physical keyboard is connected (Configuration.keyboard).
+bool AndroidHasKeyboard()
+{
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jobject activity = (jobject)SDL_GetAndroidActivity();
+    if (env == NULL || activity == NULL)
+        return false;
+    jclass type = env->GetObjectClass(activity);
+    jmethodID method = env->GetMethodID(type, "hasHardwareKeyboard", "()Z");
+    bool result = method != NULL && env->CallBooleanMethod(activity, method);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        result = false;
+    }
+    env->DeleteLocalRef(type);
+    env->DeleteLocalRef(activity);
+    return result;
+}
 #endif
 const BYTE *s_testKeyboard;
 bool s_testNoControllers;
@@ -919,8 +938,17 @@ namespace {
 std::vector<Profile *> EditableProfiles()
 {
     std::vector<Profile *> profiles;
+#ifdef __ANDROID__
+    // The touch controls press player 1's default keys whatever the keyboard
+    // is bound to, and are edited in the launcher: the keyboard players are
+    // listed only with a physical keyboard.
+    bool keyboard = AndroidHasKeyboard();
+#else
+    bool keyboard = true;
+#endif
     for (const char *section : { "keyboard", "keyboard2", "gamepad" })
-        profiles.push_back(Bindings_Find(section));
+        if (keyboard || strcmp(section, "gamepad") == 0)
+            profiles.push_back(Bindings_Find(section));
     for (InputDevice &device : s_devices)
         if (device.id != 0 && device.profile->section.compare(0, 7, "device ") == 0 &&
             std::find(profiles.begin(), profiles.end(), device.profile) == profiles.end())

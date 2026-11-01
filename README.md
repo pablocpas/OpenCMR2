@@ -178,6 +178,10 @@ pauses the game; a controller’s Back/Select follows its SDL mapping.
 Controller firmware must expose its input to Android; buttons intercepted by
 system shortcuts cannot be mapped by the app.
 
+In the game's **Options > Controllers** the keyboard players are listed only
+while a physical keyboard is connected; the touch controls steer as keys do,
+with the car's progressive steering, and are edited in the launcher.
+
 The touch controls use one layout for the menus and the stages. The left group
 has Left and Right, with Confirm and Back/Pause above them. The right group
 puts brake and accelerate next to each other on the bottom row, with the
