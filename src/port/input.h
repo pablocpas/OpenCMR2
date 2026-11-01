@@ -80,9 +80,10 @@ int Input_GetAction(int player, int action);
 BOOL Input_IsAnalogSteering(int player);
 BOOL Input_IsAnalogPedals(int player);
 /* Whether the game eases the steering towards the player's axis rather
-   than following it directly: a gamepad's short stick is eased at the car
+   than following it directly: a gamepad's thumbstick is eased at the car
    setup's steering speed, about as fast as keys turn the wheels; a wheel's
-   or joystick's axis is followed directly, as the original did. */
+   or joystick's axis, or one of a device of unknown kind, is followed
+   directly, as the original did. */
 BOOL Input_IsSmoothSteering(int player);
 /* Whether a joystick or controller was connected or disconnected since the
    previous call. */

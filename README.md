@@ -128,8 +128,10 @@ and to resume.
 A gamepad's stick turns the wheels at the car setup's steering speed, about
 as fast as the keys do; followed directly, as the original did with any
 joystick, the wheels would jump to the stick's angle in one physics step.
-Wheels steer with their first axis, followed directly, and their pedals are
-found from where their axes rest.
+Wheels and joysticks are followed directly, as the original did: a joystick's
+lever travels much further than a thumbstick, and many wheels are reported as
+joysticks. Wheels steer with their first axis, and their pedals are found
+from where their axes rest.
 
 **Options > Controllers** chooses the bindings to edit: player 1's keys,
 player 2's keys, the gamepads' or those of a connected joystick or wheel.
