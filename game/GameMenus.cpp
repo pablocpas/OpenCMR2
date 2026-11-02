@@ -2772,7 +2772,7 @@ void Input_ClearCharacterQueue(void);
 BOOL Network_GetSessionStateFlag(void);
 
 // GLOBAL: CMR2 0x00519ee4
-int g_unk0x00519ee4 = -1;
+int g_resultsChatLastCursor = -1;
 // GLOBAL: CMR2 0x00540898
 BYTE g_unk0x00540898;
 // GLOBAL: CMR2 0x00541210
@@ -2816,7 +2816,7 @@ void GameMenu_HandleNetworkResultsChatInput(Menu *pMenu)
         else if (pDevice->pressed & 4)
             pMenu->cursor = pMenu->itemCount - 1;
     }
-    if (g_unk0x00519ee4 != pMenu->cursor) {
+    if (g_resultsChatLastCursor != pMenu->cursor) {
         if (pMenu->items[pMenu->cursor].value == 0x3eb) {
             Input_ClearCharacterQueue();
             g_chatLine[0] = 0;
@@ -2824,11 +2824,11 @@ void GameMenu_HandleNetworkResultsChatInput(Menu *pMenu)
             g_chatLineSelected = 1;
             Menu_SetFlags(pMenu, 0, 0, 0, 0);
         } else {
-            if (pMenu->items[g_unk0x00519ee4].value == 0x3eb)
+            if (pMenu->items[g_resultsChatLastCursor].value == 0x3eb)
                 Menu_SetFlags(pMenu, 1, 1, 1, 1);
             g_chatLineSelected = 0;
         }
-        g_unk0x00519ee4 = pMenu->cursor;
+        g_resultsChatLastCursor = pMenu->cursor;
     }
     Network_RebuildSessionPlayerList();
     if (g_chatLineSelected)
@@ -3093,7 +3093,7 @@ void GameMenu_SetupStageResults(int param_1)
     // Rally Challenge runs in Japan (country 8), which has none: there the
     // original reads the split times behind the records as the name, and with
     // a profile that holds records writes tens of bytes into the four-byte
-    // g_ghostName, over g_unk0x00519ee4 and the chat characters.
+    // g_ghostName, over g_resultsChatLastCursor and the chat characters.
     // PORT: Japan has no stage record, so it has no ghost name or total. The
     // original read the split times behind the records instead and, with a
     // profile that holds records, wrote up to 53 bytes into g_ghostName: here
@@ -3547,7 +3547,7 @@ void GameMenu_BuildStageResultsMenu(char param1, Menu *pParent)
 // FUNCTION: CMR2 0x0044b0d0
 void GameMenu_BuildTimeTrialResultsMenu(char param1, Menu *pParent)
 {
-    g_unk0x00519ee4 = -1;
+    g_resultsChatLastCursor = -1;
     Menu_Init(&g_menu0x005416e0, 0, 0, 0, pParent, NULL, 1, 0, 1);
     Menu_AddItemType4(&g_menu0x005416e0, 0, -1, 0, 0x3eb);
     if (param1 != 0) {

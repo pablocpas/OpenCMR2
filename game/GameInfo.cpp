@@ -10350,7 +10350,7 @@ int g_highlightRowColour = -2142286001;
 // x/y/w/h of the background bar of the row being drawn.
 // Name of the current rally/weather of the rally screen rows.
 // GLOBAL: CMR2 0x0082aa44
-char g_unk0x0082aa44[0x100];
+char g_saveGameName[0x100];
 // Row of the highlighted weather entry: "%s: %s_".
 // GLOBAL: CMR2 0x005295f8
 char g_str0x005295f8[] = "%s: %s_";
@@ -10494,8 +10494,8 @@ void OptionMenu_LoadGameItem(Menu *pMenu, MenuItem *pItem)
         return;
     }
     if (pMenu->items[4].max == 1) {
-        if (SavedGames_WriteSessionImage(-1, g_unk0x0082aa44) != 0) {
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+        if (SavedGames_WriteSessionImage(-1, g_saveGameName) != 0) {
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
             strcpy(g_optionStatusLine, CFrontend::GetTextString(0x143));
             Menu_SetNextAction(OptionMenu_GetStatusMenu());
             SavedGames_LoadRecords();
@@ -10788,7 +10788,7 @@ void OptionMenu_UpdateLoadGameAndNameEntry(Menu *pMenu)
     index = Menu_FindItem(pMenu, 4);
     if (pMenu->items[index].max == 1) {
         Menu_SetFlags(pMenu, 0, 0, 1, 0);
-        Sys_RequestTextInput(CFrontend::GetTextString(0x7f), g_unk0x0082aa44, 0x1e);   // PORT
+        Sys_RequestTextInput(CFrontend::GetTextString(0x7f), g_saveGameName, 0x1e);   // PORT
         pDevice = CInput::GetAvailableDeviceRecord(0);
         if (pDevice->pressed == 0) {
             g_nameEditorOpened = 1;
@@ -10798,17 +10798,17 @@ void OptionMenu_UpdateLoadGameAndNameEntry(Menu *pMenu)
         if ((pDevice->pressed & 4) != 0) {
             index = Menu_FindItem(pMenu, 4);
             pMenu->items[index].max = 0;
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
         } else if ((pDevice->pressed & 1) != 0) {
             pMenu->cursor--;
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
         } else if ((pDevice->pressed & 2) != 0) {
             pMenu->cursor++;
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
         }
     editor:
-        g_nameEditorBuffer = g_unk0x0082aa44;
-        strcpy(CFrontend::m_stringDest, g_unk0x0082aa44);
+        g_nameEditorBuffer = g_saveGameName;
+        strcpy(CFrontend::m_stringDest, g_saveGameName);
         if (Input_PopQueuedCharacter(&value)) {
             if (value != 8) {
                 length = strlen(CFrontend::m_stringDest);
@@ -10829,7 +10829,7 @@ void OptionMenu_UpdateLoadGameAndNameEntry(Menu *pMenu)
         }
     } else {
         Input_ClearCharacterQueue();
-        strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+        strcpy(g_saveGameName, CMain::m_logFileBlankLine);
         g_nameEditorOpened = 0;
         Menu_SetFlags(pMenu, 1, 1, 1, 1);
     }

@@ -7348,7 +7348,7 @@ EventRec g_eventRecords[11];
 int g_eventScales[2];
 #define g_eventScale (g_eventScales[0])
 // GLOBAL: CMR2 0x00589318
-int g_unk0x00589318;
+int g_pendingEventDrawCount;
 // GLOBAL: CMR2 0x0058931c
 int g_eventCount;
 // GLOBAL: CMR2 0x00589320
@@ -7394,7 +7394,7 @@ void Events_ComputeSteps(void)
 BYTE g_unk0x00589331;
 
 // GLOBAL: CMR2 0x00589334
-int g_unk0x00589334;
+int g_eventStampQuadrant;
 
 // Stamp patterns of the event sprites: a 4x4 grid per rotation and a 16x16
 // grid per rotation.
@@ -7530,7 +7530,7 @@ void Events_Reset(void)
     EventRec *p;
     int i;
 
-    g_unk0x00589318 = 0;
+    g_pendingEventDrawCount = 0;
     if (g_eventCount > 0) {
         p = g_eventRecords;
         for (i = g_eventCount; i != 0; i--, p++) {
@@ -8050,16 +8050,16 @@ void StageObject_StampPendingEventDraws(int unused)
 
     if (g_eventCount <= 0)
         return;
-    if (g_unk0x00589318 <= 0)
+    if (g_pendingEventDrawCount <= 0)
         return;
     colour[0] = 0x2f;
     colour[1] = 0x27;
     colour[2] = 0x14;
     colour[3] = 0xc0;
-    g_unk0x00589334 = g_unk0x00589334 + 1;
-    if (g_unk0x00589334 > 3)
-        g_unk0x00589334 = 0;
-    switch (g_unk0x00589334) {
+    g_eventStampQuadrant = g_eventStampQuadrant + 1;
+    if (g_eventStampQuadrant > 3)
+        g_eventStampQuadrant = 0;
+    switch (g_eventStampQuadrant) {
     case 0:
         rect.left = 0;
         rect.top = 0;
@@ -8087,7 +8087,7 @@ void StageObject_StampPendingEventDraws(int unused)
     }
     CGraphics::LockTexture(g_eventTexture, &rect);
     i = 0;
-    if (g_unk0x00589318 > 0) {
+    if (g_pendingEventDrawCount > 0) {
         do {
             j = 0;
             pPos = (short *)g_eventDraws[i].pEvent;
@@ -8120,10 +8120,10 @@ void StageObject_StampPendingEventDraws(int unused)
             }
             i = i + 1;
             g_eventsDirty = 1;
-        } while ((short)i < g_unk0x00589318);
+        } while ((short)i < g_pendingEventDrawCount);
     }
     CGraphics::UnlockTexture(g_eventTexture);
-    g_unk0x00589318 = 0;
+    g_pendingEventDrawCount = 0;
 }
 
 BYTE Events_Tick(int index);
@@ -8138,22 +8138,22 @@ void StageObject_QueueTimedEventDraw(int index, int x, int y)
     int over;
 
     if (index < g_eventCount && g_eventRecords[index].active != 0 && Events_Tick(index) && x >= 0 &&
-        y >= 0 && x < p->a * 4 - 4 && y < p->b && g_unk0x00589318 < 0x40 && p != NULL) {
+        y >= 0 && x < p->a * 4 - 4 && y < p->b && g_pendingEventDrawCount < 0x40 && p != NULL) {
         over = y - p->b + 4;
-        g_eventDraws[g_unk0x00589318].pEvent = p;
-        g_eventDraws[g_unk0x00589318].x = (char)x;
-        g_eventDraws[g_unk0x00589318].y = (char)y;
+        g_eventDraws[g_pendingEventDrawCount].pEvent = p;
+        g_eventDraws[g_pendingEventDrawCount].x = (char)x;
+        g_eventDraws[g_pendingEventDrawCount].y = (char)y;
         if (over > 0)
-            g_eventDraws[g_unk0x00589318].rows = 4 - (char)over;
+            g_eventDraws[g_pendingEventDrawCount].rows = 4 - (char)over;
         else
-            g_eventDraws[g_unk0x00589318].rows = 4;
+            g_eventDraws[g_pendingEventDrawCount].rows = 4;
         if ((unsigned short)g_eventRecords[index].field_0x16 >=
             (unsigned short)g_eventRecords[index].range) {
             g_eventRecords[index].paused = 1;
-            g_unk0x00589318++;
+            g_pendingEventDrawCount++;
             return;
         }
-        g_unk0x00589318++;
+        g_pendingEventDrawCount++;
         g_eventRecords[index].field_0x16++;
     }
 }

@@ -1254,7 +1254,7 @@ static const char *const g_controlsCalibrationText[6][3] = {
 // A help line in the language the menus show, or Polish for that edition.
 static char *FrontendControls_Text(int line)
 {
-    int language = CGameInfo::GetGameRegion() == 3 ? 5 : CFrontend::m_unk0x0065aa70;
+    int language = CGameInfo::GetGameRegion() == 3 ? 5 : CFrontend::m_textLanguage;
 
     if (language < 0 || language > 5)
         language = 0;
@@ -3040,11 +3040,11 @@ void FrontendMenu_BuildNetworkExtendedStageSetup(void)
 }
 
 // FUNCTION: CMR2 0x004f8870
-void FrontendMenu_BuildNetworkNameEntry(void)
+void FrontendMenu_BuildJoinPasswordEntry(void)
 {
     Menu_Init(&g_menu0x0081b158, 0, 0x13, 0, &g_menu0x00824c18, NULL, 1, 0, 1);
     Menu_AddItemType4(&g_menu0x0081b158, 0, -1, (MenuItemAction)FrontendNetwork_JoinNamedSession, -1);
-    Menu_SetCallbacks(&g_menu0x0081b158, FrontendMenu_EnterNetworkNameEntry, (MenuCallback)FrontendMenu_UpdateNetworkNameEntry, (MenuCallback)FrontendMenu_DrawNetworkNameEntry, NULL);
+    Menu_SetCallbacks(&g_menu0x0081b158, FrontendMenu_EnterJoinPasswordEntry, (MenuCallback)FrontendMenu_UpdateJoinPasswordEntry, (MenuCallback)FrontendMenu_DrawJoinPasswordEntry, NULL);
     Menu_ValidateCursor(&g_menu0x0081b158, 0);
 }
 
@@ -3467,7 +3467,7 @@ Menu *FrontendMenu_GetNetworkExtendedStageSetup(void)
 }
 
 // FUNCTION: CMR2 0x004f88d0
-Menu *FrontendMenu_GetNetworkNameEntry(void)
+Menu *FrontendMenu_GetJoinPasswordEntry(void)
 {
     return &g_menu0x0081b158;
 }

@@ -508,8 +508,8 @@ char **CFrontend::m_textStrings;
 int CFrontend::m_textFirstId;
 int CFrontend::m_textCount;
 char CFrontend::m_strInvalidTextString[20] = "INVALID TEXT STRING";
-BYTE CFrontend::m_unk0x0065aa70;
-BYTE CFrontend::m_unk0x0065aa71;
+BYTE CFrontend::m_textLanguage;
+BYTE CFrontend::m_textLanguageCount;
 
 // Looks up one of the loaded text strings; out-of-range ids fall back to the
 // "INVALID TEXT STRING" placeholder.
@@ -517,8 +517,8 @@ BYTE CFrontend::m_unk0x0065aa71;
 // FUNCTION: CMR2 0x004a3c30
 void Frontend_SelectTextLanguage(int language)
 {
-    if (language < CFrontend::m_unk0x0065aa71) {
-        CFrontend::m_unk0x0065aa70 = language;
+    if (language < CFrontend::m_textLanguageCount) {
+        CFrontend::m_textLanguage = language;
         CFrontend::m_textFirstId = CFrontend::m_textCount * language;
     }
 }
@@ -534,8 +534,8 @@ void CFrontend::BuildLocalizedTextStringTable(int languages, int count, BYTE **p
     int row;
     BYTE *p;
 
-    m_unk0x0065aa71 = (BYTE)languages;
-    m_unk0x0065aa70 = 0;
+    m_textLanguageCount = (BYTE)languages;
+    m_textLanguage = 0;
     m_textFirstId = 0;
     m_textCount = count;
     m_textStrings = (char **)CFileBuffer::AllocateLockedBuffer(languages * count * sizeof(char *));
@@ -752,9 +752,9 @@ void CFrontend::FreeLocalizedTextStrings(void)
     if (m_textStrings != NULL) {
         CFileBuffer::FreeGenericFileBuffer(m_textStrings);
         m_textStrings = NULL;
-        m_unk0x0065aa70 = 0;
+        m_textLanguage = 0;
         m_textFirstId = 0;
-        m_unk0x0065aa71 = 0;
+        m_textLanguageCount = 0;
         m_textCount = 0;
     }
 }

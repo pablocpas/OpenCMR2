@@ -97,7 +97,7 @@ extern CountryCarSetupBlock g_countryCarSetupBlock;
 
 extern int g_highlightRowColour;
 
-extern char g_unk0x0082aa44[0x100];
+extern char g_saveGameName[0x100];
 
 extern char g_str0x005295f8[];
 
@@ -274,10 +274,10 @@ Sprite_Queue((SpriteRect *)&g_symbolCrossTexture->field_0x11c, (SpriteRect *)rec
                 sprintf(CFrontend::m_stringDest, CFrontend::GetTextString(0x141));
             } else if (CMain::GetFrameDelta() % 0x14 > 9 && param2 == i) {
                 sprintf(CFrontend::m_stringDest, g_str0x005295f8, CFrontend::GetTextString(0x142),
-                        g_unk0x0082aa44);
+                        g_saveGameName);
             } else {
                 sprintf(CFrontend::m_stringDest, g_strLabelText, CFrontend::GetTextString(0x142),
-                        g_unk0x0082aa44);
+                        g_saveGameName);
             }
             break;
         case 2:

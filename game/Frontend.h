@@ -48,9 +48,9 @@ public:
     // GLOBAL: CMR2 0x00520b00
     static char m_strInvalidTextString[20];
     // GLOBAL: CMR2 0x0065aa70
-    static BYTE m_unk0x0065aa70;
+    static BYTE m_textLanguage;
     // GLOBAL: CMR2 0x0065aa71
-    static BYTE m_unk0x0065aa71;
+    static BYTE m_textLanguageCount;
 
     // GLOBAL: CMR2 0x00818200
     static GenericFile m_languageFiles[5];
