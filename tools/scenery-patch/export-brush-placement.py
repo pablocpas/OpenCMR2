@@ -53,7 +53,7 @@ def route_nodes(raw):
     n = len(raw) // 44; pos = []; last = n
     for i in range(n):
         pos.append((fix(raw, i*44), fix(raw, i*44+8)))
-    for i in range(n - 1, -1, -1):   # RallyData trims after the last checkpoint-flag node
+    for i in range(n - 1, 0, -1):   # RallyData (game/RallyData.cpp ~9083) trims after the last checkpoint-flag node; node 0 is never tested there
         if raw[i*44+0x18] & 1: last = i + 1; break
     return pos[:last]
 
@@ -105,7 +105,7 @@ def analyse(c3d, route, hashes):
         if pobj != 0xffffffff and pobj % MESH == 0: node_meshes.add(pobj // MESH)
     if not route or len(route) % 44 or len(route) < 44 * 4: raise Refused('route (<stage>.cat) missing or not a whole number of 0x2c nodes')
     rt = route_nodes(route)
-    out = []; checks = {'route_nodes': len(rt), 'node_count': nn, 'mesh_count': nm, 'object_mesh_count': no,
+    out = []; checks = {'route_nodes': len(rt), 'route_nodes_in_file': len(route) // 44, 'node_count': nn, 'mesh_count': nm, 'object_mesh_count': no,
                         'wall_parts_found': len(parts), 'wall_hashes_expected': len(hashes)}
     for mi, texname, digest, uniq, vo in parts:
         # The walls are STAGE OBJECT meshes (loader: pMesh = pMeshes + meshCount + n*0x120). A stage object

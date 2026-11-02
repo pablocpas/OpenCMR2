@@ -100,4 +100,11 @@ class T(unittest.TestCase):
             rep = m.export(data, root / 'o.json', inc)
             self.assertTrue(rep['refused'])   # walls in two members: ambiguous
 
+    def test_route_trim_matches_runtime(self):
+        r = cat([(1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0)])
+        raw = bytearray(r); raw[3 * 44 + 0x18] = 1   # last checkpoint flag at node 3: nodes 4,5 are trimmed
+        self.assertEqual(len(m.route_nodes(bytes(raw))), 4)
+        raw2 = bytearray(r); raw2[0x18] = 1; raw2[5 * 44 + 0x18] = 0   # only node 0 flagged: runtime never tests node 0, keeps all
+        self.assertEqual(len(m.route_nodes(bytes(raw2))), 6)
+
 if __name__ == '__main__': unittest.main()

@@ -559,7 +559,11 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
         static int volumeLogs=0;
         bool volumeOn=Sys_GetOption("video.brush_volume",0)!=0;   // experimental, off by default
         float qaL[3]={c[0].x,c[0].y,c[0].z},qbL[3]={c[1].x,c[1].y,c[1].z},qa[3],qb[3],nW[3],awayW[3]={0,0,0},away[3]={0,0,0};
+        // The recovered stage data has vertices already in world space with an identity record matrix, and
+        // the static stage draw (Game.cpp Game_DrawStaticStageObjects) sets no world matrix: the ambient WORLD
+        // is the identity set by Game_DrawCulledSectorShadows. Any other ambient matrix is an unverified frame: decline.
         bool rigid=BrushRelief::RigidWorld(W);
+        for(int wi=0;wi<16&&rigid;wi++)if(std::fabs(W[wi]-((wi%5)==0?1.f:0.f))>1e-3f)rigid=false;
         bool routeOk=false;
         if(volumeOn&&rigid&&g_routeNodes&&g_routeNodeCount>0){
          // Wall quads are object-local: take them to world space (the route's space) first.
@@ -578,7 +582,7 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
          data.ready=BrushRelief::Build(c,n,alpha,aw,ah,reliefDial,true,data.vertices);
          BrushRelief::Indices(true,data.indices);
          for(int k=0;k<4;k++)data.corners[k]=c[k];
-        }else if(!volumeOn){/* default: original flat wall, nothing drawn differently */}else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined for a wall (no route nodes, none within 60 units, wall not vertical, ambiguous side, or non-rigid world matrix; %d route nodes); keeping the flat original",g_routeNodeCount);
+        }else if(!volumeOn){/* default: original flat wall, nothing drawn differently */}else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined for a wall (no route nodes, none within 60 units, wall not vertical, ambiguous side, or non-identity ambient world matrix; %d route nodes); keeping the flat original",g_routeNodeCount);
        }
       }
      }
