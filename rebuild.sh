@@ -10,7 +10,8 @@
 #   --update                    Fast-forward origin/main first (clean checkout only); never resets/stashes
 #   --all-mods                  Current audiovisual preset (not every effect on); needs data and owned car ZIPs.
 #                               Includes the EXPERIMENTAL Greece1 brush-wall extrusion (--brush-volume 1): visual only,
-#                               collision unchanged, extrusion direction on the real stage not yet verified
+#                               collision unchanged, extrusion direction not verified natively; only part of the walls change
+#                               (offline count on one recovered gre01hi: 19 of 38, the rest stay flat)
 #   --run                       Launch after a successful build/preparation
 #   --mods-dir DIR              Owned car ZIP folder for --all-mods (or CMR2_MODS_DIR; default mods)
 #   --data DIR                  Your owned game data folder (or set CMR2_DATA). Required with any asset option.
@@ -39,7 +40,7 @@
 #                               Other atmosphere dials (docs/ATMOSPHERE.md), also launch-only passthrough
 #   --export-brush-placement    Read-only export of Greece1 roadside wall placement vs the stage route to a NEW JSON
 #                               (numbers only; needs --data). Standalone: no build, no launch, no pack, and it does
-#                               NOT enable video.brush_volume or any extrusion. Stops with a reason if the checks fail.
+#                               NOT enable video.brush_volume or any extrusion (needs the temp.sht exporter fix, PR #296, to read real archives). Stops with a reason if the checks fail.
 #   --brush-placement-output F  Where to write it (must not exist; default: $TMPDIR or /tmp, gre01-brush-placement-<time>.json)
 #   --dry-run                   Check the inputs and print the plan; build nothing, write nothing
 #   -h, --help                  This text
