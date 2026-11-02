@@ -24,6 +24,7 @@ All notable changes to OpenCMR2 are documented here.
   0 = unlimited). Dense forest views keep full near-tree motion while the
   far treeline stops paying per-vertex wind math every frame.
 ### Fixed
+- Scenery patcher: `--all-trees` no longer aborts the whole asset pack with "No opaque stem data" (Greece `tre_40`, `tre_bs1`) when a card has no opaque stem texels. Those cards get a crown with no invented stem, and a card whose canopy reaches the last image row no longer reads past the image. Native look unverified.
 - Replay chase camera orbit (arrow keys) no longer dies for the rest of the
   session after the F10 tuning panel is used once: the input-capture gate now
   follows the OPEN adjust panel instead of the sticky "engaged" preview flag.

@@ -177,6 +177,22 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(self.output.joinpath('manifest.tsv').read_text().splitlines()),2)
         self.assertTrue('retained-original' in self.output.joinpath('coverage.json').read_text())
 
+    def test_all_trees_card_without_stem_data_builds_crown_only(self):
+        # A card with no opaque texels in the middle 40% of its stem rows has no stem data (Greece tre_40 in the native log).
+        # --all-trees must not abort the pack; it builds the crown with no invented stem.
+        image = Image.new('RGBA', (32, 32)); d = ImageDraw.Draw(image); d.ellipse((0, 0, 9, 31), fill=(40, 160, 60, 255)); d.ellipse((22, 0, 31, 31), fill=(40, 160, 60, 255))
+        data = io.BytesIO(); image.save(data, format='DDS'); raw = data.getvalue()
+        (self.input / 'frahit.bfl').write_bytes(bfl([('tre_xx9.dds', raw)]))
+        self.index.pop('frahit.bfl/tre_md1.dds')
+        self.index['frahit.bfl/tre_xx9.dds'] = {'sha256': hashlib.sha256(raw).hexdigest(), 'width': 32, 'height': 32,
+                                                'category': 'individual-tree', 'kind': 'tree'}
+        self.write_index()
+        self.run_patch('--tree-geometry', 'shell', '--all-trees')
+        self.assertIn('no-stem-data', self.output.joinpath('coverage.json').read_text())
+        folder = next(self.output.glob('trees/*/tre_xx9'))
+        self.assertTrue((folder / 'trunk.tga').is_file())
+        self.assertNotIn('usemtl trunk\nf', (folder / 'tree.obj').read_text())
+
     def test_check_only(self):
         self.run_patch('--check-only')
         self.assertFalse(self.output.exists())
