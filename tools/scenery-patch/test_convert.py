@@ -276,9 +276,12 @@ class GreeceIndexTests(unittest.TestCase):
         for key,rec in gre.items():
             self.assertRegex(rec['sha256'],'^[0-9a-f]{64}$')
             self.assertTrue(key.split('/')[1].startswith('tre_') and key.endswith('.dds'))
-            self.assertIn(rec['category'],('individual-tree','individual-bush','cliff-card'))
+            self.assertIn(rec['category'],('individual-tree','cliff-card','hedge-card'))
         # Cliff/rock cards are pinned for identity only and never converted as trees.
         self.assertTrue(all(v['category']=='cliff-card' for k,v in gre.items() if '/tre_fal' in k))
+        # Box-like hedge/strip cards (fr*, s1_b/c/z) are held: pinned, never converted.
+        held={k for k,v in gre.items() if v['category']=='hedge-card'}
+        self.assertEqual({k.split('/')[1][:-4] for k in held},{'tre_fra','tre_frb','tre_frc','tre_frz','tre_s1_b','tre_s1_c','tre_s1_z'})
         # No Greece mapping joins the reviewed default/crossed sets: Greece trees are --all-trees only.
         self.assertFalse([1 for a,_ in list(patcher.TREE_CANDIDATES)+list(patcher.CROSSED_CANDIDATES) if a.startswith('gre')])
 
