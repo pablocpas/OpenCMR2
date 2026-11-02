@@ -263,7 +263,7 @@ the game.
 | `[video] speed_motes_stretch` | `0` | Needs `speed_motes`. 0 to 100: stretches the motes into radial speed streaks along the screen direction away from the view axis, longer at higher speed. `0` keeps round dots. Also `--speed-motes-stretch N`. Visual only, native look unverified. See docs/SPEED-MOTES.md |
 | `[video] speed_motes_amount` | `100` | How many speed motes, 0 to 300 percent |
 | `[video] fog` | `0` | Atmosphere fog: one full-screen scene+depth pass with distance fog, ground-mist gradient, sky cap and a sun-ward glow (screen-space, not volumetric shafts). `--effect fog=on`, F10 rows, Advanced>Effect amounts>Atmosphere. Visual only, native pixels/FPS unverified. See docs/ATMOSPHERE.md |
-| `[video] fog_amount` | `100` | Fog density 0 to 200 percent. 100 is the deliberately heavy overdo-first starting look; dial down to taste. `--fog-amount N` |
+| `[video] fog_amount` | `65` | Fog density 0 to 200 percent. Default 65; 100 is the heavy overdo look; dial to taste. `--fog-amount N` |
 | `[video] fog_glow` | `60` | Sun-ward glow in the fog, 0 to 100 percent. `--fog-glow N` |
 | `[video] air_motes` | `0` | Slow-drifting floating dust motes (atmosphere, any speed - distinct from the speed motes above). `--effect air_motes=on`. Visual only, native appearance unverified |
 | `[video] air_motes_amount` | `100` | Mote count/rate 0 to 300 percent; base cap 48 billboards at 100. `--air-motes-amount N` |

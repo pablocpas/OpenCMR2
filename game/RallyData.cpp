@@ -6772,7 +6772,7 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             {
                 bool fogEnc=(status.encoded&512)!=0;
                 if(Sys_GetOption("video.fog",0)==0)snprintf(text,sizeof text,"Fog: off (video.fog=0)");
-                else snprintf(text,sizeof text,"Fog: %s (amount %d%%, glow %d%%)",fogEnc?"encoded":"requested, not encoded",Sys_GetOption("video.fog_amount",100),Sys_GetOption("video.fog_glow",60));
+                else snprintf(text,sizeof text,"Fog: %s (amount %d%%, glow %d%%)",fogEnc?"encoded":"requested, not encoded",Sys_GetOption("video.fog_amount",65),Sys_GetOption("video.fog_glow",60));
                 line(text,fogEnc?lit:dim);
             }
             {

@@ -1900,7 +1900,7 @@ void FogDynamics_Step(int step16_16)
     if (step16_16 <= 0 || Sys_GetOption("video.fog", 0) == 0) return;
     int spatial = Sys_GetOption("video.fog_spatial", 0);
     int evolve = Sys_GetOption("video.fog_evolve", 100);
-    int base = Sys_GetOption("video.fog_amount", 100);
+    int base = Sys_GetOption("video.fog_amount", 65);
     if (base < 0) base = 0; if (base > 200) base = 200;
     int glow = Sys_GetOption("video.fog_glow", 60);
     if (glow < 0) glow = 0; if (glow > 100) glow = 100;

@@ -36,7 +36,7 @@ inline const TuningRow *Tuning_Rows(int &count)
         {"Active camera forward(+)/back(-) at full speed, 0.05 units", "video.camera_move_active", -200, 200, 5, 0},   // special row: edits video.camera_move_type<N> of the camera in use; RallyData.cpp resolves it
         {"Sun glare %", "video.sun_glare", 0, 100, 5, 0},
         {"Fog (0/1)", "video.fog", 0, 1, 1, 0},
-        {"Fog amount % (100 = deliberately heavy)", "video.fog_amount", 0, 100, 10, 100},
+        {"Fog amount % (100 = deliberately heavy)", "video.fog_amount", 0, 100, 10, 65},
         {"Fog sun glow %", "video.fog_glow", 0, 100, 10, 60},
         {"Fog near clear dist, world units (0 off; global, not road-only)", "video.fog_clear", 0, 200, 10, 0},
         {"Fog draw cull (0/1, experimental, unmeasured)", "video.fog_cull", 0, 1, 1, 0},

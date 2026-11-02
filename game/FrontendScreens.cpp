@@ -12673,7 +12673,7 @@ Menu atmosphereAmounts;
 // (LayoutChecks MenuSizeCheck), so these rows cannot join the main list.
 const EffectAmountRow kAtmosphereRows[]={
  {"Fog (0/1)","video.fog",0,2},
- {"Fog amount % (100 = deliberately heavy)","video.fog_amount",100,101},
+ {"Fog amount % (100 = deliberately heavy)","video.fog_amount",65,101},
  {"Fog sun glow %","video.fog_glow",60,101},
  {"Fog near clear dist, world units (0 off)","video.fog_clear",0,201},
  {"Fog light response % (head/rear lights)","video.fog_lights",100,201},
