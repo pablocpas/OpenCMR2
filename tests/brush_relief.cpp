@@ -90,6 +90,33 @@ int main() {
         for(auto i:vi)CHECK(i<vv.size());
     }
 
+    // Object-local wall under a world matrix (row-vector, translation in _41.._43):
+    // yaw 90 degrees + translate. Local quad lies in z=0 (normal +z local). World: the quad
+    // lies in the x=100 plane (local z axis -> world +x), road at world x=104. Away must be world -x,
+    // all extruded vertices (mapped to world) must have x <= 100, road-facing perimeter exact.
+    {
+        float M[16]={0,0,-1,0, 0,1,0,0, 1,0,0,0, 100,0,50,1};   // local x->world -z, local z->world +x
+        CHECK(BrushRelief::RigidWorld(M));
+        float bad[16]={2,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+        CHECK(!BrushRelief::RigidWorld(bad));
+        float qaL[3]={-8.5f,4,0},qbL[3]={8.5f,4,0},nL[3]={0,0,1},qa[3],qb[3],nW[3],awayW[3],awayL[3];
+        BrushRelief::PointToWorld(M,qaL,qa);BrushRelief::PointToWorld(M,qbL,qb);BrushRelief::DirToWorld(M,nL,nW);
+        CHECK(std::fabs(nW[0]-1.f)<1e-5f);
+        float route[]={104,0, 104,100};   // road runs along z at x=104 (world)
+        CHECK(BrushRelief::AwayFromRoad(qa,qb,nW,route,2,60,awayW));
+        CHECK(awayW[0] < -0.99f);
+        BrushRelief::DirToLocal(M,awayW,awayL);
+        CHECK(awayL[2] < -0.99f);   // local -z
+        std::vector<BrushRelief::Vertex> vv;
+        CHECK(BrushRelief::Build(c,awayL,alpha,AW,AH,100,true,vv,BrushRelief::kVolumeSlices));
+        for(auto&q:vv){float p[3]={q.x,q.y,q.z},w[3];BrushRelief::PointToWorld(M,p,w);CHECK(w[0]<=100.0001f);}
+        for(int iy=0;iy<=BrushRelief::kGridY;iy++)for(int ix=0;ix<=BrushRelief::kGridX;ix++)
+            if(!ix||ix==BrushRelief::kGridX||!iy||iy==BrushRelief::kGridY){
+                const auto&q=vv[iy*(BrushRelief::kGridX+1)+ix];float p[3]={q.x,q.y,q.z},w[3];BrushRelief::PointToWorld(M,p,w);CHECK(std::fabs(w[0]-100.f)<1e-4f);}
+        // Local-frame comparison (the old bug) would pick the wrong side: local mid (0,*,0) vs route x=104 gives no usable side.
+        float wrong[3];CHECK(!BrushRelief::AwayFromRoad(qaL,qbL,nL,route,2,60,wrong));
+    }
+
     if (!failures) printf("brush_relief ok\n");
     return failures ? 1 : 0;
 }

@@ -23,6 +23,33 @@
 // the whole path off (caller draws the original flat quad).
 namespace BrushRelief {
 
+
+// Object-local -> world with a row-vector matrix m[16] (Direct3D layout: v' = v*M,
+// translation in m[12..14]), the contract of SceneNode::worldF / Gfx world transform.
+// temp.obj wall quads are OBJECT-LOCAL meshes, so any comparison with the stage route
+// (world space) must go through this. Returns false unless the 3x3 is a rigid rotation
+// (unit rows within 5%, orthogonal), so offsets in local units equal world units.
+inline bool RigidWorld(const float m[16]) {
+    for (int r = 0; r < 3; r++) {
+        float l = std::sqrt(m[r*4]*m[r*4] + m[r*4+1]*m[r*4+1] + m[r*4+2]*m[r*4+2]);
+        if (!(l > 0.95f && l < 1.05f)) return false;
+        for (int q = r + 1; q < 3; q++) {
+            float d = m[r*4]*m[q*4] + m[r*4+1]*m[q*4+1] + m[r*4+2]*m[q*4+2];
+            if (std::fabs(d) > 0.05f) return false;
+        }
+    }
+    return true;
+}
+inline void PointToWorld(const float m[16], const float p[3], float o[3]) {
+    for (int c = 0; c < 3; c++) o[c] = p[0]*m[c] + p[1]*m[4+c] + p[2]*m[8+c] + m[12+c];
+}
+inline void DirToWorld(const float m[16], const float d[3], float o[3]) {
+    for (int c = 0; c < 3; c++) o[c] = d[0]*m[c] + d[1]*m[4+c] + d[2]*m[8+c];
+}
+inline void DirToLocal(const float m[16], const float d[3], float o[3]) {   // rigid: inverse = transpose
+    for (int r = 0; r < 3; r++) o[r] = d[0]*m[r*4] + d[1]*m[r*4+1] + d[2]*m[r*4+2];
+}
+
 // Road-facing side of a wall quad, from the stage route polyline (x,z pairs,
 // world units). Returns false when no route point is within maxDist. On
 // success away[3] is the unit horizontal direction pointing AWAY from the
