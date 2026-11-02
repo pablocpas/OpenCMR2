@@ -518,12 +518,19 @@ void CheckDisconnectPause()
 
 Uint16 s_rumble[2];
 int s_rumbleCalls;
+int s_otherRumbleCalls;
 
 bool SDLCALL RecordRumble(void *, Uint16 low, Uint16 high)
 {
     s_rumble[0] = low;
     s_rumble[1] = high;
     s_rumbleCalls++;
+    return true;
+}
+
+bool SDLCALL RecordOtherRumble(void *, Uint16, Uint16)
+{
+    s_otherRumbleCalls++;
     return true;
 }
 
@@ -556,6 +563,53 @@ void CheckRumble(Pad &first)
     Check(s_rumble[1] > 0x7f00 && s_rumble[1] < 0x8100, "rumble = 50 halves it");
     Bindings_Find("gamepad")->rumble = 100;
     Input_SetRumble(0, 0, 0);
+
+    // With two, only the one last used rumbles: both drive player 1 (a
+    // Steam Deck with a DualShock 4 connected).
+    desc.product_id = 0x0b12;
+    desc.name = "Virtual Other Rumble Pad";
+    desc.Rumble = RecordOtherRumble;
+    SDL_JoystickID otherId = SDL_AttachVirtualJoystick(&desc);
+    SDL_Joystick *other = SDL_OpenJoystick(otherId);
+    SDL_SetJoystickVirtualButton(virt, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    Input_Update();
+    SDL_SetJoystickVirtualButton(virt, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    Input_Update();
+    s_rumbleCalls = s_otherRumbleCalls = 0;
+    Input_SetRumble(0, 0, INPUT_FULL);
+    Check(s_rumbleCalls == 1 && s_otherRumbleCalls == 0, "the pad last used rumbles, not the other");
+    Input_SetRumble(0, 0, 0);
+    Input_DevicesChanged();
+    Input_GetFeedbackDevice(1);   // set up for both players, as in the menus
+    InputDevice *used = Input_GetFeedbackDevice(0);
+    SDL_SetJoystickVirtualButton(other, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    Input_Update();
+    SDL_SetJoystickVirtualButton(other, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    Input_Update();
+    s_rumbleCalls = s_otherRumbleCalls = 0;
+    Input_SetRumble(0, 0, INPUT_FULL);
+    Check(s_rumbleCalls == 0 && s_otherRumbleCalls == 1, "and the other once it is used");
+    Input_SetRumble(0, 0, 0);
+    // The force feedback follows the controller used, set up again in the
+    // menus; one without rumble or forces gets none (a wheel does not turn
+    // by itself while a gamepad drives).
+    Check(Input_DevicesChanged(), "using another controller sets up the force feedback again");
+    Check(Input_GetFeedbackDevice(0) != used && Input_GetFeedbackDevice(0) != NULL, "on the controller used");
+    Input_Update();
+    Check(!Input_DevicesChanged(), "once");
+    Pad plain = AttachPad("Virtual Pad B", 0x02ea);
+    SDL_SetJoystickVirtualButton(plain.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    Input_Update();
+    Release(plain);
+    Input_Update();
+    Check(Input_GetFeedbackDevice(0) == NULL, "none while a controller without rumble drives");
+    s_rumbleCalls = s_otherRumbleCalls = 0;
+    Input_SetRumble(0, 0, INPUT_FULL);
+    Check(s_rumbleCalls == 0 && s_otherRumbleCalls == 0, "and the others do not rumble");
+    Detach(plain);
+    SDL_CloseJoystick(other);
+    SDL_DetachVirtualJoystick(otherId);
+
     SDL_CloseJoystick(virt);
     SDL_DetachVirtualJoystick(id);
     first = AttachPad("Virtual Xbox 360 Controller", 0x028e);
@@ -591,10 +645,16 @@ void CheckControlsPages(Pad &pad)
     auto active = []() { return g_pMenu0x00818ac0; };
     char text[64];
 
+    // The page opens on the bindings of the keys or controller used last.
+    s_keys[INPUT_KEY_LEFT] = 0x80;
+    Input_Update();
+    s_keys[INPUT_KEY_LEFT] = 0;
+    Input_Update();
     g_pMenu0x00818ac0 = controls;
     FrontendMenu_EnterControls(controls, 0);
     frame(SDL_GAMEPAD_BUTTON_INVALID, false);
     Check(controls->cursor == 0 && Menu_GetItem(controls, 0)->min >= 3, "the device row lists keys and gamepads");
+    Check(Menu_GetItem(controls, 0)->max == 0, "after a key, the page opens on player 1's keys");
     Check(!Menu_GetItem(controls, 2)->visible, "keys have no deadzone");
     press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
     press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
@@ -647,8 +707,7 @@ void CheckControlsPages(Pad &pad)
     g_pMenu0x00818ac0 = controls;
     FrontendMenu_EnterControls(controls, 0);
     controls->cursor = 0;
-    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
-    press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    Check(Menu_GetItem(controls, 0)->max == 2, "after the gamepad, on the gamepads'");
     press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     press(SDL_GAMEPAD_BUTTON_DPAD_RIGHT);

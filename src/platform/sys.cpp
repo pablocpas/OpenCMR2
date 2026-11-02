@@ -907,8 +907,10 @@ bool TakePendingText(SysEvent *out)
 
 // Text input is on while there is a keyboard, or while the game edits text
 // (Sys_RequestTextInput). Without a keyboard, turning it on shows the
-// system's on-screen keyboard, Steam's in Steam Deck Game Mode: the game
-// kept it on for its whole run.
+// system's on-screen keyboard: the game kept it on for its whole run. Under
+// Steam (Steam Deck Game Mode, Big Picture) SDL shows Steam's on-screen
+// keyboard whenever text input starts, and gamescope always lists a
+// keyboard: there it is on only while the game edits text.
 Uint64 s_textInputUntil;
 bool s_entryOffered;        // the entry waits to be chosen (Sys_OfferTextInput)
 bool s_textGiven;           // a character went to the game in this round of polls
@@ -1031,10 +1033,14 @@ void UpdateTextInput()
     }
     bool wanted = s_entryActive && s_entryHardKeyboard;
 #else
-    bool wanted = SDL_HasKeyboard() || SDL_GetTicks() < s_textInputUntil;
+    bool wanted = (SDL_HasKeyboard() && !SDL_HasScreenKeyboardSupport()) || SDL_GetTicks() < s_textInputUntil;
 #endif
     if (wanted == SDL_TextInputActive(s_window))
         return;
+    // Whether the system's on-screen keyboard may open, and why.
+    Sys_Log("input: text input %s; keyboard %s, on-screen keyboard %s, text entry %s", wanted ? "on" : "off",
+            SDL_HasKeyboard() ? "yes" : "no", SDL_HasScreenKeyboardSupport() ? "yes" : "no",
+            SDL_GetTicks() < s_textInputUntil ? "open" : "closed");
     if (!wanted) {
         SDL_StopTextInput(s_window);
     } else if (s_entryOffered) {
@@ -1096,7 +1102,8 @@ void RequestTextInput(const char *label, const char *text, int maxLength, bool o
     (void)text;
     (void)maxLength;
     if (starting)
-        Sys_Log("input: text entry%s", SDL_HasKeyboard() ? "" : ", on-screen keyboard");
+        Sys_Log("input: text entry%s",
+                SDL_HasKeyboard() && !SDL_HasScreenKeyboardSupport() ? "" : ", on-screen keyboard");
 #endif
     s_textInputUntil = SDL_GetTicks() + 250;
     UpdateTextInput();

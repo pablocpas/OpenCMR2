@@ -87,13 +87,16 @@ BOOL Input_IsSmoothSteering(int player);
 /* Whether a joystick or controller was connected or disconnected since the
    previous call. */
 BOOL Input_DevicesChanged(void);
-/* The device the game sends a player's force feedback to: a wheel or
-   joystick with force feedback, else a gamepad that can rumble; NULL
-   without either. */
+/* The device the game sends a player's force feedback to: the controller
+   the player last used, if it has force feedback or rumble (NULL if not).
+   Before one is used, a wheel or joystick with force feedback, else a
+   gamepad that can rumble; NULL without either. When the player then uses
+   another, Input_DevicesChanged reports it, for the menus to set it up. */
 InputDevice *Input_GetFeedbackDevice(int player);
-/* Rumble of the player's gamepads, 0..INPUT_FULL for the low and the high
-   frequency motor, scaled by the rumble setting of each. Fades out unless
-   it is set again within a quarter of a second. */
+/* Rumble of the gamepad the player last used (all of the player's before
+   one is used), 0..INPUT_FULL for the low and the high frequency motor,
+   scaled by the rumble setting of each. Fades out unless it is set again
+   within a quarter of a second. */
 void Input_SetRumble(int player, int low, int high);
 
 /* Keyboard keys (DIK_*) of the nine driving actions of the two keyboard
@@ -127,6 +130,9 @@ enum InputSetting {
    their buttons shows the action it presses. */
 int Input_GetProfileCount(void);
 int Input_GetProfileKind(int profile);
+/* The profile whose keys or controller gave the last input, -1 before any
+   or when it is not listed. */
+int Input_GetLastUsedProfile(void);
 /* The device's name for a joystick or wheel, in the game's character set. */
 const char *Input_GetProfileName(int profile);
 /* The inputs bound to an action, named as on the device (A or Cross, a key

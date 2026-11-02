@@ -135,8 +135,9 @@ numeric keypad. Controllers connected or disconnected while the game runs
 are taken at once; losing the controller a player drives with pauses the
 stage. A player switches between keys and an axis freely, for the steering
 and for the pedals apart: keys, buttons and a D-pad steer progressively, as
-the original's keyboard did, and the triggers and pedals stay analogue. Without a physical keyboard (Steam Deck Game Mode), the
-on-screen keyboard opens only to type a name.
+the original's keyboard did, and the triggers and pedals stay analogue.
+Without a physical keyboard, and always under Steam (Steam Deck Game Mode),
+the on-screen keyboard opens only to type a name.
 
 The default controls are the original's keys (cursor keys, Space for the
 handbrake, `]` and `[` for the gears, C for the camera, R to look back,
@@ -160,7 +161,9 @@ found from where their axes rest.
 
 **Options > Controllers** chooses the bindings to edit: player 1's keys,
 player 2's keys, the gamepads' (while one is connected) or those of a
-connected joystick or wheel.
+connected joystick or wheel. It opens on those of the device used last.
+This only chooses what to edit: every connected controller drives player 1
+unless two players race.
 **Configuration** binds each driving action to the next key, button or axis
 given (Escape gives up waiting for a controller's); an input already bound to
 another action trades places with it. The page also sets a controller's
@@ -176,10 +179,12 @@ a steering curve for finer corrections around the centre, the strength of a
 gamepad's rumble and the player it belongs to. The keys of an older
 `Controller.rcf` are taken when `controls.ini` does not exist yet.
 
-Gamepads rumble on the stages: lightly on the high frequency motor with the
+Gamepads rumble on the stages, the one the player used last: lightly on the high frequency motor with the
 roughness of the surface under the front wheels, more with speed, and with
 impacts on the low frequency one. Wheels and joysticks with force feedback get the game's
-own forces.
+own forces. Both go to the controller the player used last, so a wheel does
+not turn by itself while a gamepad drives; before one is used, a wheel with
+force feedback takes them.
 
 On Android, install the APK and copy the installation folder to the
 device first. On first launch, choose it in the system's folder picker: the

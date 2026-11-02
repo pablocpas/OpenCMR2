@@ -64,6 +64,7 @@ struct Player {
     int values[INPUT_ACTION_COUNT];
     Channel channels[CHANNEL_COUNT];
     const InputDevice *steering;        // the device last steered with an axis
+    const InputDevice *controller;      // the controller last used
 };
 
 // Inputs of one update of a player's channels.
@@ -71,6 +72,7 @@ struct ChannelUse {
     bool digital[CHANNEL_COUNT];
     bool analog[CHANNEL_COUNT];
     bool hasAxis[CHANNEL_COUNT];        // a device of the player has an axis bound to it
+    const Profile *given;               // the first profile that gave an input
 };
 
 int ChannelOf(int action)
@@ -128,6 +130,7 @@ bool s_devicesChanged;
 int s_localPlayers = 1;
 Player s_players[INPUT_PLAYERS];
 int s_pausePulse[INPUT_PLAYERS];        // updates the pause is held for after a disconnection
+std::string s_lastSection;              // the profile of the input given last
 
 void EnsureInit()
 {
@@ -465,8 +468,14 @@ void Accumulate(Player &player, InputDevice *device, const Profile &profile, Cha
             if (action <= INPUT_STEER_RIGHT && IsAnalog(source) && profile.steeringCurve != 0)
                 value = Curve(value, profile.steeringCurve);
             player.values[action] = std::max(player.values[action], value);
-            if (device != NULL && value > INPUT_FULL / 4)
-                device->used = true;
+            if (value > INPUT_FULL / 4) {
+                if (device != NULL) {
+                    device->used = true;
+                    player.controller = device;
+                }
+                if (use->given == NULL)
+                    use->given = &profile;
+            }
             if (action > INPUT_BRAKE)
                 continue;
             if (IsAnalog(source)) {
@@ -492,7 +501,8 @@ bool SteersWithAxis(const Profile &profile)
     return false;
 }
 
-void UpdatePlayer(int index)
+// Returns the first profile that gave an input, or NULL.
+const Profile *UpdatePlayer(int index)
 {
     Player &player = s_players[index];
     std::deque<Profile> &profiles = Bindings_Get();
@@ -526,7 +536,39 @@ void UpdatePlayer(int index)
             channel.analog = use.hasAxis[i];
         }
     }
+    return use.given;
 }
+
+// The controller the player last used, while it is connected and theirs.
+const InputDevice *LastController(int player)
+{
+    const InputDevice *controller = s_players[player].controller;
+    return controller != NULL && controller->id != 0 && Plays(Owner(*controller), player) ? controller : NULL;
+}
+
+// The device a player's force feedback goes to: the controller they last
+// used, so that a wheel does not turn by itself while a gamepad drives, and
+// nothing when that one has neither forces nor rumble. Before any is used, a
+// device with force feedback first, wheels first among them.
+InputDevice *FeedbackDevice(int player)
+{
+    if (const InputDevice *controller = LastController(player))
+        return controller->haptic != NULL || controller->rumble ? const_cast<InputDevice *>(controller) : NULL;
+    InputDevice *best = NULL;
+    for (InputDevice &device : s_devices) {
+        if (device.id == 0 || (device.haptic == NULL && !device.rumble) || !Plays(Owner(device), player))
+            continue;
+        int rank = device.haptic != NULL ? (device.wheel ? 3 : 2) : 1;
+        int bestRank = best == NULL ? 0 : best->haptic != NULL ? (best->wheel ? 3 : 2) : 1;
+        if (rank > bestRank || (rank == bestRank && device.order < best->order))
+            best = &device;
+    }
+    return best;
+}
+
+// The device the game set up each player's force feedback on.
+InputDevice *s_feedback[INPUT_PLAYERS];
+bool s_feedbackSet[INPUT_PLAYERS];
 
 // ---- force feedback --------------------------------------------------------------
 
@@ -676,8 +718,22 @@ extern "C" void Input_Update(void)
     SDL_UpdateJoysticks();
     ScanJoysticks();
     ReleaseHeldBackKeys();
+    // The input given last, for the controls pages: player 1's update reads
+    // both keyboards and player 1's keys come first in it, as the menu keys
+    // of both are the same. Android's touch controls press the keyboard's.
+    const Profile *given = NULL;
+    for (int player = 0; player < INPUT_PLAYERS; player++) {
+        const Profile *profile = UpdatePlayer(player);
+        if (given == NULL)
+            given = profile;
+    }
+    if (given != NULL)
+        s_lastSection = given == &Bindings_TouchProfile() ? "touch" : given->section;
+    // Another device for the force feedback is set up as a connection is,
+    // in the menus (Input_RescanChangedJoysticks).
     for (int player = 0; player < INPUT_PLAYERS; player++)
-        UpdatePlayer(player);
+        if (s_feedbackSet[player] && FeedbackDevice(player) != s_feedback[player])
+            s_devicesChanged = true;
 }
 
 extern "C" void Input_SetLocalPlayers(int count)
@@ -728,25 +784,25 @@ extern "C" BOOL Input_DevicesChanged(void)
 
 extern "C" InputDevice *Input_GetFeedbackDevice(int player)
 {
-    InputDevice *best = NULL;
-    for (InputDevice &device : s_devices) {
-        if (device.id == 0 || (device.haptic == NULL && !device.rumble) || !Plays(Owner(device), player))
-            continue;
-        // A device with force feedback first, wheels first among them.
-        int rank = device.haptic != NULL ? (device.wheel ? 3 : 2) : 1;
-        int bestRank = best == NULL ? 0 : best->haptic != NULL ? (best->wheel ? 3 : 2) : 1;
-        if (rank > bestRank || (rank == bestRank && device.order < best->order))
-            best = &device;
-    }
-    return best;
+    if (player < 0 || player >= INPUT_PLAYERS)
+        return NULL;
+    s_feedback[player] = FeedbackDevice(player);
+    s_feedbackSet[player] = true;
+    return s_feedback[player];
 }
 
 extern "C" void Input_SetRumble(int player, int low, int high)
 {
     const Uint32 duration = 250;
     Uint64 now = SDL_GetTicks();
+    if (player < 0 || player >= INPUT_PLAYERS)
+        return;
+    // Only the controller the player last used: every controller drives
+    // player 1 in a race of one.
+    const InputDevice *controller = LastController(player);
     for (InputDevice &device : s_devices) {
-        if (device.id == 0 || !device.rumble || !Plays(Owner(device), player))
+        if (device.id == 0 || !device.rumble || !Plays(Owner(device), player) ||
+            (controller != NULL && &device != controller))
             continue;
         int scale = device.profile->rumble;
         Uint16 l = (Uint16)(SDL_clamp(low, 0, INPUT_FULL) * (Sint64)scale * 0xffff / (100 * (Sint64)INPUT_FULL));
@@ -1212,6 +1268,16 @@ extern "C" int Input_GetProfileCount(void)
 {
     Bindings_Get();
     return (int)EditableProfiles().size();
+}
+
+extern "C" int Input_GetLastUsedProfile(void)
+{
+    Bindings_Get();
+    std::vector<Profile *> profiles = EditableProfiles();
+    for (size_t i = 0; i < profiles.size(); i++)
+        if (profiles[i]->section == s_lastSection)
+            return (int)i;
+    return -1;
 }
 
 extern "C" int Input_GetProfileKind(int index)

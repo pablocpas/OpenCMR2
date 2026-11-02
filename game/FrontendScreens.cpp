@@ -12427,14 +12427,18 @@ static void Controls_StoreRows(Menu *pMenu)
     Input_SetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE, Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max * 10);
 }
 
-// Coming from the options (param 0) starts the changes afresh; coming back
-// from the bindings page keeps them.
+// Coming from the options (param 0) starts the changes afresh, on the
+// bindings of the device used last; coming back from the bindings page keeps
+// them.
 void FrontendMenu_EnterControls(Menu *pMenu, int param)
 {
     MenuItem *pDevice;
 
-    if (param == 0)
+    if (param == 0) {
         g_controlsSaved = FALSE;
+        if (Input_GetLastUsedProfile() >= 0)
+            g_controlsProfile = Input_GetLastUsedProfile();
+    }
     pDevice = Menu_GetItem(pMenu, CONTROLS_ITEM_DEVICE);
     pDevice->min = (BYTE)Input_GetProfileCount();
     if (g_controlsProfile >= pDevice->min)
