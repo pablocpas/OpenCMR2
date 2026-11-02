@@ -430,6 +430,18 @@ cache rather than deleting/reusing old outputs. Failure diagnostics now identify
 archive/member and expected/actual digest plus Pillow version. No integrity
 bypass, no source changes, no native acceptance claim.
 
+### Greece tre* sources (opt-in)
+
+`source-index.json` now also pins the 45 `tre_*` DDS cards of Greece `grehit.bfl`
+and `grelot.bfl` by archive, name, SHA-256 and dimensions, taken from a
+user-run `export-greece-trees.py` ZIP (both archives identity-verified). They
+convert only with the experimental `--all-trees` flag (adaptive crown/stem from
+each card's own alpha); the reviewed default and crossed mappings are unchanged.
+The five `tre_fal*` cards are cliff/rock textures: pinned, never converted as
+trees. Prepare now needs `grehit.bfl` and `grelot.bfl` in the game folder like
+the Finland/France archives. Reviewed on the software contact sheet only
+(`preview_trees.py`); native appearance is unverified.
+
 ### Reviewed fixed-cutout extension
 
 `--trees crossed` now adds six exact-source mappings: Finland hi/lo
