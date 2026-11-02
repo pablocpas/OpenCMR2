@@ -7485,6 +7485,13 @@ void Events_Init(char *unused, int slot, char animate)
     Events_Reset();
     g_eventCount = 0;
     g_unk0x00589331 = animate == 0;
+    // PORT: the slot is the car's index, but there are two slots. From car 2
+    // the original wrote past both arrays, into g_eventRecords (which
+    // Events_Add then rewrites) and the space after g_eventScales; here it
+    // overwrote the pending draw count and crashed network rallies of three
+    // or more cars. Only slot 0 is read.
+    if (slot < 0 || slot >= 2)
+        return;
     for (i = 0; i < 2048; i++) {
         pTexture = CGraphics::m_pTextureManager->textureBuffer[i];
         if (pTexture != NULL &&
