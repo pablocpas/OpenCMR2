@@ -8598,6 +8598,7 @@ void FrontendMenu_UpdateNetworkSessionDetails(Menu *pMenu)
         else
             g_unk0x00818cdc = (char *)g_sessionPassword;
         strcpy(CFrontend::m_stringDest, g_unk0x00818cdc);
+        Sys_RequestTextInput();   // PORT
         if (Input_PopQueuedCharacter(&key) != 0) {
             if (key != 8) {
                 i = Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);

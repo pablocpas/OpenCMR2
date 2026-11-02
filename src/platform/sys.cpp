@@ -911,6 +911,8 @@ void UpdateTextInput()
 
 extern "C" void Sys_RequestTextInput(void)
 {
+    if (SDL_GetTicks() >= s_textInputUntil)
+        Sys_Log("input: text entry%s", SDL_HasKeyboard() ? "" : ", on-screen keyboard");
     s_textInputUntil = SDL_GetTicks() + 250;
     UpdateTextInput();
 }
