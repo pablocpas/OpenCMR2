@@ -21,6 +21,9 @@
 #include "port/sys.h"
 #include "render/gfx_internal.h"
 static bool separate=false,legacy=false,windEnabled=true;static std::string base; static unsigned draws; static GfxMatrix world;static GfxTexture *bound;static std::vector<GfxVertex> captured;
+#include "RallyRoute.h"
+// SceneryPack.cpp reads the stage route (brush extrusion); this test has no route, so define empty globals.
+RallyRouteNode *g_routeNodes=nullptr;int g_routeNodeCount=0;
 D3DTextureManager* CGraphics::m_pTextureManager=nullptr;
 unsigned int CGraphics::m_textureCount=0;
 struct SceneryPackTestAccess {

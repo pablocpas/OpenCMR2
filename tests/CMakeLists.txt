@@ -485,7 +485,7 @@ target_include_directories(scenery_pack_format_test PRIVATE ${PROJECT_SOURCE_DIR
 add_test(NAME scenery_pack_format COMMAND scenery_pack_format_test)
 add_executable(scenery_pack_runtime_test scenery_pack_runtime.cpp
  ${PROJECT_SOURCE_DIR}/game/SceneryPack.cpp ${PROJECT_SOURCE_DIR}/src/render/gfx_core.cpp ${PROJECT_SOURCE_DIR}/src/render/touch_overlay.cpp ${PROJECT_SOURCE_DIR}/src/render/touch_overlay_shapes.cpp ${CMAKE_CURRENT_SOURCE_DIR}/touch_input_stub.cpp ${PROJECT_SOURCE_DIR}/src/diagnostics/observer.cpp)
-target_include_directories(scenery_pack_runtime_test PRIVATE ${PROJECT_SOURCE_DIR}/game ${PROJECT_SOURCE_DIR}/src)
+target_include_directories(scenery_pack_runtime_test PRIVATE ${PROJECT_SOURCE_DIR}/game ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/port/compat)
 target_compile_options(scenery_pack_runtime_test PRIVATE "SHELL:-include ${PROJECT_SOURCE_DIR}/src/port/types.h" -fms-extensions)
 target_link_libraries(scenery_pack_runtime_test PRIVATE SDL3::SDL3)
 add_test(NAME scenery_pack_runtime COMMAND scenery_pack_runtime_test ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/scenery-pack)

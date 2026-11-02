@@ -13,6 +13,7 @@
 #include "France1Textures.h"
 #include "FixedStripSources.inc"
 #include "Gre01BrushSources.inc"
+#include "RallyRoute.h"
 #include "BrushRelief.h"
 #include "Graphics.h"
 #include "Texture.h"
@@ -62,7 +63,7 @@ static OrderedBatch<PendingTree,std::vector<std::vector<GfxVertex>>> pendingTree
 struct Asset { std::map<const Mesh*,std::vector<Part>> fitted; int sourceWidth=0,sourceHeight=0; SceneryFormat::Entry entry; std::string failure; std::set<std::string> loggedFailures; bool attempted=false,ready=false; std::vector<Part> parts; std::vector<PackTexture*> frames; };
 std::vector<Asset> assets;
 struct FixedPart {bool ready=false;std::vector<FixedStrip::Vertex> vertices;std::vector<GfxVertex> scratch;};
-struct BrushPart {bool ready=false;std::vector<BrushRelief::Vertex> vertices;std::vector<unsigned short> indices;std::vector<GfxVertex> scratch;MeshVertexF corners[4]={};};
+struct BrushPart {bool ready=false;float world[16]={};std::vector<BrushRelief::Vertex> vertices;std::vector<unsigned short> indices;std::vector<GfxVertex> scratch;MeshVertexF corners[4]={};};
 std::map<const MeshPart*,FixedPart> fixedParts;
 std::map<const MeshPart*,BrushPart> brushParts;
 bool loaded=false,identityContract=false;
@@ -516,7 +517,9 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
  if(!name.compare(0,7,"bsh_sh1")){
   int reliefDial=Sys_GetOption("video.brush_relief",100);
   if(reliefDial>0){
+   GfxMatrix wmat;Gfx_GetTransform(GFX_TRANSFORM_WORLD,&wmat);const float*W=&wmat._11;
    auto bfound=brushParts.find(part);
+   if(bfound!=brushParts.end()&&Sys_GetOption("video.brush_volume",0)!=0&&memcmp(bfound->second.world,W,sizeof(float)*16)!=0){brushParts.erase(bfound);bfound=brushParts.end();}   // shared mesh drawn under another node: rebuild for this placement
    if(bfound==brushParts.end()){
     BrushPart data;
     if(part->indexCount<6||part->indexCount>12000||part->minIndex<0)return false;
@@ -545,13 +548,42 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
        const unsigned char*alpha=nullptr;int aw=0,ah=0;
        if(nl>1e-5f&&France1Textures_CutoutAlpha(source,&alpha,&aw,&ah)){
         n[0]/=nl;n[1]/=nl;n[2]/=nl;
-        data.ready=BrushRelief::Build(c,n,alpha,aw,ah,reliefDial,true,data.vertices);
-        BrushRelief::Indices(true,data.indices);
-        for(int k=0;k<4;k++)data.corners[k]=c[k];
+        // Road-facing edge stays fixed; all depth (relief, back card, volume
+        // slices) goes AWAY from the route. Side comes from the stage route
+        // polyline, never from the quad's winding. No route match = no volume.
+        static const RallyRouteNode*routeKey=nullptr;static int routeKeyCount=0;static std::vector<float>routeXZ;
+        if(g_routeNodes&&g_routeNodeCount>0&&(routeKey!=g_routeNodes||routeKeyCount!=g_routeNodeCount)){
+         routeXZ.clear();for(int i=0;i<g_routeNodeCount;i++){routeXZ.push_back(g_routeNodes[i].position.x/65536.f);routeXZ.push_back(g_routeNodes[i].position.z/65536.f);}
+         routeKey=g_routeNodes;routeKeyCount=g_routeNodeCount;
+        }
+        static int volumeLogs=0;
+        bool volumeOn=Sys_GetOption("video.brush_volume",0)!=0;   // experimental, off by default
+        float qaL[3]={c[0].x,c[0].y,c[0].z},qbL[3]={c[1].x,c[1].y,c[1].z},qa[3],qb[3],nW[3],awayW[3]={0,0,0},away[3]={0,0,0};
+        bool rigid=BrushRelief::RigidWorld(W);
+        bool routeOk=false;
+        if(volumeOn&&rigid&&g_routeNodes&&g_routeNodeCount>0){
+         // Wall quads are object-local: take them to world space (the route's space) first.
+         BrushRelief::PointToWorld(W,qaL,qa);BrushRelief::PointToWorld(W,qbL,qb);BrushRelief::DirToWorld(W,n,nW);
+         routeOk=BrushRelief::AwayFromRoad(qa,qb,nW,routeXZ.data(),g_routeNodeCount,60.f,awayW);
+         if(routeOk)BrushRelief::DirToLocal(W,awayW,away);   // back to local so Build() offsets are along away-from-road
+        }
+        static unsigned extruded=0,declined=0;
+        if(volumeOn&&volumeLogs<4){volumeLogs++;Sys_Log("scenery: gre01 brush wall local mid (%.1f,%.1f,%.1f) world mid (%.1f,%.1f) rigid=%d world normal (%.2f,%.2f) away world (%.2f,%.2f) -> %s",(qaL[0]+qbL[0])*.5f,(qaL[1]+qbL[1])*.5f,(qaL[2]+qbL[2])*.5f,(qa[0]+qb[0])*.5f,(qa[2]+qb[2])*.5f,(int)rigid,nW[0],nW[2],awayW[0],awayW[2],routeOk?"extruded":"declined");}
+        if(routeOk){
+         data.ready=BrushRelief::Build(c,away,alpha,aw,ah,reliefDial,true,data.vertices,BrushRelief::kVolumeSlices);
+         BrushRelief::Indices(true,data.indices,BrushRelief::kVolumeSlices);
+         for(int k=0;k<4;k++)data.corners[k]=c[k];memcpy(data.world,W,sizeof(float)*16);
+         if(++extruded==1)Sys_Log("scenery: gre01 brush volume active (road-facing edge fixed, extruded away from route; visual only)");
+        }else if(!volumeOn&&Sys_GetOption("video.brush_relief_legacy",0)!=0){   // legacy relief + back card along the UNVERIFIED quad-winding normal (may point toward the road); opt-in only
+         data.ready=BrushRelief::Build(c,n,alpha,aw,ah,reliefDial,true,data.vertices);
+         BrushRelief::Indices(true,data.indices);
+         for(int k=0;k<4;k++)data.corners[k]=c[k];
+        }else if(!volumeOn){/* default: original flat wall, nothing drawn differently */}else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined for a wall (no route nodes, none within 60 units, wall not vertical, ambiguous side, or non-rigid world matrix; %d route nodes); keeping the flat original",g_routeNodeCount);
        }
       }
      }
     }
+    memcpy(data.world,W,sizeof(float)*16);
     bfound=brushParts.emplace(part,std::move(data)).first;
    }
    auto&bdata=bfound->second;
