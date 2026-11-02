@@ -23,7 +23,8 @@ need("View_FreeCamFrame(0, &in," in rally and "View_FreeCamStop();" in rally.spl
 need("ReplayControls_KeyIsFreeCamKey" in rd("game/Input.cpp") and "for (int i = 0; i < 13; i++) if (ReplayControls_KeyIsFreeCamKey(freeCamKeys[i])) m_keyboardState[freeCamKeys[i]] = 0;" in rd("game/Input.cpp"), "free cam keys are removed from the driving state only while the replay free cam is active")
 # The orbit-key capture gate uses the OPEN tuning panel, never the sticky
 # engaged/preview flag (dead arrows after any F10 press was the user bug).
-need("ReplayChaseOrbit::InputCaptured(CGameInfo::IsInRaceMenuOpen() != 0, TuningPanel_IsOpen())" in rally, "orbit keys captured only by menu or OPEN tuning panel")
+need("ReplayChaseOrbit::InputCaptured(ReplayMenuOwnsInput(), TuningPanel_IsOpen())" in rally and "CGameInfo::IsInputAndGamePaused() != 0" in rally, "orbit keys captured by any menu/pause input mode or the OPEN tuning panel")
+need("!ReplayMenuOwnsInput() && ReplayKeyUsable(key)" in rally, "replay keys (3, 4, Space, Tab) also reach an open menu instead of being swallowed")
 need("TuningPanel_PreviewActive()){View_ReplayChaseFrame" not in rally, "sticky tuning preview must not zero the orbit input")
 need("g_viewPreviousStates[view].matrix = *m" in cam and "kReplayFreeCamMode" in cam, "free cam overrides only the shown pose")
 need("free cam" in rd("src/platform/enhancements.h").lower() or "Free camera" in rd("src/platform/enhancements.h"), "help names the free camera keys")

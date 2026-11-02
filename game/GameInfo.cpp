@@ -1229,6 +1229,8 @@ void CGameInfo::SetInputAndGamePaused(unsigned int param1) {
 }
 
 // FUNCTION: CMR2 0x0049e930
+unsigned int CGameInfo::IsInputAndGamePaused(void) { return m_unk0x0059f8d0; }
+
 void CGameInfo::SetInputPausedFlag(unsigned int param1) {
     m_unk0x00520870 = param1;
 }

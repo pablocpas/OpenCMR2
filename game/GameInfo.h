@@ -268,6 +268,8 @@ public:
     static char *GetSessionPassword(void);
     static void SetSessionPassword(char *name);
     static unsigned char IsInRaceMenuOpen(void);
+    // Menu/pause input mode (set by SetInputAndGamePaused): CInput::ReadKeyboardDevice reads the arrows for the menu while it is non-zero.
+    static unsigned int IsInputAndGamePaused(void);
 
     // GLOBAL: CMR2 0x0052afa0
     static GameInfo m_gameInfo;
