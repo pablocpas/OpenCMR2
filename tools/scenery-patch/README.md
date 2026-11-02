@@ -307,6 +307,26 @@ python3 tools/scenery-patch/export-evidence.py \
 Review `manifest.json` for missing names and archive parse failures. Do not
 publish the resulting ZIP or add it to Git. It contains original game artwork.
 
+### Locate which archive holds a tree stem (inventory only)
+
+`export-tree-inventory.py` walks every `.bfl` under an owned game folder and
+writes one small JSON text file listing each `tre*` member: archive path
+(relative to the data folder), member name, size, DDS/TGA dimensions and
+sha256. It copies no pixels or game files, so it is a locator, not a source
+export. Archive identity is not verified, and a hit does not show which
+archive the runtime selected or how a card looks. The output file must be new
+and outside the game folder; unreadable archives are listed, not fatal.
+`--stems` limits the list, for example to stems the runtime log reports as
+uncovered. Run it from a repository checkout (it imports the two sibling
+export scripts); `--help` prints usage. The unit test uses synthetic archives
+only and the tool has not been run on a real installation.
+
+```sh
+python3 tools/scenery-patch/export-tree-inventory.py \
+  --data "/path/to/CMR2" --output "$HOME/Desktop/cmr2-tree-inventory.json" \
+  --stems tre_103,tre_130
+```
+
 ### Finland articulated pairs
 
 Six Finland pair atlases (`spc_ma02/05/07/08/11/12`) now have explicit forearm
