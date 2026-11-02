@@ -69,6 +69,11 @@ if(NOT TARGET SDL3::SDL3)
         GIT_TAG release-3.4.18
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(SDL3)
+    # SDL's own warnings, not ours to fix: its EGL typedefs are declared again
+    # by the NDK's headers, and the Android sensor code uses a deprecated call.
+    if(TARGET SDL3-shared AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+        target_compile_options(SDL3-shared PRIVATE -Wno-typedef-redefinition -Wno-deprecated-declarations)
+    endif()
 endif()
 
 add_subdirectory(src)

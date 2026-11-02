@@ -159,7 +159,7 @@ class TextEntry(private val activity: Activity, parent: ViewGroup, private val o
         edit.requestFocus()
         edit.post {
             val input = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            input.showSoftInput(edit, InputMethodManager.SHOW_IMPLICIT)
+            input.showSoftInput(edit, 0)
         }
     }
 
