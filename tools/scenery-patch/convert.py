@@ -28,6 +28,9 @@ def is_sparse(alpha):
  if len(cols)<2 or len(ys)<2:return True
  return crown.sum()/((cols.max()-cols.min()+1)*(ys.max()-ys.min()+1))<.50
 
+class NoStemData(ValueError):
+ pass
+
 def tree(a,rel,adaptive=False,stem=True):
  name=Path(a['texture']).stem;src=Image.open(a['path']).convert('RGBA');a=np.array(src);h,w=a.shape[:2];p=root/rel;p.mkdir(parents=True,exist_ok=True)
  # Source projection, not circumference repetition. Source alpha is retained.
@@ -39,12 +42,15 @@ def tree(a,rel,adaptive=False,stem=True):
  bark=[]
  bark_rows=range(min(cut+2,last_row-2),max(cut+3,last_row-1)) if adaptive else range(round(h*.78),round(h*.94))
  for y in bark_rows:
+  if y>=h:break # canopy to the last row: no stem rows exist below it
   ix=np.where(a[y,:,3]>=220)[0];ix=ix[(ix>w*.3)&(ix<w*.7)]
   if len(ix)<2:continue
   center=int(np.median(ix));half=max(1,min(3,len(ix)//4));row=a[y,max(0,center-half):center+half+1];row=row[row[:,3]>=220]
   if len(row):bark.append(row[np.linspace(0,len(row)-1,16).astype(int)])
- if not bark:raise ValueError('No opaque stem data '+name)
- ba=np.array(bark);ba[:,:,3]=255;Image.fromarray(ba).resize((64,len(ba)*4),Image.Resampling.LANCZOS).save(p/'trunk.tga')
+ if not bark and stem:raise NoStemData('No opaque stem data '+name)
+ # A source with no opaque stem texels and stem=False builds no stem faces; tree.mtl still names trunk.tga, so write a 1x1 fully transparent placeholder (no colour is invented, no face uses it).
+ if bark:ba=np.array(bark);ba[:,:,3]=255;Image.fromarray(ba).resize((64,len(ba)*4),Image.Resampling.LANCZOS).save(p/'trunk.tga')
+ else:Image.new('RGBA',(1,1),(0,0,0,0)).save(p/'trunk.tga')
  # Alpha outline shapes the shell. Model horizontal extent exactly supplied source W/H.
  rows=[]
  for y in range(0,cut,max(2,h//64)):
@@ -87,8 +93,8 @@ def tree(a,rel,adaptive=False,stem=True):
   atlas[iy,:,:3]=np.clip(rgb*255,0,255).astype('uint8');atlas[iy,:,3]=np.clip(alpha*255,0,255).astype('uint8')
  Image.fromarray(atlas).save(p/'crown.tga')
  # Stem diameter measured from source opaque pixels, capped at 6% source width.
- stem_rows=range(min(cut+2,last_row-2),max(cut+3,last_row-1)) if adaptive else range(round(h*.82),round(h*.90))
- stemwidth=min(w*.06,np.median([np.sum(a[y,:,3]>=220) for y in stem_rows]))
+ stem_rows=[y for y in (range(min(cut+2,last_row-2),max(cut+3,last_row-1)) if adaptive else range(round(h*.82),round(h*.90))) if y<h] # rows past the image do not exist (canopy to the last row)
+ stemwidth=min(w*.06,np.median([np.sum(a[y,:,3]>=220) for y in stem_rows])) if stem_rows else 0
  radius=max(.005,stemwidth/extent*(w/h)/2);stemtop=1-crown_bottom+.035
  for j in range(8 if stem else 0): # a dense shrub whose canopy reaches the ground has no stem in its source; a stub would be invented
   t=j*math.tau/8;v=(j+1)*math.tau/8;q=[(radius*math.cos(t),0,radius*math.sin(t)),(radius*math.cos(t)*.7,stemtop,radius*.7*math.sin(t)),(radius*math.cos(v)*.7,stemtop,radius*.7*math.sin(v)),(radius*math.cos(v),0,radius*math.sin(v))];uv=[(0,0),(0,1),(1,1),(1,0)];nm=(math.cos((t+v)/2),0,math.sin((t+v)/2))
@@ -480,7 +486,11 @@ def main():
      source_cutout=Path(leaf).stem in ('tre_wb1','tre_gr1')
      sparse=args.tree_geometry=='crossed' or bush or source_cutout or is_sparse(alpha)
      no_stem=bush and crown_profile(alpha)[0]>=.9
-     asset=crossed_tree(a,Path('trees')/rel,with_stem=not no_stem) if sparse else tree(a,Path('trees')/rel,adaptive=True,stem=not no_stem);rows.append('\t'.join(['tree',archive,leaf,asset,'','1']));status='adaptive-crossed' if sparse else 'adaptive-shell'
+     def build(no_stem):return crossed_tree(a,Path('trees')/rel,with_stem=not no_stem) if sparse else tree(a,Path('trees')/rel,adaptive=True,stem=not no_stem)
+     try:asset=build(no_stem)
+     except NoStemData: # --all-trees only: the source has no opaque stem texels (e.g. Greece tre_40), so build the crown without inventing a stem instead of aborting the whole pack
+      no_stem=True;asset=build(True)
+     rows.append('\t'.join(['tree',archive,leaf,asset,'','1']));status=('adaptive-crossed' if sparse else 'adaptive-shell')+('-no-stem-data' if no_stem and not bush else '')
     elif rec.get('category')=='spectator':
      frames=spectator(a,Path('spectators')/rel);rows.append('\t'.join(['spectator',archive,leaf,frames[0],','.join(frames),'6' if len(frames)==4 else '5']));status='articulated-forearm' if len(frames)==4 else 'upper-body-sway'
     else:status='retained-original'
