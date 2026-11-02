@@ -1,4 +1,4 @@
-// Exact original Greece1 (gre01) temp.obj roadside brush-wall part metadata
+// Exact original Greece1 (gre01) temp.sht roadside brush-wall part metadata (stage-object meshes; found by hash in any archive member)
 // (position/UV only, bsh_sh1a/c/z class). Generated from the owner-verified
 // gre01 stage archive with tools/scenery-patch/strip_sources.py (same
 // position/UV identity contract as game/SceneryPack.cpp). No artwork.

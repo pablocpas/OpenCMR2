@@ -511,7 +511,7 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
  // DDS identities are added by the private texture helper, independently of the
  // individual billboard pack. A same-named modified source never enters here.
  if(!France1Textures_IsVerifiedCutout(source))return false;
- // Greece1 brush walls (gre01 temp.obj bsh_sh1* parts): the flat card gets
+ // Greece1 brush walls (gre01 temp.sht stage-object bsh_sh1* parts): the flat card gets
  // draw-time depth - interior alpha relief plus a taller darkened back layer
  // ("skybreak"). Exact-source only: part hash + verified cutout + live dial.
  if(!name.compare(0,7,"bsh_sh1")){

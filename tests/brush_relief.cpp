@@ -75,6 +75,17 @@ int main() {
         CHECK(BrushRelief::AwayFromRoad(qa,qb,nn,roadNeg,2,60,away) && away[2] > 0.99f);
         float flipped[3]={0,0,-1};   // quad winding must not matter
         CHECK(BrushRelief::AwayFromRoad(qa,qb,flipped,roadPos,2,60,away) && away[2] < -0.99f);
+        // Not facing the road: nearest road point mostly sideways along the wall plane -> decline.
+        float sideRoad[]={30,3, 30,40};   // nearest (30,3): offset 38.5 along the wall, only 3 across
+        CHECK(!BrushRelief::AwayFromRoad(qa,qb,nn,sideRoad,2,60,away));
+        float obliqueRoad[]={-20,6, 20,6};
+        float obl[3]={0.866f,0,0.5f};   // normal 60 deg off the direction to the road: facing 0.5 < 0.7
+        CHECK(!BrushRelief::AwayFromRoad(qa,qb,obl,obliqueRoad,2,60,away));
+        // Facing road but a second road section lies behind the wall within extrusion depth: decline.
+        float bendRoad[]={-20,6, 20,6, 20,-3, -20,-3};   // wall at z=0 between two road runs (6 in front, 3 behind)
+        float bendRoute[]={-20,6, 20,6, 20,-3, -20,-3};
+        (void)bendRoad;
+        CHECK(!BrushRelief::AwayFromRoad(qa,qb,nn,bendRoute,4,60,away));
         float farRoad[]={-20,500, 20,500};
         CHECK(!BrushRelief::AwayFromRoad(qa,qb,nn,farRoad,2,60,away));
         float awayN[3]={0,0,-1};

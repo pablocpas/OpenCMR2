@@ -4,7 +4,7 @@
 #include <vector>
 #include "MeshVertex.h"
 // Visual-only draw-time depth for Greece1's roadside brush walls (gre01
-// temp.obj bsh_sh1a/c/z parts): the source is one flat vertical quad per
+// temp.sht bsh_sh1a/c/z stage-object parts): the source is one flat vertical quad per
 // wall segment textured with an alpha-cutout bush sheet, which reads as a
 // flat card. Two effects, both derived at draw time - originals, contact,
 // collision records and the source perimeter are never edited:
@@ -22,12 +22,19 @@
 // video.brush_relief (0..100, default 100) scales the displacement; 0 turns
 // the whole path off (caller draws the original flat quad).
 namespace BrushRelief {
+constexpr float kReliefDepth = 0.9f;    // world units at 100%
+constexpr int kVolumeSlices = 4;
+constexpr float kVolumeStep = 0.8f;     // world units between slices (total 3.2)
+constexpr float kMinRoadFacing = 0.7f;   // |side along normal| / distance to the nearest route point
 
 
 // Object-local -> world with a row-vector matrix m[16] (Direct3D layout: v' = v*M,
-// translation in m[12..14]), the contract of SceneNode::worldF / Gfx world transform.
-// temp.obj wall quads are OBJECT-LOCAL meshes, so any comparison with the stage route
-// (world space) must go through this. Returns false unless the 3x3 is a rigid rotation
+// translation in m[12..14]), the Gfx world transform current at draw time.
+// The Greece1 wall quads are stage-object meshes (temp.sht). Checked on a real gre01hi.bfl: the
+// stage object matrix is identity and the vertices already sit in world space, and the
+// non-billboard stage-object draw path does not set a world matrix of its own, so the ambient
+// transform is expected to be identity. We still read the live transform and go through it, and
+// decline unless it is rigid. Returns false unless the 3x3 is a rigid rotation
 // (unit rows within 5%, orthogonal), so offsets in local units equal world units.
 inline bool RigidWorld(const float m[16]) {
     for (int r = 0; r < 3; r++) {
@@ -60,30 +67,45 @@ inline bool AwayFromRoad(const float *qa /*quad point A xyz*/, const float *qb /
                          float maxDist, float away[3]) {
     if (!routeXZ || nodes < 1) return false;
     float mx = (qa[0] + qb[0]) * 0.5f, mz = (qa[2] + qb[2]) * 0.5f;
+    float bx = 0, bz = 0;
     float nx = normal[0], nz = normal[2];
     float nl = std::sqrt(nx * nx + nz * nz);
     if (nl < 0.3f) return false;   // quad is not a vertical wall
     nx /= nl; nz /= nl;
-    float best = 1e30f, bx = 0, bz = 0;
-    for (int i = 0; i < nodes; i++) {
-        float ax = routeXZ[i * 2], az = routeXZ[i * 2 + 1];
-        float px = ax, pz = az;
-        if (i + 1 < nodes) {   // nearest point on the segment, not just the node
-            float dx = routeXZ[i * 2 + 2] - ax, dz = routeXZ[i * 2 + 3] - az;
-            float l2 = dx * dx + dz * dz;
-            if (l2 > 1e-6f) {
-                float t = ((mx - ax) * dx + (mz - az) * dz) / l2;
-                t = t < 0 ? 0 : t > 1 ? 1 : t;
-                px = ax + dx * t; pz = az + dz * t;
+    auto nearestSq = [&](float qx, float qz, float *ox, float *oz) {
+        float b = 1e30f, bxx = 0, bzz = 0;
+        for (int i = 0; i < nodes; i++) {
+            float ax = routeXZ[i * 2], az = routeXZ[i * 2 + 1];
+            float px = ax, pz = az;
+            if (i + 1 < nodes) {   // nearest point on the segment, not just the node
+                float dx = routeXZ[i * 2 + 2] - ax, dz = routeXZ[i * 2 + 3] - az;
+                float l2 = dx * dx + dz * dz;
+                if (l2 > 1e-6f) {
+                    float t = ((qx - ax) * dx + (qz - az) * dz) / l2;
+                    t = t < 0 ? 0 : t > 1 ? 1 : t;
+                    px = ax + dx * t; pz = az + dz * t;
+                }
             }
+            float d = (px - qx) * (px - qx) + (pz - qz) * (pz - qz);
+            if (d < b) { b = d; bxx = px; bzz = pz; }
         }
-        float d = (px - mx) * (px - mx) + (pz - mz) * (pz - mz);
-        if (d < best) { best = d; bx = px; bz = pz; }
-    }
-    if (std::sqrt(best) > maxDist) return false;
+        if (ox) *ox = bxx;
+        if (oz) *oz = bzz;
+        return b;
+    };
+    float best = nearestSq(mx, mz, &bx, &bz);
+    float dist = std::sqrt(best);
+    if (dist > maxDist) return false;
     float side = (bx - mx) * nx + (bz - mz) * nz;   // >0: road lies on +n
     if (std::fabs(side) < 0.05f) return false;      // wall on the centreline: ambiguous
+    // A wall that does not face the road (nearest road point mostly sideways along the wall
+    // plane, e.g. at a bend or a wall end) has no trustworthy outward side: decline, stay flat.
+    if (std::fabs(side) < kMinRoadFacing * dist) return false;
     float s = side > 0 ? -1.f : 1.f;
+    // The extrusion must not approach ANY road point (a bend can put another road section behind
+    // the wall): measure the nearest route distance at the full extrusion depth and decline if it shrinks.
+    float depth = kVolumeStep * kVolumeSlices + kReliefDepth;
+    if (nearestSq(mx + nx * s * depth, mz + nz * s * depth, nullptr, nullptr) < best - 1e-3f) return false;
     away[0] = nx * s; away[1] = 0; away[2] = nz * s;
     return true;
 }
@@ -98,14 +120,11 @@ struct Vertex {
 
 constexpr int kGridX = 24;
 constexpr int kGridY = 8;
-constexpr float kReliefDepth = 0.9f;    // world units at 100%
 constexpr float kBackOffset = 0.45f;    // inward normal offset, world units
 constexpr float kBackHeight = 1.22f;    // taller back layer breaks the skyline
 constexpr float kBackUVShift = 0.31f;   // different bush columns than front
 constexpr float kBackShade = 0.7f;
 // Extrusion volume (road-facing face fixed): extra cards stacked away from the road.
-constexpr int kVolumeSlices = 4;
-constexpr float kVolumeStep = 0.8f;     // world units between slices (total 3.2)
 
 inline float SampleAlpha(const unsigned char *alpha, int aw, int ah, float u, float v) {
     if (u < 0) u = 0; if (u > 1) u = 1;
