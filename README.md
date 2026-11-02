@@ -14,7 +14,7 @@ Direct3D 7, DirectSound, DirectInput, DirectPlay and Bink are replaced with
 SDL3, the SDL GPU API (Vulkan, Direct3D 12, Metal) or OpenGL 3.3 and the
 port's own code.
 
-https://github.com/user-attachments/assets/3c7322dc-576b-4fb0-8d6a-4d17de6fe17d
+https://github.com/user-attachments/assets/18fcb1c9-e504-4369-98d2-175419f3d4cd
 
 *Colin McRae Rally 2.0 running on Linux with OpenCMR2.*
 
