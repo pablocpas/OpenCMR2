@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/18fcb1c9-e504-4369-98d2-175419f3d4cd
 ## Status
 
 Everything tested so far works: the intro videos, the menus, the stages and
-network races over LAN. The project is still in development, so you may find
+network races over LAN and the internet. The project is still in development, so you may find
 bugs. If you do, please [report them](https://github.com/pablocpas/OpenCMR2/issues).
 The game code follows CMR2Decomp, and its progress is brought into the port
 as it is made.
@@ -39,6 +39,17 @@ as it is made.
 | macOS | ARM64 | Builds and passes the tests, gameplay not yet tested |
 | Android | ARM64, x86-64 | Plays stages with on-screen controls (Android 10 or later, Vulkan) |
 
+### Other platforms
+
+A friend's fork, [OpenCMR2-3ds](https://github.com/0zaRu/OpenCMR2-3ds), runs
+the game on the Nintendo 3DS, as a CIA or a Homebrew Launcher application,
+with its own guide. It follows an October 2026 version of OpenCMR2 and is not
+maintained here: the 3DS is a delicate target for this code. It is there for
+anyone who wants to try it.
+
+Other ports people have asked for, such as WebAssembly or the Xbox 360, are
+not planned. Feel free to fork the project and make one.
+
 ### Features
 
 * Native SDL3 platform layer for windowing, input, audio and files, with saves
@@ -48,12 +59,18 @@ as it is made.
   shaders for GPUs without Vulkan or Direct3D 12 (Linux and Windows)
 * Fullscreen on the desktop resolution or a resizable window, switched with
   Alt+Enter
-* Keyboard, mouse and gamepads through SDL3, and on-screen controls on Android
+* Keyboards, gamepads and wheels through SDL3, with every driving action
+  bindable to keys, buttons, triggers, sticks or pedals, gamepad rumble and
+  wheel force feedback, and on-screen controls on Android
 * Bink intro and country videos with a built-in decoder
 * Multiplayer over LAN and the internet using UDP instead of DirectPlay
 * Folder dialog on first launch to locate the game installation
-* In-race HUD scaled with the screen and kept at its edges on wide screens,
-  with a configurable size
+* Menus and in-race HUD scaled with the screen and kept at its edges on wide
+  screens, with configurable sizes
+* Text drawn from outlines, and the co-driver arrows, menu icons, flags and
+  arcade maps traced from the originals, so they stay sharp when enlarged
+* The whole stage drawn on wide screens, with the scenery fading into the
+  backdrop at the view distance instead of popping in
 * Fixes for some original bugs, such as German in the language menu loading
   Spanish
 
@@ -83,8 +100,10 @@ Accuracy is tested against the original executable rather than assumed:
   120, 144 and 240 FPS and at a variable frame rate. All of them match bit
   for bit ([details](docs/PHYSICS_PARITY.md)).
 
-Graphical enhancements will be added one at a time and kept optional, so the
-original look stays available.
+Enhancements that change the original look, such as the outline text or the
+scaled menus and HUD, can be turned off in the settings. Those that only
+sharpen the original's images when they are enlarged are always on: at their
+own size, the icons, flags and maps keep the original's pixels.
 
 ## Running
 
