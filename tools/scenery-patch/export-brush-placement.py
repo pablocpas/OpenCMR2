@@ -22,6 +22,9 @@ _spec = importlib.util.spec_from_file_location('export_evidence', Path(__file__)
 _export = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_export)
 NODE, MESH, OBJ, SECTOR, PORTAL, TRI, VERT = 0x18c, 0x120, 0xa0, 0x88, 0x1c, 76, 48
 
+class Refused(Exception):
+    """The file does not match the layout this tool understands; no numbers are written for it."""
+
 def load_hashes(inc):
     return set(re.findall(r'"([0-9a-f]{64})"', Path(inc).read_text()))
 
@@ -68,6 +71,7 @@ def analyse(c3d, route, hashes):
     portals = struct.unpack_from('<H', b, 40)[0]
     mesh0 = 48 + nn * NODE; obj0 = mesh0 + (nm + no) * MESH; sec0 = obj0 + no * OBJ
     ts = sec0 + ns * SECTOR + portals * PORTAL; vs = ts + tri_n * TRI
+    if vs + 4 > len(b) or ts > len(b): raise Refused('header counts exceed file size')
     tex = names(b)
     parts = []   # (mesh index, texture, [indices])
     for mi in range(nm + no):
@@ -97,13 +101,13 @@ def analyse(c3d, route, hashes):
         typ = struct.unpack_from('<i', b, o+0x178)[0]
         cur = [fix(b, o+0x98+k*4) for k in range(16)]
         nodes.append({'pobj': pobj, 'parent': par, 'type': typ, 'current': cur})
-    rt = route_nodes(route) if route else []
+    if not route or len(route) % 44 or len(route) < 44 * 4: raise Refused('route (<stage>.cat) missing or not a whole number of 0x2c nodes')
+    rt = route_nodes(route)
     out = []; checks = {'route_nodes': len(rt), 'node_count': nn, 'mesh_count': nm, 'object_mesh_count': no,
                         'wall_parts_found': len(parts), 'wall_hashes_expected': len(hashes)}
-    unplaced = parentful = nonrigid = 0
     for mi, texname, digest, uniq, vo in parts:
         placing = [n for n in nodes if n['type'] == 0 and n['pobj'] != 0xffffffff and n['pobj'] % MESH == 0 and n['pobj'] // MESH == mi]
-        if len(placing) != 1: unplaced += 1
+        if len(placing) != 1: raise Refused('wall part in mesh %d has %d placing nodes (need exactly 1)' % (mi, len(placing)))
         rec = {'mesh': mi, 'texture': texname, 'hash': digest, 'placing_nodes': len(placing)}
         corners = {}
         for j in uniq:
@@ -111,12 +115,13 @@ def analyse(c3d, route, hashes):
             x, y, z = struct.unpack_from('<3f', b, o); u, v = struct.unpack_from('<2f', b, o+32)
             if u in (0.0, 1.0) and v in (0.0, 1.0): corners[int(u) + 2 * int(v)] = [x, y, z]
         rec['local_corners_uv00_10_01_11'] = [corners.get(k) for k in range(4)]
-        if len(placing) == 1 and len(corners) == 4:
+        if len(corners) != 4: raise Refused('wall part in mesh %d does not have four UV-corner vertices' % mi)
+        if True:
             n = placing[0]; W = n['current']
-            if n['parent'] != 0xffffffff: parentful += 1; rec['parent_offset_unresolved'] = n['parent']
+            if n['parent'] != 0xffffffff: raise Refused('placing node of mesh %d has a parent node; parent transforms are not composed by this tool' % mi)
             rows = [math.sqrt(sum(W[r*4+c]**2 for c in range(3))) for r in range(3)]
             rigid = all(0.95 < r < 1.05 for r in rows)
-            if not rigid: nonrigid += 1
+            if not rigid: raise Refused('placing node of mesh %d has a non-unit rotation matrix' % mi)
             rec['node_matrix'] = W; rec['rows_unit'] = rigid
             wc = [pt(W, corners[k]) for k in range(4)]; rec['world_corners'] = wc
             e1 = [corners[1][i] - corners[0][i] for i in range(3)]; e2 = [corners[2][i] - corners[0][i] for i in range(3)]
@@ -133,11 +138,11 @@ def analyse(c3d, route, hashes):
                             [(-nw[0] if side > 0 else nw[0]) / hn, (-nw[2] if side > 0 else nw[2]) / hn]})
         out.append(rec)
     dists = [r['nearest_route_distance'] for r in out if 'nearest_route_distance' in r]
-    checks.update({'walls_without_exactly_one_placing_node': unplaced, 'walls_with_parent_node': parentful,
-                   'walls_with_nonunit_matrix': nonrigid,
+    checks.update({'parser_refusals': 0,
                    'nearest_route_distance_min_max': [min(dists), max(dists)] if dists else None,
                    'walls_within_60_units': sum(1 for d in dists if d <= 60.0)})
     checks['all_expected_found'] = len(parts) == len(hashes)
+    if not parts: raise Refused('no wall parts matched the Gre01BrushSources hashes in this archive')
     return {'checks': checks, 'walls': out}
 
 def export(data, output, inc):
@@ -148,10 +153,14 @@ def export(data, output, inc):
         members = {n.lower(): bl for n, bl in _export.members(arch.read_bytes())}
         entry = {'archive': arch.relative_to(data).as_posix(), 'members': sorted(members)}
         obj = members.get('temp.obj')
-        cats = [n for n, bl in members.items() if n.endswith('.cat') and len(bl) % 44 == 0 and len(bl) >= 44 * 4]
+        stage = re.sub(r'(hi|lo)\.bfl$', '', arch.name.lower()); cats = [stage + '.cat'] if stage + '.cat' in members else []   # loader: sprintf("%s.cat", stage code)
         entry['route_member_candidates'] = cats
-        if obj and obj[:4] == b'PP_F':
-            entry['analysis'] = {c: analyse(obj, members[c], hashes) for c in cats} if cats else analyse(obj, b'', hashes)
+        try:
+            if not obj or obj[:4] != b'PP_F': raise Refused('temp.obj missing or not a C3D model')
+            if not cats: raise Refused('route member %s.cat not found (exact stage-code name required)' % stage)
+            entry['analysis'] = analyse(obj, members[cats[0]], hashes)
+        except (Refused, struct.error, IndexError) as e:
+            entry['refused'] = str(e); report['refused'] = True
         report['archives'].append(entry)
     if not report['archives']: raise ValueError('no gre01hi.bfl / gre01lo.bfl found under data')
     output.write_text(json.dumps(report, indent=1))
@@ -163,8 +172,9 @@ if __name__ == '__main__':
     ap.add_argument('--output', type=Path, required=True, help='new JSON file, outside the game data')
     ap.add_argument('--sources', type=Path, default=Path(__file__).resolve().parents[2] / 'game' / 'Gre01BrushSources.inc')
     a = ap.parse_args(); r = export(a.data, a.output, a.sources)
+    code = 0
     for e in r['archives']:
-        print(e['archive'], 'route candidates:', e['route_member_candidates'])
-        an = e.get('analysis') or {}
-        for k, v in (an.items() if 'checks' not in an else [('(no route)', an)]):
-            print(' ', k, json.dumps(v['checks']))
+        print(e['archive'], 'route member:', e['route_member_candidates'])
+        if 'refused' in e: print('  REFUSED:', e['refused'])
+        else: print('  checks:', json.dumps(e['analysis']['checks']))
+    raise SystemExit(2 if r.get('refused') else 0)

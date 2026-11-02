@@ -49,7 +49,6 @@ class T(unittest.TestCase):
         route = cat([(104, 0), (104, 50), (104, 100), (104, 150)])
         r = m.analyse(c3d, route, {hash_of(local)})
         self.assertEqual(r['checks']['wall_parts_found'], 1)
-        self.assertEqual(r['checks']['walls_without_exactly_one_placing_node'], 0)
         w = r['walls'][0]
         self.assertAlmostEqual(w['world_mid_xz'][0], 100.0, 3)
         self.assertAlmostEqual(w['nearest_route_distance'], 4.0, 3)
@@ -66,6 +65,24 @@ class T(unittest.TestCase):
             rep = m.export(data, out, inc)
             self.assertEqual(before, (data / 'gre01hi.bfl').read_bytes())
             self.assertEqual(rep['archives'][0]['route_member_candidates'], ['gre01.cat'])
+            self.assertNotIn('refused', rep['archives'][0])
             with self.assertRaises(ValueError): m.export(data, out, inc)
+
+    def test_fail_closed(self):
+        local = [(-8.5, 4, 0), (8.5, 4, 0), (-8.5, 1, 0), (8.5, 1, 0)]
+        c3d = build_c3d(local, 100.0, 50.0)
+        with self.assertRaises(m.Refused): m.analyse(c3d, b'', {hash_of(local)})
+        with self.assertRaises(m.Refused): m.analyse(c3d, cat([(1, 1)]), {hash_of(local)})
+        with self.assertRaises(m.Refused): m.analyse(c3d, cat([(104, 0)] * 5), {'0' * 64})   # no wall matched
+        bad = bytearray(c3d); struct.pack_into('<i', bad, 48 + 8, 0)   # node parent = 0 (a real parent)
+        with self.assertRaises(m.Refused): m.analyse(bytes(bad), cat([(104, 0)] * 5), {hash_of(local)})
+        scaled = bytearray(c3d); struct.pack_into('<i', scaled, 48 + 0x98, fixed(3.0))
+        with self.assertRaises(m.Refused): m.analyse(bytes(scaled), cat([(104, 0)] * 5), {hash_of(local)})
+        with tempfile.TemporaryDirectory() as tmp:   # route under another name is not accepted
+            root = Path(tmp); data = root / 'g'; data.mkdir()
+            (data / 'gre01hi.bfl').write_bytes(bfl([('temp.obj', c3d), ('other.cat', cat([(104, 0)] * 5))]))
+            inc = root / 's.inc'; inc.write_text('"%s",' % hash_of(local))
+            rep = m.export(data, root / 'o.json', inc)
+            self.assertIn('route member', rep['archives'][0]['refused']); self.assertTrue(rep['refused'])
 
 if __name__ == '__main__': unittest.main()
