@@ -123,7 +123,9 @@ void Windshield_AddDrivingSpatter(int view, int amount)
     WindshieldMap *m = &g_windshieldMaps[view & (WINDSHIELD_MAX_VIEWS - 1)];
     int drops = 1 + amount / 24;
     if (drops > 6) drops = 6;
-    Windshield_AddSpatter(m, drops, 40 + amount, amount / 255.0f);
+    // Visibility: the old 40+amount strength / amount-only size left specks at
+    // ~4% mean alpha (invisible on dark scenery). Stronger, larger specks.
+    Windshield_AddSpatter(m, drops, 110 + amount, 0.6f + amount / 255.0f);
 }
 
 // ---- overlay draw ---------------------------------------------------------
@@ -167,9 +169,9 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
         BYTE *row = (BYTE *)lr.pixels + y * lr.pitch;
         for (int x = 0; x < WINDSHIELD_MAP_W; x++) {
             int d = m->dirt[y * WINDSHIELD_MAP_W + x];
-            row[x * 4 + 0] = 0x20;   // B: the old tint's grime brown
-            row[x * 4 + 1] = 0x28;   // G
-            row[x * 4 + 2] = 0x30;   // R
+            row[x * 4 + 0] = 0x48;   // B: dust brown, reads on dark forest
+            row[x * 4 + 1] = 0x62;   // G
+            row[x * 4 + 2] = 0x7a;   // R
             row[x * 4 + 3] = (BYTE)(d > 235 ? 235 : d);
         }
     }

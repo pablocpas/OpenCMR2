@@ -91,7 +91,7 @@ inline void Windshield_UpdateWetness(WindshieldMap *m, int target)
 // minutes even without wipers. Called per rendered frame.
 inline void Windshield_Decay(WindshieldMap *m, int frameCounter)
 {
-    if ((frameCounter & 0x3f) != 0) return;   // one cell-sweep every 64 frames
+    if ((frameCounter & 0x0f) != 0) return;   // one cell-sweep every 16 frames
     for (int i = 0; i < WINDSHIELD_MAP_W * WINDSHIELD_MAP_H; i++)
         if (m->dirt[i] > 0) m->dirt[i]--;
 }

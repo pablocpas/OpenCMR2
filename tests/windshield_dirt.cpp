@@ -69,6 +69,23 @@ int main()
     for (int f = 0; f < 64; f++) Windshield_Decay(&e, f);
     CHECK(Windshield_TotalDirt(&e) < t0);
 
+    // Visibility regression: driving spatters at the real rate (11/s, amount 1)
+    // must leave a readable map after ~20 s (old model: ~0% of glass >= 25%).
+    WindshieldMap v;
+    Windshield_Reset(&v, 5);
+    int f = 0;
+    for (int step = 0; step < 220; step++) {
+        Windshield_AddSpatter(&v, 1, 111, 0.604f);
+        for (int k = 0; k < 5; k++) Windshield_Decay(&v, f++ * 1);
+    }
+    int glass = 0, strong = 0;
+    for (int y = 0; y < WINDSHIELD_MAP_H; y++)
+        for (int x = 0; x < WINDSHIELD_MAP_W; x++)
+            if (Windshield_InsideGlass((x + 0.5f) / WINDSHIELD_MAP_W, (y + 0.5f) / WINDSHIELD_MAP_H)) {
+                glass++; if (v.dirt[y * WINDSHIELD_MAP_W + x] >= 64) strong++;
+            }
+    CHECK(strong * 100 >= glass * 5);
+
     // Broken-glass overlay suppression: the dirt overlay hides only when the
     // resolved front glass is BROKEN; intact, damaged and feature-off keep it.
     CHECK(Windshield_OverlayVisible(-1) == 1);
