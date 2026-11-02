@@ -6184,6 +6184,10 @@ ReplayStream *Race_GetPlayerRecordPointer(int index);
 static ReplayControls g_replayControls;
 static TuningEdges g_replayEdges;
 bool ReplayControls_Active(void) { return Race_GetPlayerRecordField4(0) != 0; }
+BYTE InRaceMenu_IsOpening(void);
+// A menu owns the keyboard whenever the game is in menu/pause input mode (SetInputAndGamePaused(1): the Esc pause menu, the in-race menu and its opening
+// animation). CInput::ReadKeyboardDevice reads the arrows for the menu only in that mode, so the replay camera and replay keys must not clear them then.
+static bool ReplayMenuOwnsInput(void) { return CGameInfo::IsInRaceMenuOpen() != 0 || InRaceMenu_IsOpening() != 0 || CGameInfo::IsInputAndGamePaused() != 0; }
 float ReplayControls_TimeScale(void) { return ReplayControls_Active() ? g_replayControls.Scale() : 1.0f; }
 // A replay key is usable when it is not on the game's refusal list (Esc, Return, arrows, [ ], C, F1/F2 ...). Space is allowed here although the list refuses it
 // for the F10 key: replay is the one place it is free, because the recorded controls run the car and live driving keys do nothing. The same reasoning drops the
@@ -6192,7 +6196,7 @@ static bool ReplayKeyUsable(int key)
 {
     return key == INPUT_KEY_SPACE || Tuning_ToggleKeyAllowed(key);
 }
-bool ReplayControls_KeyIsReplayKey(int key) { return ReplayControls_Active() && ReplayKeyUsable(key) && (key == kReplayKeySlower || key == kReplayKeyFaster || key == kReplayKeyPause || key == kReplayKeyCamera); }
+bool ReplayControls_KeyIsReplayKey(int key) { return ReplayControls_Active() && !ReplayMenuOwnsInput() && ReplayKeyUsable(key) && (key == kReplayKeySlower || key == kReplayKeyFaster || key == kReplayKeyPause || key == kReplayKeyCamera); }
 int View_CycleReplayCamera(unsigned char view);
 void View_UpdateCamera(BYTE view);
 int View_FreeCamActive(void);
@@ -6203,7 +6207,7 @@ void View_ReplayChaseFrame(unsigned,int,int,int,int,int);
 static const int kFreeCamKeys[] = {0x11, 0x1f, 0x1e, 0x20, 0x10, 0x12, 0x13, 0x2a, 0x36, 0xc8, 0xd0, 0xcb, 0xcd};
 bool ReplayControls_KeyIsFreeCamKey(int key)
 {
-    if (!ReplayControls_Active() || ReplayChaseOrbit::InputCaptured(CGameInfo::IsInRaceMenuOpen() != 0, TuningPanel_IsOpen())) return false;
+    if (!ReplayControls_Active() || ReplayChaseOrbit::InputCaptured(ReplayMenuOwnsInput(), TuningPanel_IsOpen())) return false;
     if(!View_FreeCamActive())return ReplayChaseOrbit::Chase(View_GetActiveCameraMode(0)) && ReplayChaseOrbit::Key(key);
     for (int k : kFreeCamKeys) if (k == key) return true;
     return false;
@@ -6222,7 +6226,7 @@ void ReplayControls_Update(void)
     if (ReplayKeyUsable(kReplayKeyFaster) && g_replayEdges.Edge(1, Input_IsKeyDown(kReplayKeyFaster) != 0)) g_replayControls.Faster();
     if (ReplayKeyUsable(kReplayKeyPause) && g_replayEdges.Edge(2, Input_IsKeyDown(kReplayKeyPause) != 0)) g_replayControls.TogglePause();
     if (ReplayKeyUsable(kReplayKeyCamera) && g_replayEdges.Edge(3, Input_IsKeyDown(kReplayKeyCamera) != 0)) ReplayControls_CycleCamera();
-    if(ReplayChaseOrbit::InputCaptured(CGameInfo::IsInRaceMenuOpen() != 0, TuningPanel_IsOpen())){View_ReplayChaseFrame(0,0,0,0,0,0);return;}
+    if(ReplayChaseOrbit::InputCaptured(ReplayMenuOwnsInput(), TuningPanel_IsOpen())){View_ReplayChaseFrame(0,0,0,0,0,0);return;}
     bool cameraReset=g_replayEdges.Edge(4,Input_IsKeyDown(0x13)!=0);
     if(!View_FreeCamActive())View_ReplayChaseFrame(0,Input_IsKeyDown(0xcb)!=0,Input_IsKeyDown(0xcd)!=0,Input_IsKeyDown(0xc8)!=0,Input_IsKeyDown(0xd0)!=0,cameraReset);
     if (View_FreeCamActive()) {   // arrows and WASD are free in replay: the recorded controls drive the car
