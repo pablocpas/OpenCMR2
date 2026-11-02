@@ -96,6 +96,12 @@ static int WgExteriorGlassTextures(int car, unsigned group, int *damaged, int *b
     return 0;
 }
 
+static const char *g_wgFailReason[WG_MAX_CARS];
+const char *WindshieldGlass_FailReason(int car)
+{
+    return (car >= 0 && car < WG_MAX_CARS && g_wgFailReason[car]) ? g_wgFailReason[car] : "not attempted";
+}
+
 int WindshieldGlass_ResolveForCar(int car)
 {
     if (car < 0 || car >= WG_MAX_CARS)
@@ -115,6 +121,7 @@ int WindshieldGlass_ResolveForCar(int car)
         // latching the feature off for the whole stage.
         Sys_Log("windshield glass: car %d has no glass profile yet, will retry", car);
         info->resolved = 0;
+        g_wgFailReason[car] = "no glass profile";
         return -1;
     }
     unsigned char desc[6][4];
@@ -157,16 +164,19 @@ int WindshieldGlass_ResolveForCar(int car)
         if (ray >= 0 && ray != window) {
             Sys_Log("windshield glass: car %d ambiguous front glass (pivot %d vs ray %d), feature off",
                     car, window, ray);
+            g_wgFailReason[car] = "ambiguous front glass";
             return -1;
         }
     } else if (window < 0 && profile->driverPoseOffset != NULL) {
         // No usable wiper nodes: the eye ray alone, toward the front-most
         // quad centre ahead of the driver, is the only reference left.
         Sys_Log("windshield glass: car %d has no wiper pivots, feature off", car);
+        g_wgFailReason[car] = "no wiper pivots";
         return -1;
     }
     if (window < 0) {
         Sys_Log("windshield glass: car %d front glass unresolved, feature off", car);
+        g_wgFailReason[car] = "front glass unresolved";
         return -1;
     }
 
@@ -176,10 +186,12 @@ int WindshieldGlass_ResolveForCar(int car)
     if (group == 0 || !WgExteriorGlassTextures(car, group, &damaged, &broken)) {
         Sys_Log("windshield glass: car %d window %d has no drawable damage textures, feature off",
                 car, window);
+        g_wgFailReason[car] = "no damage textures";
         return -1;
     }
 
     info->resolved = 1;
+    g_wgFailReason[car] = "ok";
     info->window = window;
     info->slot = slot;
     info->group = group;
@@ -466,6 +478,7 @@ int WindshieldGlass_SetupCar(int car)
         Sys_Log("windshield glass: diag car %d lods=%d underBody=%d blendMeshes=%d semiParts=%d",
                 car, stats[0], stats[1], stats[2], stats[3]);
         g_wgInfo[car].resolved = -1;
+        g_wgFailReason[car] = "no interior glass part";
         return -1;
     }
     Sys_Log("windshield glass: car %d selected %d interior glass parts", car, g_wgGlassPartCount[car]);
