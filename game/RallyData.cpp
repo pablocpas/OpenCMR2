@@ -6795,10 +6795,10 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             int mv=(int)(param2&1);
             Windshield_GetDiag(mv,&wsCalls,&wsDrawn,&wsReason,&wsGlass,&wsDirt);
             bool wsResolved=WindshieldGlass_GetInfo(mv,NULL,&wsSlot,NULL,NULL,NULL)!=0;
-            const char *wsWhy[]={"drawing","skipped: broken glass","skipped: no dirt"};
-            snprintf(text,sizeof text,"Windshield: dirt %d wipe %d crack %d | glass %s st %d | dirt %d | draw %u/%u %s",
+            const char *wsWhy[]={"drawing","broken glass","no dirt"};
+            snprintf(text,sizeof text,"Windshield: dirt %d wipe %d crack %d | glass %s %d | dirt %d | draw %u/%u %s",
                 Sys_GetOption("video.windscreen_dirt",40),Sys_GetOption("video.windscreen_wipers",1),Sys_GetOption("video.windshield_cracks",1),
-                wsResolved?"ok":"NOT resolved",wsGlass,wsDirt,wsDrawn,wsCalls,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached");
+                wsResolved?"ok":"MISSING",wsGlass,wsDirt,wsDrawn,wsCalls,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached");
             {static const BYTE wsLit[4]={110,255,140,255},wsDim[4]={150,160,170,255};line(text,wsDrawn>0?wsLit:wsDim);}
         }
         {
