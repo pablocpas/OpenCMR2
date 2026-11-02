@@ -13,6 +13,10 @@
 
 #include <atomic>
 #include <filesystem>
+#include <mutex>
+#ifdef __ANDROID__
+#include <jni.h>
+#endif
 #include <map>
 #include <sstream>
 #include <set>
@@ -802,16 +806,19 @@ extern "C" void Sys_Sleep(DWORD ms)
 namespace {
 
 // Windows-1252 code of a Unicode code point, or 0.
+// The characters of Windows-1252's 0x80 to 0x9f (0: none); the rest are
+// Latin-1's.
+const Uint16 kWindows1252High[32] = { 0x20ac, 0, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021,
+                                      0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017d, 0,
+                                      0, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
+                                      0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0, 0x017e, 0x0178 };
+
 int ToWindows1252(Uint32 cp)
 {
-    static const Uint16 high[32] = { 0x20ac, 0, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021,
-                                     0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017d, 0,
-                                     0, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
-                                     0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0, 0x017e, 0x0178 };
     if (cp < 0x80 || (cp >= 0xa0 && cp <= 0xff))
         return (int)cp;
     for (int i = 0; i < 32; i++)
-        if (high[i] == cp)
+        if (kWindows1252High[i] == cp)
             return 0x80 + i;
     return 0;
 }
@@ -857,6 +864,17 @@ bool Translate(const SDL_Event &e, SysEvent *out)
             out->type = SYS_EVENT_TOGGLE_FULLSCREEN;
             return !e.key.repeat;
         }
+        // Windows also gave these keys to the game as characters (WM_CHAR),
+        // which its text entries read: Backspace deletes, Enter sends the
+        // chat line and Escape leaves it.
+        if (s_window != NULL && SDL_TextInputActive(s_window)) {
+            if (e.key.scancode == SDL_SCANCODE_BACKSPACE)
+                s_pendingText.push_back(8);
+            else if (e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER)
+                s_pendingText.push_back(13);
+            else if (e.key.scancode == SDL_SCANCODE_ESCAPE)
+                s_pendingText.push_back(27);
+        }
         out->type = SYS_EVENT_KEY_DOWN;
         out->key = Keys_FromScancode(e.key.scancode);
         out->repeat = e.key.repeat;
@@ -892,12 +910,102 @@ bool TakePendingText(SysEvent *out)
 // system's on-screen keyboard, Steam's in Steam Deck Game Mode: the game
 // kept it on for its whole run.
 Uint64 s_textInputUntil;
+bool s_textGiven;           // a character went to the game in this round of polls
+
+#ifdef __ANDROID__
+// Android without a physical keyboard: a text box (GameActivity.editText)
+// edits the entry instead, as typing into the game's own text one letter at
+// a time, with the keyboard over the touch controls, is awkward. The text
+// accepted replaces the entry's: Backspaces for its characters, then the new
+// ones, one a frame like typing, so the game's checks of length and
+// characters still apply.
+bool s_entryHardKeyboard;   // the entry is typed on a physical keyboard
+std::string s_entryText;    // the entry's text as the game last gave it
+std::atomic<bool> s_textBoxOpen;
+std::mutex s_textBoxMutex;
+bool s_textBoxDone, s_textBoxAccepted;
+std::string s_textBoxText;  // UTF-8
+
+bool AndroidCall(const char *name, const char *signature, ...)
+{
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jobject activity = (jobject)SDL_GetAndroidActivity();
+    if (env == NULL || activity == NULL)
+        return false;
+    jclass type = env->GetObjectClass(activity);
+    jmethodID method = env->GetMethodID(type, name, signature);
+    bool result = false;
+    if (method != NULL) {
+        va_list args;
+        va_start(args, signature);
+        if (signature[strlen(signature) - 1] == 'Z')
+            result = env->CallBooleanMethodV(activity, method, args);
+        else {
+            env->CallVoidMethodV(activity, method, args);
+            result = true;
+        }
+        va_end(args);
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        result = false;
+    }
+    env->DeleteLocalRef(type);
+    env->DeleteLocalRef(activity);
+    return result;
+}
+
+void OpenTextBox(const std::string &text, int maxLength)
+{
+    // Windows-1252 to UTF-8.
+    std::string utf8;
+    for (unsigned char c : text) {
+        Uint32 cp = c >= 0x80 && c < 0xa0 ? kWindows1252High[c - 0x80] : c;
+        char bytes[5] = {};
+        if (cp != 0)
+            utf8 += std::string(bytes, SDL_UCS4ToUTF8(cp, bytes) - bytes);
+    }
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jstring string = env != NULL ? env->NewStringUTF(utf8.c_str()) : NULL;
+    s_textBoxOpen = string != NULL && AndroidCall("editText", "(Ljava/lang/String;I)V", string, (jint)maxLength);
+    if (string != NULL)
+        env->DeleteLocalRef(string);
+}
+
+// The text box's answer, on the game's thread.
+void TakeTextBoxAnswer()
+{
+    std::lock_guard<std::mutex> lock(s_textBoxMutex);
+    if (!s_textBoxDone)
+        return;
+    s_textBoxDone = false;
+    // The game held while the box was open: the entry goes on.
+    s_textInputUntil = SDL_GetTicks() + 1000;
+    if (!s_textBoxAccepted)
+        return;
+    s_pendingText.assign(s_entryText.size(), 8);
+    const char *text = s_textBoxText.c_str();
+    Uint32 cp;
+    while ((cp = SDL_StepUTF8(&text, NULL)) != 0) {
+        int c = ToWindows1252(cp);
+        if (c != 0)
+            s_pendingText.push_back(c);
+    }
+}
+#endif
 
 void UpdateTextInput()
 {
     if (s_window == NULL)
         return;
+#ifdef __ANDROID__
+    TakeTextBoxAnswer();
+    if (s_textBoxOpen)
+        s_textInputUntil = SDL_GetTicks() + 1000;
+    bool wanted = SDL_GetTicks() < s_textInputUntil && s_entryHardKeyboard;
+#else
     bool wanted = SDL_HasKeyboard() || SDL_GetTicks() < s_textInputUntil;
+#endif
     if (wanted == SDL_TextInputActive(s_window))
         return;
     if (wanted)
@@ -908,10 +1016,41 @@ void UpdateTextInput()
 
 } // namespace
 
-extern "C" void Sys_RequestTextInput(void)
+#ifdef __ANDROID__
+extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_GameActivity_nativeTextEntered(
+    JNIEnv *env, jobject, jstring text, jboolean accepted)
 {
-    if (SDL_GetTicks() >= s_textInputUntil)
+    const char *chars = env->GetStringUTFChars(text, NULL);
+    {
+        std::lock_guard<std::mutex> lock(s_textBoxMutex);
+        s_textBoxText = chars != NULL ? chars : "";
+        s_textBoxAccepted = accepted && chars != NULL;
+        s_textBoxDone = true;
+    }
+    if (chars != NULL)
+        env->ReleaseStringUTFChars(text, chars);
+    s_textBoxOpen = false;
+}
+#endif
+
+extern "C" void Sys_RequestTextInput(const char *text, int maxLength)
+{
+    bool starting = SDL_GetTicks() >= s_textInputUntil;
+#ifdef __ANDROID__
+    s_entryText = text != NULL ? text : "";
+    if (starting) {
+        s_entryHardKeyboard = AndroidCall("hasHardwareKeyboard", "()Z");
+        if (!s_entryHardKeyboard)
+            OpenTextBox(s_entryText, maxLength);
+    }
+    if (starting)
+        Sys_Log("input: text entry%s", s_entryHardKeyboard ? "" : s_textBoxOpen ? ", text box" : ", no text box");
+#else
+    (void)text;
+    (void)maxLength;
+    if (starting)
         Sys_Log("input: text entry%s", SDL_HasKeyboard() ? "" : ", on-screen keyboard");
+#endif
     s_textInputUntil = SDL_GetTicks() + 250;
     UpdateTextInput();
 }
@@ -920,14 +1059,21 @@ extern "C" int Sys_PollEvent(SysEvent *event)
 {
     SDL_Event e;
     UpdateTextInput();
-    if (TakePendingText(event))
+    // One character a round of polls, as the game takes one a frame from a
+    // queue of 30: a text box's answer would overflow it.
+    if (!s_textGiven && TakePendingText(event)) {
+        s_textGiven = true;
         return 1;
+    }
     while (SDL_PollEvent(&e)) {
         if (Translate(e, event))
             return 1;
-        if (TakePendingText(event))
+        if (!s_textGiven && TakePendingText(event)) {
+            s_textGiven = true;
             return 1;
+        }
     }
+    s_textGiven = false;
     return 0;
 }
 

@@ -1,10 +1,17 @@
 package io.github.pablocpas.opencmr2
 
+import android.app.AlertDialog
 import android.content.res.Configuration
 import android.os.Bundle
-import androidx.annotation.Keep
+import android.text.InputFilter
+import android.text.InputType
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
+import android.widget.FrameLayout
+import androidx.annotation.Keep
 import org.libsdl.app.SDLActivity
 import org.libsdl.app.SDLControllerManager
 
@@ -24,6 +31,52 @@ class GameActivity : SDLActivity() {
     // only with a physical keyboard; the touch controls are edited here.
     @Keep
     fun hasHardwareKeyboard(): Boolean = resources.configuration.keyboard == Configuration.KEYBOARD_QWERTY
+
+    // Called by sys.cpp as the game starts a text entry (a game's name, the
+    // chat line, a saved game's name) without a physical keyboard: a text box
+    // with the system's keyboard. The text accepted replaces the entry's.
+    @Keep
+    fun editText(text: String, maxLength: Int) {
+        runOnUiThread {
+            val edit = EditText(this).apply {
+                setText(text)
+                setSelection(text.length)
+                filters = arrayOf(InputFilter.LengthFilter(maxLength))
+                isSingleLine = true
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            }
+            val padding = (20 * resources.displayMetrics.density).toInt()
+            val frame = FrameLayout(this).apply {
+                setPadding(padding, padding / 2, padding, 0)
+                addView(edit)
+            }
+            var answered = false
+            fun answer(accepted: Boolean) {
+                if (!answered) {
+                    answered = true
+                    nativeTextEntered(edit.text.toString(), accepted)
+                }
+            }
+            val dialog = AlertDialog.Builder(this)
+                .setView(frame)
+                .setPositiveButton(android.R.string.ok) { _, _ -> answer(true) }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> answer(false) }
+                .setOnDismissListener { answer(false) }
+                .create()
+            edit.setOnEditorActionListener { _, action, _ ->
+                if (action != EditorInfo.IME_ACTION_DONE) return@setOnEditorActionListener false
+                answer(true)
+                dialog.dismiss()
+                true
+            }
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            dialog.show()
+            edit.requestFocus()
+        }
+    }
+
+    private external fun nativeTextEntered(text: String, accepted: Boolean)
 
     override fun getLibraries() = arrayOf("SDL3", "main")
 
