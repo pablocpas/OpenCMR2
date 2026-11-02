@@ -337,6 +337,7 @@ void Windshield_ResetAll(void);
 // feature off for that car. (game/WindshieldGlass.cpp)
 int WindshieldGlass_SetupCar(int car);
 int WindshieldGlass_ResolveForCar(int car);
+const char *WindshieldGlass_FailReason(int car);   // F10 diagnostics only
 int WindshieldGlass_ApplyDamageState(int car, int state);
 int WindshieldGlass_GetInfo(int car, int *window, int *slot, unsigned *group,
                             int *damagedTexture, int *brokenTexture);
