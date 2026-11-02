@@ -247,7 +247,7 @@ the game.
 | `[input] key_repeat_delay` | `750` | Milliseconds before a key held in the menus repeats |
 | `[input] key_repeat_interval` | `100` | Milliseconds between the repeats of a held key |
 | `[install] language` | `English` | English, American, French, German, Italian, Spanish or Polish |
-| `[install] sku` | `EUROPE` | Game edition: `EUROPE`, `AMERICA`, `POLAND` or `JAPAN` |
+| `[install] sku` | `EUROPE` | Game edition: `EUROPE`, `AMERICA`, `POLAND` or `JAPAN`; when the data has no `CountrySpecific` folder for it and one for another edition, that one |
 | `[install] menu_shortcut` | asked | Entry in the applications menu (Linux) or Start menu (Windows): `1` keeps it pointing at this copy, `0` removes it |
 | `[net] ...` | | Network play, see [NETWORK.md](docs/NETWORK.md) |
 

@@ -1216,6 +1216,42 @@ extern "C" void Sys_ListFiles(const char *directory, const char *pattern, SysLis
 
 // ---- settings ----------------------------------------------------------------------
 
+namespace {
+
+// The edition (install.sku), unless the data has no CountrySpecific folder
+// for it and has one for a single other edition: the text and speech of the
+// game are there. Copies of a Polish or American installation then start
+// without editing the settings, which Android does not let the player do.
+const char *InstalledSku()
+{
+    static const char *const skus[][2] = {
+        { "EUROPE", "Europe" }, { "AMERICA", "Usa" }, { "JAPAN", "Japan" }, { "POLAND", "Poland" } };
+    const char *configured = Platform_GetSetting("install.sku", "EUROPE");
+    if (s_dataDir.empty())
+        return configured;
+    auto present = [](const char *folder) {
+        std::string path = FindUnder(s_dataDir, { "CountrySpecific", folder });
+        SDL_PathInfo info{};
+        return !path.empty() && SDL_GetPathInfo(path.c_str(), &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+    };
+    const char *found = NULL;
+    for (const auto &sku : skus) {
+        if (SDL_strcasecmp(sku[0], configured) == 0 && present(sku[1]))
+            return configured;
+        if (present(sku[1]))
+            found = found == NULL ? sku[0] : "";
+    }
+    if (found == NULL || *found == 0)
+        return configured;
+    static bool logged;
+    if (!logged)
+        Sys_Log("install: no CountrySpecific folder for sku %s; the data is the %s edition", configured, found);
+    logged = true;
+    return found;
+}
+
+} // namespace
+
 extern "C" const char *Sys_GetInstallSetting(const char *name)
 {
     if (SDL_strcasecmp(name, "Game_HDPath") == 0 || SDL_strcasecmp(name, "Game_CDPath") == 0)
@@ -1225,7 +1261,7 @@ extern "C" const char *Sys_GetInstallSetting(const char *name)
     if (SDL_strcasecmp(name, "Language") == 0)
         return Platform_GetSetting("install.language", "English");
     if (SDL_strcasecmp(name, "Sku_Type") == 0)
-        return Platform_GetSetting("install.sku", "EUROPE");
+        return InstalledSku();
     return "";
 }
 
