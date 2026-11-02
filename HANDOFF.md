@@ -1001,3 +1001,6 @@ visible until the pads render.
   original. Uprez coverage: owned Finland1/France1/Greece1 archives only.
 - What's new (#247): no more main-menu popup; localized row at the bottom of
   the main Options menu (above Back); full log listed; rev 16.
+
+## Greece1 brush volume (road-facing edge fixed)
+gre01 brush walls (38 bsh_sh1a/c/z parts) are drawn with depth that goes only AWAY from the road: the road-facing face stays the original quad, then relief, the back card and 4 extra slices (0.8 units apart) stack away from it. The side comes from the stage route polyline (nearest route segment within 60 units, sign of the quad normal toward it), not from quad winding. If no route point is that close the wall stays the flat original. Collision and contact data are untouched. Log lines: "gre01 brush volume active" / "declined". Never rendered natively; the mesh-vs-route coordinate frame match is checked only by that log line.

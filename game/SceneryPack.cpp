@@ -13,6 +13,7 @@
 #include "France1Textures.h"
 #include "FixedStripSources.inc"
 #include "Gre01BrushSources.inc"
+#include "RallyRoute.h"
 #include "BrushRelief.h"
 #include "Graphics.h"
 #include "Texture.h"
@@ -545,9 +546,22 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
        const unsigned char*alpha=nullptr;int aw=0,ah=0;
        if(nl>1e-5f&&France1Textures_CutoutAlpha(source,&alpha,&aw,&ah)){
         n[0]/=nl;n[1]/=nl;n[2]/=nl;
-        data.ready=BrushRelief::Build(c,n,alpha,aw,ah,reliefDial,true,data.vertices);
-        BrushRelief::Indices(true,data.indices);
-        for(int k=0;k<4;k++)data.corners[k]=c[k];
+        // Road-facing edge stays fixed; all depth (relief, back card, volume
+        // slices) goes AWAY from the route. Side comes from the stage route
+        // polyline, never from the quad's winding. No route match = no volume.
+        static const RallyRouteNode*routeKey=nullptr;static int routeKeyCount=0;static std::vector<float>routeXZ;
+        if(g_routeNodes&&g_routeNodeCount>0&&(routeKey!=g_routeNodes||routeKeyCount!=g_routeNodeCount)){
+         routeXZ.clear();for(int i=0;i<g_routeNodeCount;i++){routeXZ.push_back(g_routeNodes[i].position.x/65536.f);routeXZ.push_back(g_routeNodes[i].position.z/65536.f);}
+         routeKey=g_routeNodes;routeKeyCount=g_routeNodeCount;
+        }
+        float qa[3]={c[0].x,c[0].y,c[0].z},qb[3]={c[1].x,c[1].y,c[1].z},away[3];
+        static unsigned extruded=0,declined=0;
+        if(g_routeNodes&&g_routeNodeCount>0&&BrushRelief::AwayFromRoad(qa,qb,n,routeXZ.data(),g_routeNodeCount,60.f,away)){
+         data.ready=BrushRelief::Build(c,away,alpha,aw,ah,reliefDial,true,data.vertices,BrushRelief::kVolumeSlices);
+         BrushRelief::Indices(true,data.indices,BrushRelief::kVolumeSlices);
+         for(int k=0;k<4;k++)data.corners[k]=c[k];
+         if(++extruded==1)Sys_Log("scenery: gre01 brush volume active (road-facing edge fixed, extruded away from route; visual only)");
+        }else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined: no route node within 60 units of a brush wall (route %d nodes); keeping the flat original",g_routeNodeCount);
        }
       }
      }
