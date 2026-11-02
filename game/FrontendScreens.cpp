@@ -2843,6 +2843,7 @@ void FrontendMenu_UpdateNetworkNameEntry(Menu *pMenu)
 
     g_unk0x00818cd8 = g_unk0x00818da8;
     strcpy(CFrontend::m_stringDest, g_unk0x00818da8);
+    Sys_RequestTextInput();   // PORT
     if (!Input_PopQueuedCharacter(&key))
         return;
     if (key != 8) {
