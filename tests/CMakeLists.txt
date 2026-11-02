@@ -624,7 +624,7 @@ target_compile_options(france1_textures_test PRIVATE "SHELL:-include ${PROJECT_S
 target_link_libraries(france1_textures_test PRIVATE SDL3::SDL3)
 add_test(NAME france1_textures COMMAND france1_textures_test)
 if(Python3_Interpreter_FOUND)
- add_test(NAME france1_prepare_recipe COMMAND ${Python3_EXECUTABLE} -m unittest test_france1_prepare test_uprez_prepare test_integer_filter test_road_periodic test_strip_sources WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools/scenery-patch)
+ add_test(NAME france1_prepare_recipe COMMAND ${Python3_EXECUTABLE} -m unittest test_france1_prepare test_uprez_prepare test_integer_filter test_road_periodic test_strip_sources test_export_tree_inventory WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools/scenery-patch)
 endif()
 add_executable(cockpit_wipers_test cockpit_wipers.cpp)
 target_link_libraries(cockpit_wipers_test PRIVATE opencmr2_platform)
