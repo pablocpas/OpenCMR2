@@ -64,7 +64,7 @@ static std::string Archive(const std::string &name, const std::string &text)
     return header + bytes;
 }
 
-static void CreateRegion(const fs::path &data, int region)
+static void CreateRegion(const fs::path &data, int region, bool swapped = false)
 {
     const char *names[] = {region == 0 ? "english" : "engusa", "french", "spanish", "italian", "german"};
     const char *labels[] = {"english", "fran\xe7" "ais", "espa\xf1ol", "italiano", "deutsch"};
@@ -75,9 +75,10 @@ static void CreateRegion(const fs::path &data, int region)
         for (int line = 0; line < 0x215; ++line) {
             const char *label = names[language];
             if (line >= 6 && line <= 10) {
-                // EU text files label 8 deutsch and 10 español. These text
-                // IDs differ from the archive/language numbers (2/4).
-                const int order[] = {0, 1, region == 0 ? 4 : 2, 3, 2};
+                // EU text files of 2000 label 8 deutsch and 10 español, which
+                // differ from the archive/language numbers (2/4); other
+                // releases' files (swapped) have them the other way round.
+                const int order[] = {0, 1, region == 0 && !swapped ? 4 : 2, 3, region == 0 && swapped ? 4 : 2};
                 label = labels[order[line - 6]];
             }
             text += std::string(label) + "\r\n";
@@ -154,8 +155,10 @@ int main()
     g_pGraphics = &graphics;
     TestRegion(0);
     TestRegion(1);
+    CreateRegion(data, 0, true);
+    TestRegion(0);
     g_pGraphics = nullptr;
     Platform_Shutdown();
     fs::remove_all(root);
-    puts("frontend language: EU/USA labels, selected text, credits and cancellation passed");
+    puts("frontend language: EU (both label orders)/USA labels, selected text, credits and cancellation passed");
 }

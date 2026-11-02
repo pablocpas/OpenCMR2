@@ -1864,25 +1864,44 @@ void FrontendMenu_LeaveMain(Menu *pMenu, int param);
 void FrontendChampionship_StartNewEntry(Menu *pMenu, int param);
 char GameInfo_AreOptionsAvailable(void);
 
+// PORT: the entry is the language number (English, French, Spanish, Italian,
+// German: text files, speech, credits and flag). The original labels entries
+// 2 and 4 with texts 8 and 10, which in the European text files of 2000 are
+// "deutsch" and "español": "deutsch" showed the Spanish flag and loaded
+// Spanish. Text files of other releases order these lines the other way
+// round (a German release, by its players' reports), so the label is the text
+// among 6 to 10 that holds the entry's language name, or the original's.
+static short FrontendMenu_LanguageLabel(int language, short id)
+{
+    static const char *const names[5] = { "english", "fran\xe7" "ais", "espa\xf1ol", "italiano", "deutsch" };
+    short i;
+    char *text;
+
+    if (CFrontend::m_textStrings == NULL)
+        return id;
+    for (i = 6; i <= 10; i++) {
+        text = CFrontend::GetTextString(i);
+        if (text != NULL && _stricmp(text, names[language]) == 0)
+            return i;
+    }
+    return id;
+}
+
 // Language menu: five languages, or three in region 1.
 // FUNCTION: CMR2 0x004f5580
-// PORT: the entry is the language number (English, French, Spanish, Italian,
-// German: text files, speech, credits and flag). The original labelled
-// entries 2 and 4 with texts 8 "deutsch" and 10 "español", swapped: choosing
-// "deutsch" showed the Spanish flag and loaded Spanish. Fixed here.
 void FrontendMenu_BuildLanguage(void)
 {
     Menu_Init(&g_menu0x008221d8, 0, 1, 0, NULL, NULL, 1, 0, 0);
     if (CGameInfo::GetGameRegion() == 0) {
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 6, &g_menu0x0081d6d8, 0, 0);
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 7, &g_menu0x0081d6d8, 0, 1);
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 10, &g_menu0x0081d6d8, 0, 2);
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 9, &g_menu0x0081d6d8, 0, 3);
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 8, &g_menu0x0081d6d8, 0, 4);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(0, 6), &g_menu0x0081d6d8, 0, 0);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(1, 7), &g_menu0x0081d6d8, 0, 1);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(2, 8), &g_menu0x0081d6d8, 0, 2);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(3, 9), &g_menu0x0081d6d8, 0, 3);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(4, 10), &g_menu0x0081d6d8, 0, 4);
     } else {
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 6, &g_menu0x0081d6d8, 0, 0);
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 7, &g_menu0x0081d6d8, 0, 1);
-        Menu_AddItemType2(&g_menu0x008221d8, 0, 8, &g_menu0x0081d6d8, 0, 2);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(0, 6), &g_menu0x0081d6d8, 0, 0);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(1, 7), &g_menu0x0081d6d8, 0, 1);
+        Menu_AddItemType2(&g_menu0x008221d8, 0, FrontendMenu_LanguageLabel(2, 8), &g_menu0x0081d6d8, 0, 2);
     }
     Menu_SetCallbacks(&g_menu0x008221d8, (MenuCallback)FrontendMenu_EnterLanguage, (MenuCallback)FrontendMenu_UpdateLanguage,
                       (MenuCallback)FrontendMenu_DrawLanguage, (MenuCallback)FrontendMenu_LeaveLanguage);
