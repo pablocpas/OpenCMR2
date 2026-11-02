@@ -8,7 +8,10 @@
 # private pack is made the same way as at launch: originals are verified by hash and never written, the cache lives under enhancements/ in your
 # profile, an old cache is never overwritten, nothing is downloaded (unless you add --install-enhancement-deps), no selection is saved to the INI.
 #   --update                    Fast-forward origin/main first (clean checkout only); never resets/stashes
-#   --all-mods                  Current audiovisual preset (not every effect on); needs data and owned car ZIPs
+#   --all-mods                  Current audiovisual preset (not every effect on); needs data and owned car ZIPs.
+#                               Includes the EXPERIMENTAL Greece1 brush-wall extrusion (--brush-volume 1): visual only,
+#                               collision unchanged, extrusion direction not verified natively; only part of the walls change
+#                               (offline count on one recovered gre01hi: 19 of 38, the rest stay flat)
 #   --run                       Launch after a successful build/preparation
 #   --mods-dir DIR              Owned car ZIP folder for --all-mods (or CMR2_MODS_DIR; default mods)
 #   --data DIR                  Your owned game data folder (or set CMR2_DATA). Required with any asset option.
@@ -31,8 +34,14 @@
 #   --fog-spatial 0|1           Fog pockets along the stage route (default 0 = off)
 #   --fog-lights 0..200        Fog response to head/rear lights, percent (default 100)
 #   --fog-evolve -100..100      Fog trend start to finish: negative clears, positive thickens (default 0)
+#   --brush-volume 0|1          Greece1 roadside brush-wall extrusion away from the road (default 0 = original flat quads;
+#                               --all-mods sets 1; explicit value wins). Experimental, launch-only passthrough
 #   --fog-amount N / --fog-glow N / --air-motes-amount N / --snow-glint N / --snow-material N
 #                               Other atmosphere dials (docs/ATMOSPHERE.md), also launch-only passthrough
+#   --export-brush-placement    Read-only export of Greece1 roadside wall placement vs the stage route to a NEW JSON
+#                               (numbers only; needs --data). Standalone: no build, no launch, no pack, and it does
+#                               NOT enable video.brush_volume or any extrusion (needs the temp.sht exporter fix, PR #296, to read real archives). Stops with a reason if the checks fail.
+#   --brush-placement-output F  Where to write it (must not exist; default: $TMPDIR or /tmp, gre01-brush-placement-<time>.json)
 #   --dry-run                   Check the inputs and print the plan; build nothing, write nothing
 #   -h, --help                  This text
 # Missing or unsupported inputs stop the script with a message; nothing is skipped silently. Generated packs are derived game art:
@@ -57,6 +66,8 @@ ASSETS_ONLY=0
 FLAGS=()
 TUNING=()
 TEST_PRESET=
+EXPORT_BRUSH=0
+BRUSH_OUT=
 need_value() { [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 needs a value (see --help)"; }
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -74,11 +85,13 @@ while [ "$#" -gt 0 ]; do
         --install-enhancement-deps) FLAGS+=(--install-enhancement-deps); shift ;;
         --test-preset) need_value "$@"; TEST_PRESET="$2"; shift 2 ;;
         --assets-only) ASSETS_ONLY=1; shift ;;
+        --export-brush-placement) EXPORT_BRUSH=1; shift ;;
+        --brush-placement-output) need_value "$@"; BRUSH_OUT="$2"; shift 2 ;;
         --dry-run) DRY=1; shift ;;
         --fog-amount|--fog-glow|--fog-clear|--fog-lights|--air-motes-amount|--fog-evolve|--snow-glint|--snow-material) need_value "$@"; TUNING+=("$1" "$2"); shift 2 ;;
-        --fog-cull|--fog-spatial) need_value "$@"; case "$2" in 0|1) ;; *) die "$1 takes 0 or 1, got '$2'" ;; esac; TUNING+=("$1" "$2"); shift 2 ;;
+        --fog-cull|--fog-spatial|--brush-volume) need_value "$@"; case "$2" in 0|1) ;; *) die "$1 takes 0 or 1, got '$2'" ;; esac; TUNING+=("$1" "$2"); shift 2 ;;
         --fog-amount=*|--fog-glow=*|--fog-clear=*|--fog-lights=*|--air-motes-amount=*|--fog-evolve=*|--snow-glint=*|--snow-material=*) TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
-        --fog-cull=*|--fog-spatial=*) case "${1#*=}" in 0|1) ;; *) die "${1%%=*} takes 0 or 1" ;; esac; TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
+        --fog-cull=*|--fog-spatial=*|--brush-volume=*) case "${1#*=}" in 0|1) ;; *) die "${1%%=*} takes 0 or 1" ;; esac; TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
         *) die "unknown option '$1' (see --help)" ;;
     esac
 done
@@ -184,6 +197,8 @@ if [ "$ALL_MODS" = 1 ]; then
         130
         --tunnel-lines
         1
+        --brush-volume
+        1
     )
     # Textures after the preset: explicit choice wins; default is uprez.
     # "original" must be passed explicitly: the game's own --asset-upgrades
@@ -191,6 +206,30 @@ if [ "$ALL_MODS" = 1 ]; then
     FLAGS+=(--textures="${ALL_MODS_TEXTURES:-uprez}")
 fi
 
+
+# Read-only brush placement export: standalone, never builds, launches or prepares anything.
+if [ -n "$BRUSH_OUT" ] && [ "$EXPORT_BRUSH" = 0 ]; then die "--brush-placement-output needs --export-brush-placement"; fi
+if [ "$EXPORT_BRUSH" = 1 ]; then
+    if [ "$ALL_MODS" = 1 ] || [ "$RUN" = 1 ] || [ "$ASSETS_ONLY" = 1 ] || [ "${#FLAGS[@]}" -gt 0 ] || [ -n "$TEXTURES_VALUE" ] || [ -n "$TEST_PRESET" ] || [ "${#TUNING[@]}" -gt 0 ]; then
+        die "--export-brush-placement is standalone; run it without build, launch or asset options"
+    fi
+    [ -n "$DATA" ] || die "--export-brush-placement needs --data DIR (or CMR2_DATA)"
+    [ -d "$DATA" ] || die "game data folder not found: $DATA"
+    command -v python3 >/dev/null 2>&1 || die "python3 not found (needed for the exporter)"
+    [ -n "$BRUSH_OUT" ] || BRUSH_OUT="${TMPDIR:-/tmp}"
+    case "$BRUSH_OUT" in *.json) ;; *) BRUSH_OUT="${BRUSH_OUT%/}/gre01-brush-placement-$(date +%Y%m%d-%H%M%S).json" ;; esac
+    [ ! -e "$BRUSH_OUT" ] || die "output already exists: $BRUSH_OUT (choose a new path)"
+    case "$(cd "$(dirname "$BRUSH_OUT")" 2>/dev/null && pwd -P)/" in "$(cd "$DATA" && pwd -P)/"*) die "output must be outside the game data folder" ;; esac
+    if [ "$DRY" = 1 ]; then
+        echo "==> Dry run: nothing is built or written"
+        printf "    export (read-only):"; printf " %q" python3 tools/scenery-patch/export-brush-placement.py --data "$DATA" --output "$BRUSH_OUT"; printf "\n"
+        exit 0
+    fi
+    echo "==> Exporting Greece1 brush placement (read-only; does not enable the extrusion or change game files)"
+    python3 tools/scenery-patch/export-brush-placement.py --data "$DATA" --output "$BRUSH_OUT" || die "export refused or failed (exit $?); no usable JSON, see the message above"
+    echo "==> Wrote $BRUSH_OUT (numbers only). Send that file back for the direction check."
+    exit 0
+fi
 
 # An explicit non-original choice becomes a real flag here (all-mods handled above).
 [ -z "$TEXTURES_VALUE" ] || [ "$TEXTURES_VALUE" = original ] || FLAGS+=(--textures "$TEXTURES_VALUE")
