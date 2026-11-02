@@ -613,9 +613,8 @@ bool Platform_Init(int argc, char **argv)
     // matching a future .desktop file) and the game's audio streams.
     SDL_SetAppMetadata("OpenCMR2", NULL, "io.github.pablocpas.OpenCMR2");
 #ifdef __ANDROID__
-    // The game keeps text input on for its whole run, which on a phone would
-    // keep the on-screen keyboard open. Back is the game's Escape (GameActivity).
-    SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, "0");
+    // Back is the game's Escape (GameActivity). The on-screen keyboard opens
+    // only while a name is typed (Sys_RequestTextInput).
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #endif
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
