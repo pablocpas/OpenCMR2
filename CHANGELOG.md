@@ -3,6 +3,10 @@
 All notable changes to OpenCMR2 are documented here.
 
 ## [Unreleased]
+### Added
+- Scenery patcher: hash-pinned source index for the 45 Greece `tre_*` cards
+  (grehit/grelot), converted only with `--all-trees`; cliff cards are pinned but
+  never converted. No assets bundled; native look unverified.
 ### Changed
 - The "What's new" changelog no longer pops up over the main menu (its OK
   row could sit on top of the menu behind it). It opens from a "What's

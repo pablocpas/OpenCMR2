@@ -1496,5 +1496,320 @@
     "height": 64,
     "kind": "tree",
     "category": "individual-bush"
+  },
+  "grehit.bfl/tre_40.dds": {
+    "sha256": "6c00e4dac163470c0fdb2ef3ffb0960a7e30bc06a00a418823b4c79bcc4d6001",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_br1.dds": {
+    "sha256": "729263f730f84052265d5acc9c997deb4d00a8cdec819957d38fcef63bbbb65d",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_bs1.dds": {
+    "sha256": "1547e31f81cca0001742b61a5528919d88f270cfbfa76ddedeb176b03eae2f9d",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_bs4.dds": {
+    "sha256": "30961630948121cfccee951103a89a339e7bcd91be1f7a18429cb85f762203eb",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_bs6.dds": {
+    "sha256": "c0d110ec8ce2181f150f41e2308fb49ad466fd75ce1806dd21c34ce15e23fe43",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_fala.dds": {
+    "sha256": "2c2aac998c33e90b2008a85fc6acb8db63a8a9c5ba68dee91251908b65ad6fdc",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "cliff-card"
+  },
+  "grehit.bfl/tre_falb.dds": {
+    "sha256": "1c29e88f613551032dfa777b2d5b0638dfffbf2408963a0304c5bc6d891c6602",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "cliff-card"
+  },
+  "grehit.bfl/tre_fra.dds": {
+    "sha256": "b79e897f022e48fb9808926c9bd26efaf145b2cc63a56391391c793b99ec7755",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grehit.bfl/tre_frb.dds": {
+    "sha256": "31aa0c5fcafdcd138802dc70ce4e590a2fac75886ca89ab2779930b269b866aa",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grehit.bfl/tre_frc.dds": {
+    "sha256": "4c581d2368a405d43ecc953c4e4bf3d2c8f7b6cae549fd67c1a8eb47778c04b8",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grehit.bfl/tre_frz.dds": {
+    "sha256": "8d0b860036642f243f078052d8f7e49970639d1461c91f8f5fc5ac4f315c66c6",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grehit.bfl/tre_gr1.dds": {
+    "sha256": "2b3889f42f41de57b3addb45b5f8b8abdeee71283ebc8964d556854720ca713f",
+    "width": 128,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_gr2.dds": {
+    "sha256": "f1542e803e548518848f3a4f74c631ef02a9567e116796055298bf13d8cec950",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_s1_a.dds": {
+    "sha256": "b2931eb012243b6eab3490f14e2dce4a208bda4deadd790ee28bc8c3741c96f2",
+    "width": 256,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_s1_b.dds": {
+    "sha256": "3a094ea1f8733d67f0e181c4fe64c3740f7151682c1965d3e0f47822cd9ee963",
+    "width": 256,
+    "height": 128,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grehit.bfl/tre_s1_c.dds": {
+    "sha256": "3d8cfa65633326894e794b8bf656e5da7ee55df02bed9206d402d7aa94496f80",
+    "width": 256,
+    "height": 128,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grehit.bfl/tre_s1_z.dds": {
+    "sha256": "22e8bd88ca7f62c0c0d707abbfaa0f12bf93c85253b8ab311520a330a14a6d04",
+    "width": 256,
+    "height": 128,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grehit.bfl/tre_sap3.dds": {
+    "sha256": "ccc4796dd1937d520bd4e4e239061bd81b5bb454913ce2f1d441714321b59498",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_sap4.dds": {
+    "sha256": "22e23f111d39439b9d673efd5d99c3eac43b4926404c7f7f10d473ec18968e29",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_sl2.dds": {
+    "sha256": "18fc8b79273ffee39bc235ad3c7c537d3fbc2ae268f10a5abe0e9ddf3a7c665e",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_sl4.dds": {
+    "sha256": "6a124bc8b0cdc164c631ded0d0e6cf4a908f2fb7da2bb94447d6189320758edd",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grehit.bfl/tre_sp2.dds": {
+    "sha256": "9ff6f2771259e232f6bec97ec98f981e504f1376e23fe21e17a15bee6e78bb3b",
+    "width": 256,
+    "height": 256,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_40.dds": {
+    "sha256": "713902bfcc94beaa6c32236e3ebd23710bb2b68681e1b94254fa8146622a3772",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_br1.dds": {
+    "sha256": "ee5e63f8273a1866cffe983b346e76a929b023ec967b71c01dec4f7f17269aa7",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_bs1.dds": {
+    "sha256": "bb4ad8e80722ff8ec6ea5bb7e34f303be48389e5c8d348002026764b40125355",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_bs4.dds": {
+    "sha256": "d9a2e3cffc6fbee5e26f2e6b366118fc054c67ba2d8fbbcce34efd5c6dd1cff3",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_bs6.dds": {
+    "sha256": "b79bf21e40217265b67a6c314bfcede23f307d160f4ec8c42511174c69dc5413",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_fala.dds": {
+    "sha256": "24422279ff46af9fef008cc38bfc6608c5665fe7286e35ec52effc599b035172",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "cliff-card"
+  },
+  "grelot.bfl/tre_falb.dds": {
+    "sha256": "60801aae7f3812eeda137a2df89568ce780f46b09e987ef73bd171ea0520c342",
+    "width": 32,
+    "height": 32,
+    "kind": "tree",
+    "category": "cliff-card"
+  },
+  "grelot.bfl/tre_falc.dds": {
+    "sha256": "cca989c5aeb9e43685d283f27adc0dc72be38a264e98f2f031a325ac24f8e710",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "cliff-card"
+  },
+  "grelot.bfl/tre_fra.dds": {
+    "sha256": "edec99065f0564c0d190a76e09d53a0430d9a9338bb09787a08d92a159cd28ef",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grelot.bfl/tre_frb.dds": {
+    "sha256": "624783351755bd170c9ba3de95153d959a061e716e687899d2dc05a6ec3d2e3f",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grelot.bfl/tre_frc.dds": {
+    "sha256": "ceef740e81327b4745bb33ac57ceb08e30fd876acc2526a12f533a07ff81f2b5",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grelot.bfl/tre_frz.dds": {
+    "sha256": "d84a88bae81645ddf2d47877876a8e127deda08dac345a0e783e86964d90cdd1",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grelot.bfl/tre_gr1.dds": {
+    "sha256": "35f418a7ccfbe8dc7eb63bfcca5074154cfcda5ca1616c9c8a1c7e5a5d27b38a",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_gr2.dds": {
+    "sha256": "7a689c907e6b4709c503b8c34834b4d52f96161e4d3e698d9ddc15f8460c1d23",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_s1_a.dds": {
+    "sha256": "89f2261903e35f5685c69404f6c9f59cf8f688b84b4c11a77d9837011e3c5628",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_s1_b.dds": {
+    "sha256": "cad4012e3a61c0f9d7fe2cbc702e19d03bbb5e7bfab0dc766455f7fd9be0f527",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grelot.bfl/tre_s1_c.dds": {
+    "sha256": "761b7c6f4e4ae71a88d93a79d5c9f25f5be6729906545dbe8ca4156359e0e29b",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grelot.bfl/tre_s1_z.dds": {
+    "sha256": "17815f3c6b7561aadf45d30e1d2d37c78f1db4a790b2bc191b3da603d013f8d9",
+    "width": 64,
+    "height": 64,
+    "kind": "tree",
+    "category": "hedge-card"
+  },
+  "grelot.bfl/tre_sap3.dds": {
+    "sha256": "6d75bc6442c9f464a9569bab77a6bb64ff2ad229208113b4f983d6056fab7d55",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_sap4.dds": {
+    "sha256": "73ed19504e30afdd977229d4da000c0774dff6d9ebe0a6a40bcd698122ff138a",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_sl2.dds": {
+    "sha256": "f74aedf7588093e17bd1b415265ae944a23cb05e3e7182c6f722962a10b71682",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_sl4.dds": {
+    "sha256": "f9d0a598bc067de3eed095ab19a6c199c0e6bd7cf2a0f730eef21fc2d8718b77",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
+  },
+  "grelot.bfl/tre_sp2.dds": {
+    "sha256": "6edd4121e8300e9892685ef0a5c5a9ac3d51b917a3e02be555eb586f8fffc93e",
+    "width": 128,
+    "height": 128,
+    "kind": "tree",
+    "category": "individual-tree"
   }
 }
