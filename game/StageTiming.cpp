@@ -9120,7 +9120,10 @@ void StageTiming_UpdateCarWheelAndExhaustEffects(int car)
         ((BYTE *)&car)[3] = 0xff;
     }
     CarEffects_SetSplashColour(index, (BYTE *)&car);
-    if (View_GetActiveCameraMode(index) != 3) {
+    // PORT: only cars 0 and 1 have a view. For the cars of a network game from
+    // 2 the original read the camera type past the view arrays (for car 2,
+    // view 1's near plane, not 3), so their wheel effects were drawn.
+    if (index >= 2 || View_GetActiveCameraMode(index) != 3) {
         CarEffect_UpdateWheelSurfaceParticles(index);
         StageTiming_SpawnWheelParticles(index);
         WheelSplash_Update(index);
