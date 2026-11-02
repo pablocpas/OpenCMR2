@@ -73,10 +73,9 @@ COM disappear: the game asks for what it needs and the backend provides it.
 
 The display modes offered to the game are the original 4:3 ones up to
 1024x768 and the display's own aspect ratio from 540 lines up to the desktop
-resolution. A new configuration starts at the display's aspect ratio at 720
-lines (540 on Android): the game draws its menus and text in pixels for
-640x480, so they shrink as the resolution grows, and higher modes are there
-for a sharper 3D picture. The in-race HUD is laid out on a 4:3 screen of
+resolution. A new configuration starts at the display's own resolution: the
+menus, the HUD and the text are scaled to the screen's height, so they keep
+their size at any mode. The in-race HUD is laid out on a 4:3 screen of
 640x480, or 1024x768 with the high-resolution textures, and each of its
 elements is placed on the real screen (`Hud_BeginView`): scaled with its
 height and kept at the edge or the middle it belongs to, within 16:9 by

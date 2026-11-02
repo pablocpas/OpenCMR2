@@ -232,8 +232,7 @@ void Gfx_Shutdown(void);
 int Gfx_GetDisplayModeCount(void);
 void Gfx_GetDisplayMode(int index, int *width, int *height);
 /* The resolution of a new configuration, one of the modes offered: the
-   display's aspect ratio at 720 lines (540 on Android), or the display's own
-   when smaller. */
+   display's own. */
 void Gfx_GetDefaultDisplayMode(int *width, int *height);
 
 /* A frame is BeginScene...EndScene blocks (any number) and one Present. */

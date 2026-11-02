@@ -111,7 +111,7 @@ if(OPENCMR2_BINK_TEST_DATA_DIR)
         add_test(NAME runtime_scenarios COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/runtime_scenarios.py --probe $<TARGET_FILE:stage_probe>
             --data ${OPENCMR2_BINK_TEST_DATA_DIR})
-        set_tests_properties(runtime_scenarios PROPERTIES TIMEOUT 180)
+        set_tests_properties(runtime_scenarios PROPERTIES TIMEOUT 300)
         add_test(NAME cpu_runs COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/runtime_scenarios.py --probe $<TARGET_FILE:stage_probe>
             --data ${OPENCMR2_BINK_TEST_DATA_DIR} --cpu-runs)

@@ -526,6 +526,10 @@ int main(int argc, char **argv) {
             if (!Gfx_SetVideoMode(probe.challengeWidth, probe.challengeHeight, FALSE)) return 1;
             g_pGraphics->resX = probe.challengeWidth;
             g_pGraphics->resY = probe.challengeHeight;
+            // As choosing the mode in the options does: the configuration
+            // picks the 640 or 1024 texture set.
+            CGameInfo::SetScreenWidth(probe.challengeWidth);
+            CGameInfo::SetScreenHeight(probe.challengeHeight);
             probe.challengeSizeSet = true;
         }
         // Create the fixture from a real garage session. A second probe run

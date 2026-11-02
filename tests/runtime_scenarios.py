@@ -112,12 +112,14 @@ SCENARIOS['rally-challenge-results-menu-144fps'] = (
     _count, dict(_settings, fps='144', OPENCMR2_PROBE_RESULTS_PRESSES='20'))
 # The bracket lives in the race state machine, where the frontend's menu
 # scaling wrapper does not run. Check its real render path and restoration
-# of the physical display size before continuing into a race.
+# of the physical display size before continuing into a race. The layout is
+# the display's shape at 480 lines with the 640 textures (below 1024 pixels
+# wide) and at 768 with the 1024 ones, divided by the menu scale.
 for label, size, scale, layout in [
         ('native', '640x480', '100', '640x480'),
-        ('1080p', '1920x1080', '100', '853x480'),
-        ('ultrawide', '2560x1080', '100', '1138x480'),
-        ('larger', '1920x1080', '125', '683x384'),
+        ('1080p', '1920x1080', '100', '1365x768'),
+        ('ultrawide', '2560x1080', '100', '1820x768'),
+        ('larger', '1920x1080', '125', '1092x614'),
         ('legacy', '1920x1080', '0', '1920x1080')]:
     SCENARIOS[f'rally-challenge-layout-{label}'] = (500, {
         'OPENCMR2_PROBE_CURSORS': '88:4',

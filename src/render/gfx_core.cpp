@@ -391,23 +391,10 @@ extern "C" int Gfx_GetDisplayModeCount(void)
 
 extern "C" void Gfx_GetDefaultDisplayMode(int *width, int *height)
 {
-    // The display's aspect ratio, at a height where the game's menus and
-    // text, drawn in pixels for 640x480, stay readable: 720 lines, as
-    // the game was played at 1024x768, and 540 on Android's small screens.
-    // Higher modes stay available for a sharper 3D picture.
-#ifdef __ANDROID__
-    const int lines = 540;
-#else
-    const int lines = 720;
-#endif
-    int desktopW, desktopH;
-    LandscapeDesktopSize(&desktopW, &desktopH);
-    *width = desktopW;
-    *height = desktopH;
-    if (desktopH > lines) {
-        *width = (int)((long long)lines * desktopW / desktopH) & ~1;
-        *height = lines;
-    }
+    // The display's own resolution: the menus, the HUD and the text are
+    // scaled to the screen's height, so they stay the same size at any mode,
+    // and the 3D picture is as sharp as the display.
+    LandscapeDesktopSize(width, height);
 }
 
 extern "C" void Gfx_GetDisplayMode(int index, int *width, int *height)
