@@ -865,7 +865,7 @@ extern "C" void Gfx_VectorizeMenuDot(GfxTexture *texture)
 {
     texture = Root(texture);
     if (texture == NULL || texture->replacement != NULL || texture->width != texture->height ||
-        (texture->width != 16 && texture->width != 32) || !Platform_GetSettingInt("video.vector_flags", 1))
+        (texture->width != 16 && texture->width != 32))
         return;
     // Keep the original coverage for draws at native size and below. At
     // larger sizes the shader draws the same circle from its geometry.

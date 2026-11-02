@@ -416,7 +416,7 @@ void Gfx_SetTextureReplacement(GfxTexture *texture, GfxTexture *replacement);
 int Gfx_GetDistanceFieldScale(GfxTexture *texture);
 /* Give the large menu matrix dot a geometric replacement. Its original
    pixels are kept for native-size and smaller draws; the game still queues
-   the same dots, colours and positions. [video] vector_flags = 0 disables it. */
+   the same dots, colours and positions. */
 void Gfx_VectorizeMenuDot(GfxTexture *texture);
 /* Half a source texel for bitmaps, half a field texel for distance fields,
    and zero for geometry (which must not be cropped to texel centres). */

@@ -94,8 +94,8 @@ size is restored before the next race frame.
 Textures: the game decodes TGA/DDS itself and writes pixels through
 `Gfx_LockTexture`, using the pixel format the backend reports. Co-driver
 arrows and the menu arrows/checkmarks/crosses/boxes/circles can receive a
-replacement traced from those original pixels (`vector_sprite.cpp`,
-`video.vector_icons`). Potrace extracts their contours, with separate fields
+replacement traced from those original pixels (`vector_sprite.cpp`).
+Potrace extracts their contours, with separate fields
 for opacity and the boundary between its two original colours (including
 the blue/white selection arrows in race menus). Original cell rectangles and
 colours are retained. The renderer also binds the untouched source texture,
@@ -103,8 +103,7 @@ which native-size and smaller draws sample directly. Enlarged draws use the
 traced fields. The distance transform is shared with the outlined fonts.
 
 Arcade HUD maps (`cha01` through `cha08`, 128x128) and their car markers
-(`chalblob`) use the same contour path, controlled separately by
-`video.vector_maps`. The selection maps retain their original 36x36 DMD cell
+(`chalblob`) use the same contour path. The selection maps retain their original 36x36 DMD cell
 grids and palette: only the shared `SmMatrix` point is replaced. Enlarged
 points are circles fitted to the original coverage's centre and area;
 native-size and smaller draws still read the source bitmap. Map coordinates,
