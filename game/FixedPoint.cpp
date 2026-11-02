@@ -719,7 +719,7 @@ void View_SetPlayerProjection(unsigned int player)
         // Dynamic fog (video.fog_spatial / video.fog_evolve): cull for the clearest
         // stretch the curves can reach, never the current value, so opening fog
         // cannot pop culled geometry back into view.
-        float fogCull = Fog_CullDistance((int)(Sys_GetOption("video.fog_amount", 100) *
+        float fogCull = Fog_CullDistance((int)(Sys_GetOption("video.fog_amount", 65) *
             FogDynamics_MinMult(Sys_GetOption("video.fog_spatial", 0), Sys_GetOption("video.fog_evolve", 100))),
             Sys_GetOption("video.fog_clear", 0));
         int fogCullFixed = (int)(fogCull * 65536.0f);

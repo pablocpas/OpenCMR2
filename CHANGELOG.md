@@ -4,6 +4,10 @@ All notable changes to OpenCMR2 are documented here.
 
 ## [Unreleased]
 ### Changed
+- Default fog amount is now 65 percent (was 100; same 0..200 percent scale, menu and F10
+  0..100). Only unset values change: a saved `video.fog_amount` is kept. The
+  `--all-mods`/atmosphere preset also starts at 65 (a preset launch applies its own
+  values over saved ones, as before). `--fog-amount N` still wins.
 - The "What's new" changelog no longer pops up over the main menu (its OK
   row could sit on top of the menu behind it). It opens from a "What's
   new..." row at the bottom of the main Options menu instead.

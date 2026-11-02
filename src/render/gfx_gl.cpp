@@ -293,7 +293,7 @@ struct Executor : GfxExecutor {
     float glCarFocusRaw = -1.0f, glCarDepth = 0.0f;   // dof_focus_car: raw GL depth of the followed car this frame (-1 none)
     float glFogNearZ = 0.0f, glFogFarZ = 0.0f;   // race-camera projection recovery for the GL fog pass (0 = unknown)
     bool effectsRaceFrame = true; // set per frame before ApplyEffects: depth blur is a race effect, never run on menu/preview frames
-    int motionMix = 0, bloomAmount = 0, dofFocus = 50, dofRange = 30, dofBlur = 0, raysAmount = 0, fogAmount = 100, fogGlow = 60, fogClearDistance = 0;
+    int motionMix = 0, bloomAmount = 0, dofFocus = 50, dofRange = 30, dofBlur = 0, raysAmount = 0, fogAmount = 65, fogGlow = 60, fogClearDistance = 0;
     float grade[4] = {0, 0, 1, 1}, grime[4] = {};
     SunGlareState sunGlare;std::chrono::steady_clock::time_point sunGlareTime;bool sunGlareTimed=false;
     float sunX = 0, sunY = 0; bool sunVisible = false;

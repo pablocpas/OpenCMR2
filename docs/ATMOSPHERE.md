@@ -64,7 +64,7 @@ All settings are [video] options, off unless enabled:
 | Setting | Range | Default | Meaning |
 | --- | --- | --- | --- |
 | video.fog | 0/1 | 0 | fog pass |
-| video.fog_amount | 0..200 | 100 | density; 100 is the deliberately heavy starting look (23 units ~50 percent fog, 60 ~84, 150 ~99) |
+| video.fog_amount | 0..200 | 65 | density; default 65 (100 is the heavy look) (23 units ~50 percent fog, 60 ~84, 150 ~99) |
 | video.fog_glow | 0..100 | 60 | sun-ward glow strength |
 | video.fog_clear | 0..200 | 0 | near-field clear distance in world units: fog ramps from none at the camera to the full curve at this distance, so the road ahead stays readable while distant haze keeps its density. Global in every direction, not a road-only mask |
 | video.fog_cull | 0/1 | 0 | experimental: shorten the far plane to the fully fogged shell (99.5 percent at the weakest gradient, never closer than 150 units or 1.25x the clear distance). Render-only, physics untouched. Caveats: the far-plane sky cap keeps culled-edge silhouettes 15 percent visible as a haze band, distant trees stop occluding god-ray shafts near the horizon, and any performance saving is unmeasured - this trades draw work for a look change, it is not a proven speedup. With dynamic fog on, culling keys off the CLEAREST stretch the curves can reach, never the current value, so clearing fog cannot pop culled geometry back in |

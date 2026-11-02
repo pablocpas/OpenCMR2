@@ -366,7 +366,7 @@ struct Executor : GfxExecutor {
     int godRaysIntensity = 100;
     // OpenCMR2: atmosphere fog state (video.fog). Amount is a menu percent (0..200 via CLI).
     bool fogEnabled = false;
-    int fogAmount = 100, fogGlow = 60, fogClearDistance = 0;
+    int fogAmount = 65, fogGlow = 60, fogClearDistance = 0;
     float sunX=.5f,sunY=.5f;bool sunVisible=false;
     int shadowSize=1024;float shadowSoftness=1.f;
     // OpenCMR2: color grading state.
