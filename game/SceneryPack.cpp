@@ -574,11 +574,11 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
          BrushRelief::Indices(true,data.indices,BrushRelief::kVolumeSlices);
          for(int k=0;k<4;k++)data.corners[k]=c[k];memcpy(data.world,W,sizeof(float)*16);
          if(++extruded==1)Sys_Log("scenery: gre01 brush volume active (road-facing edge fixed, extruded away from route; visual only)");
-        }else if(!volumeOn){   // previous behaviour, unchanged: relief + one back card along the quad normal
+        }else if(!volumeOn&&Sys_GetOption("video.brush_relief_legacy",0)!=0){   // legacy relief + back card along the UNVERIFIED quad-winding normal (may point toward the road); opt-in only
          data.ready=BrushRelief::Build(c,n,alpha,aw,ah,reliefDial,true,data.vertices);
          BrushRelief::Indices(true,data.indices);
          for(int k=0;k<4;k++)data.corners[k]=c[k];
-        }else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined for a wall (no route nodes, none within 60 units, wall not vertical, ambiguous side, or non-rigid world matrix; %d route nodes); keeping the flat original",g_routeNodeCount);
+        }else if(!volumeOn){/* default: original flat wall, nothing drawn differently */}else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined for a wall (no route nodes, none within 60 units, wall not vertical, ambiguous side, or non-rigid world matrix; %d route nodes); keeping the flat original",g_routeNodeCount);
        }
       }
      }
