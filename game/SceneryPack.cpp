@@ -556,12 +556,21 @@ bool SceneryPack_DrawFixedPart(Mesh *mesh,MeshPart *part){
         }
         float qa[3]={c[0].x,c[0].y,c[0].z},qb[3]={c[1].x,c[1].y,c[1].z},away[3];
         static unsigned extruded=0,declined=0;
-        if(g_routeNodes&&g_routeNodeCount>0&&BrushRelief::AwayFromRoad(qa,qb,n,routeXZ.data(),g_routeNodeCount,60.f,away)){
+        static int volumeLogs=0;
+        bool volumeOn=Sys_GetOption("video.brush_volume",0)!=0;   // experimental, off until the mesh/route frame is confirmed natively
+        bool routeOk=volumeOn&&g_routeNodes&&g_routeNodeCount>0&&BrushRelief::AwayFromRoad(qa,qb,n,routeXZ.data(),g_routeNodeCount,60.f,away);
+        if(volumeOn&&volumeLogs<4){volumeLogs++;float mx=(qa[0]+qb[0])*.5f,mz=(qa[2]+qb[2])*.5f,bd=1e30f;int bi=-1;for(int i=0;i<g_routeNodeCount;i++){float dx=routeXZ[i*2]-mx,dz=routeXZ[i*2+1]-mz,d=dx*dx+dz*dz;if(d<bd){bd=d;bi=i;}}
+         Sys_Log("scenery: gre01 brush wall mid (%.1f,%.1f) quad normal (%.2f,%.2f) nearest route node %d dist %.1f -> %s",mx,mz,n[0],n[2],bi,bi>=0?std::sqrt(bd):-1.f,routeOk?"away vector set":"declined");}
+        if(routeOk){
          data.ready=BrushRelief::Build(c,away,alpha,aw,ah,reliefDial,true,data.vertices,BrushRelief::kVolumeSlices);
          BrushRelief::Indices(true,data.indices,BrushRelief::kVolumeSlices);
          for(int k=0;k<4;k++)data.corners[k]=c[k];
          if(++extruded==1)Sys_Log("scenery: gre01 brush volume active (road-facing edge fixed, extruded away from route; visual only)");
-        }else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined: no route node within 60 units of a brush wall (route %d nodes); keeping the flat original",g_routeNodeCount);
+        }else if(!volumeOn){   // previous behaviour, unchanged: relief + one back card along the quad normal
+         data.ready=BrushRelief::Build(c,n,alpha,aw,ah,reliefDial,true,data.vertices);
+         BrushRelief::Indices(true,data.indices);
+         for(int k=0;k<4;k++)data.corners[k]=c[k];
+        }else if(++declined==1)Sys_Log("scenery: gre01 brush volume declined for a wall (no route nodes, none within 60 units, wall not vertical, or ambiguous side; %d route nodes); keeping the flat original",g_routeNodeCount);
        }
       }
      }
