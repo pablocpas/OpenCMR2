@@ -328,6 +328,7 @@ extern unsigned int g_windscreenDirt[8];
 void Windshield_UpdateView(int view, int slot);
 void Windshield_AddDrivingSpatter(int view, int amount);
 void Windshield_DrawOverlay(int view, int resX, int resY);
+void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason, int *glassState, int *dirtTotal);   // F10 diagnostics only
 void Windshield_ResetAll(void);
 // Cockpit windshield glass matching the car's real damage appearance
 // (video.windshield_cracks): per-car resolve of the front window quad, its

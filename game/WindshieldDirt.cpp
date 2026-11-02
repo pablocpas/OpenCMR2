@@ -20,6 +20,20 @@ WindshieldMap g_windshieldMaps[WINDSHIELD_MAX_VIEWS];
 // Per-view state of the resolved front glass (0 intact, 1 damaged, 2 broken,
 // -1 feature off): drives the broken-glass overlay suppression.
 static int g_windshieldGlassState[WINDSHIELD_MAX_VIEWS];
+// F10 diagnostics: how often the overlay draw was reached and actually drawn per view, and the last gating reason
+// (0 drawing, 1 broken glass, 2 no dirt). Counters only; no behaviour change.
+static unsigned g_wsDrawCalls[WINDSHIELD_MAX_VIEWS], g_wsDrawn[WINDSHIELD_MAX_VIEWS];
+static int g_wsLastReason[WINDSHIELD_MAX_VIEWS] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+
+void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason, int *glassState, int *dirtTotal)
+{
+    int v = view & (WINDSHIELD_MAX_VIEWS - 1);
+    if (calls) *calls = g_wsDrawCalls[v];
+    if (drawn) *drawn = g_wsDrawn[v];
+    if (reason) *reason = g_wsLastReason[v];
+    if (glassState) *glassState = g_windshieldGlassState[v];
+    if (dirtTotal) *dirtTotal = Windshield_TotalDirt(&g_windshieldMaps[v]);
+}
 
 
 int StageObject_GetViewWeatherField54(int index);
@@ -131,6 +145,8 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     // the accumulation sources never landed.
     int reason = !Windshield_OverlayVisible(g_windshieldGlassState[mview]) ? 1
                : Windshield_TotalDirt(m) == 0 ? 2 : 0;
+    g_wsDrawCalls[mview]++;
+    g_wsLastReason[mview] = reason;
     static int s_lastDrawReason[WINDSHIELD_MAX_VIEWS] = { -1, -1, -1, -1, -1, -1, -1, -1 };
     if (s_lastDrawReason[mview] != reason) {
         static const char *const kReasons[3] = { "drawing", "skipped: broken glass", "skipped: no dirt" };
@@ -140,6 +156,7 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     }
     if (reason != 0)
         return;
+    g_wsDrawn[mview]++;
     if (g_windshieldTex == NULL) {
         g_windshieldTex = Gfx_CreateTexture(WINDSHIELD_MAP_W, WINDSHIELD_MAP_H, GFX_FORMAT_BGRA8, 1, 0);
         if (g_windshieldTex == NULL) return;

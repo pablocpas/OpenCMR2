@@ -6664,7 +6664,7 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
         BYTE colour[4] = {240, 246, 255, 255};
         unsigned long long tick=0;unsigned frame=0,changes=0;
         bool spectator=SceneryPack_GetAnimationStatus(&tick,&frame,&changes);
-        auto layout=DebugOverlayLayout::For(g_pGraphics->resX,g_pGraphics->resY,(spectator?6:5)+11+5+2+5+2);   // +5: the Speed FOV, FOV dolly, FOV preview and footer rows were drawn below the panel in the 12:04 native screenshot (panel ended at "Measured")
+        auto layout=DebugOverlayLayout::For(g_pGraphics->resX,g_pGraphics->resY,(spectator?6:5)+11+5+2+5+2+2);   // +5: the Speed FOV, FOV dolly, FOV preview and footer rows were drawn below the panel in the 12:04 native screenshot (panel ended at "Measured")
         short panel[4] = {(short)layout.x,(short)layout.y,(short)layout.width,(short)layout.height};
         Sprite_FillRect(NULL, panel, background, 1);
         char text[160];
@@ -6788,6 +6788,22 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
                 else snprintf(text,sizeof text,"Snow material: %s, %d ground vertices tagged snow (setting %d%%)",applied?"lifting":"tagged, no lift",tagged,sm);
                 line(text,sm>0&&applied?lit:dim);
             }
+        }
+        {
+            // Windshield (cockpit dirt/cracks) state, so a screenshot shows why nothing is drawn: option, glass lookup, overlay draw gating.
+            unsigned wsCalls=0,wsDrawn=0;int wsReason=-1,wsGlass=-1,wsDirt=0,wsSlot=-1;
+            int mv=(int)(param2&1);
+            Windshield_GetDiag(mv,&wsCalls,&wsDrawn,&wsReason,&wsGlass,&wsDirt);
+            bool wsResolved=WindshieldGlass_GetInfo(mv,NULL,&wsSlot,NULL,NULL,NULL)!=0;
+            const char *wsWhy[]={"drawing","broken glass","no dirt"};
+            static const BYTE wsLit[4]={110,255,140,255},wsDim[4]={150,160,170,255};
+            // Two short rows so the decisive reason is never clipped by the panel width (about 88 characters).
+            snprintf(text,sizeof text,"Windshield: dirt %d wipe %d crack %d | glass %s %d",
+                Sys_GetOption("video.windscreen_dirt",40),Sys_GetOption("video.windscreen_wipers",1),Sys_GetOption("video.windshield_cracks",1),
+                wsResolved?"ok":"MISSING",wsGlass);
+            line(text,wsResolved?wsLit:wsDim);
+            snprintf(text,sizeof text,"Windshield overlay: draw %u/%u | dirt %d | %s",wsDrawn,wsCalls,wsDirt,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached");
+            line(text,wsDrawn>0?wsLit:wsDim);
         }
         {
             int viewType=0,drone=0,zoomRaw=0,fovYRaw=0,fovSet=70;

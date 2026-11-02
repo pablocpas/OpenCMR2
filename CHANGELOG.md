@@ -7,6 +7,9 @@ All notable changes to OpenCMR2 are documented here.
 - Scenery patcher: hash-pinned source index for the 45 Greece `tre_*` cards
   (grehit/grelot), converted only with `--all-trees`; cliff cards are pinned but
   never converted. No assets bundled; native look unverified.
+- F10 diagnostics panel: a Windshield row (dirt/wiper/crack options, glass lookup
+  result and state, dirt total, overlay draws vs calls and last skip reason), so a
+  screenshot shows why cockpit dirt or cracks are not drawn. Counters only.
 ### Changed
 - Default fog amount is now 65 percent (was 100; same 0..200 percent scale, menu and F10
   0..100). Only unset values change: a saved `video.fog_amount` is kept. The
