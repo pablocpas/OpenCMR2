@@ -151,6 +151,21 @@ lines stay off. Source filtering does not restore missing detail; atlas mixing,
 native appearance/performance and cockpit geometry clipping remain unverified.
 No physics or gameplay changes. Original assets stay private and unchanged.
 
+`--all-mods` also turns on the EXPERIMENTAL Greece1 roadside brush-wall extrusion
+(`--brush-volume 1`): the walls get visual depth away from the road, collision is
+unchanged, and it draws nothing new unless the Greece asset pack is in use. Only walls
+within 60 units of the route that face the road are extruded; the rest stay flat (an offline
+count on one recovered gre01hi archive: 19 of 38 walls, not a native result). The outward
+direction on the real stage and the native look are not verified yet. Pass
+`--brush-volume 0` after `--all-mods` to keep the original flat quads (also the default
+without `--all-mods`).
+
+`./rebuild.sh --data DIR --export-brush-placement [--brush-placement-output FILE]` is a
+separate, read-only step: no build, no launch, no extrusion change. It writes a JSON of
+numbers only (wall positions vs the stage route) to a new file (default in `$TMPDIR` or
+`/tmp`, never inside the game data, never overwriting) and stops with a reason if its
+checks fail. That JSON is what verifies the extrusion direction on real data.
+
 Paths can instead be passed as `--data DIR --mods-dir DIR`; `OPENCMR2_DATA` is also
 accepted when `CMR2_DATA` is unset. No personal path is stored in the repository.
 This shortcut does not download missing car ZIPs or enhancement dependencies.

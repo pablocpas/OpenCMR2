@@ -81,6 +81,9 @@ CHECK(run({"t","--camera-move-chase","-60"})&&e2.empty()&&t.overrides["video.cam
   CHECK(run({"t","--tree-coverage","all","--spectator-gain","250"})&&e2.empty()&&t.treeCoverage=="all"&&t.spectatorGain==250);CHECK(run({"t","--tree-coverage","some"})&&!e2.empty());CHECK(run({"t","--spectator-gain","99"})&&!e2.empty());CHECK(run({"t","--spectator-gain","401"})&&!e2.empty());
   {EnhancementOptions q2;t=q2;CHECK(run({"t","--test-preset","overdo"})&&e2.empty());t.Apply();CHECK(t.overrides["video.tunnel_vision"]==130&&t.overrides["video.tunnel_lines"]==1);   // the preset follows the new default
    EnhancementOptions q3;t=q3;CHECK(run({"t","--test-preset","overdo","--tunnel-vision","120","--tunnel-lines=0"})&&e2.empty());t.Apply();CHECK(t.overrides["video.tunnel_vision"]==120&&t.overrides["video.tunnel_lines"]==0);   // explicit flags beat the preset
+   {EnhancementOptions b;t=b;CHECK(run({"t","--brush-volume","1"})&&e2.empty());t.Apply();CHECK(t.overrides["video.brush_volume"]==1);}
+   {EnhancementOptions b;t=b;CHECK(run({"t","--brush-volume","2"})&&!e2.empty());}
+   {EnhancementOptions b;t=b;CHECK(run({"t"})&&e2.empty());t.Apply();CHECK(t.overrides.count("video.brush_volume")==0);}   // default stays off
    EnhancementOptions q4;t=q4;CHECK(run({"t","--tunnel-vision","201"})&&!e2.empty());CHECK(run({"t","--tunnel-lines","2"})&&!e2.empty());
    EnhancementOptions q5;t=q5;CHECK(run({"t","--speed-fov","500"})&&e2.empty());CHECK(t.overrides["video.speed_fov"]==500);}
   EnhancementOptions q;t=q;CHECK(run({"t","--effect","bloom=on"})&&e2.empty());t.Apply();CHECK(!t.overrides.count("video.speed_fov")&&!t.overrides.count("video.dof_blur"));}
