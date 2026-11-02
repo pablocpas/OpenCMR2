@@ -910,6 +910,7 @@ bool TakePendingText(SysEvent *out)
 // system's on-screen keyboard, Steam's in Steam Deck Game Mode: the game
 // kept it on for its whole run.
 Uint64 s_textInputUntil;
+bool s_entryOffered;        // the entry waits to be chosen (Sys_OfferTextInput)
 bool s_textGiven;           // a character went to the game in this round of polls
 
 #ifdef __ANDROID__
@@ -917,9 +918,10 @@ bool s_textGiven;           // a character went to the game in this round of pol
 // over the game (TextEntry.kt), as typing into the game's own text one letter
 // at a time, with the keyboard over the touch controls, is awkward. The bar
 // opens as an entry starts and closes when it ends; closed, a chip reopens
-// it. The text accepted replaces the entry's: Backspaces for its characters,
-// then the new ones, typed as the keyboard would, so the game's checks of
-// length and characters still apply.
+// it; an offered entry starts with the chip. The text accepted replaces the
+// entry's: Backspaces for its characters, then the new ones and Enter, typed
+// as the keyboard would, so the game's checks of length and characters still
+// apply. Enter sends a chat line; the name entries ignore it.
 bool s_entryActive;
 bool s_entryHardKeyboard;   // the entry is typed on a physical keyboard
 std::string s_entryLabel, s_entryText;  // as the game last gave them
@@ -1002,6 +1004,17 @@ void TakeTextBarAnswer()
         if (c != 0)
             s_pendingText.push_back(c);
     }
+    s_pendingText.push_back(13);
+}
+
+void OfferTextBar()
+{
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jstring label = env != NULL ? env->NewStringUTF(Utf8FromWindows1252(s_entryLabel).c_str()) : NULL;
+    if (label == NULL)
+        return;
+    AndroidCall("offerTextEntry", "(Ljava/lang/String;)V", label);
+    env->DeleteLocalRef(label);
 }
 #endif
 
@@ -1022,10 +1035,16 @@ void UpdateTextInput()
 #endif
     if (wanted == SDL_TextInputActive(s_window))
         return;
-    if (wanted)
-        SDL_StartTextInput(s_window);
-    else
+    if (!wanted) {
         SDL_StopTextInput(s_window);
+    } else if (s_entryOffered) {
+        // Typed into, but not opening Steam's keyboard (Steam+X does).
+        SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, "0");
+        SDL_StartTextInput(s_window);
+        SDL_ResetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);
+    } else {
+        SDL_StartTextInput(s_window);
+    }
 }
 
 } // namespace
@@ -1049,9 +1068,13 @@ extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_TextEntry_na
 }
 #endif
 
-extern "C" void Sys_RequestTextInput(const char *label, const char *text, int maxLength)
+namespace {
+
+void RequestTextInput(const char *label, const char *text, int maxLength, bool offered)
 {
     bool starting = SDL_GetTicks() >= s_textInputUntil;
+    if (starting)
+        s_entryOffered = offered;
 #ifdef __ANDROID__
     s_entryLabel = label != NULL ? label : "";
     s_entryText = text != NULL ? text : "";
@@ -1060,8 +1083,10 @@ extern "C" void Sys_RequestTextInput(const char *label, const char *text, int ma
         s_entryActive = true;
         s_textBarReopen = false;
         s_entryHardKeyboard = AndroidCall("hasHardwareKeyboard", "()Z");
-        Sys_Log("input: text entry%s", s_entryHardKeyboard ? "" : ", text bar");
-        if (!s_entryHardKeyboard)
+        Sys_Log("input: text entry%s", s_entryHardKeyboard ? "" : offered ? ", chip" : ", text bar");
+        if (!s_entryHardKeyboard && offered)
+            OfferTextBar();
+        else if (!s_entryHardKeyboard)
             OpenTextBar();
     } else if (s_textBarReopen.exchange(false) && !s_entryHardKeyboard) {
         OpenTextBar();
@@ -1075,6 +1100,18 @@ extern "C" void Sys_RequestTextInput(const char *label, const char *text, int ma
 #endif
     s_textInputUntil = SDL_GetTicks() + 250;
     UpdateTextInput();
+}
+
+} // namespace
+
+extern "C" void Sys_RequestTextInput(const char *label, const char *text, int maxLength)
+{
+    RequestTextInput(label, text, maxLength, false);
+}
+
+extern "C" void Sys_OfferTextInput(const char *label, const char *text, int maxLength)
+{
+    RequestTextInput(label, text, maxLength, true);
 }
 
 extern "C" int Sys_PollEvent(SysEvent *event)

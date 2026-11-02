@@ -8495,6 +8495,8 @@ void FrontendMenu_UpdateNetworkSessionSetup(Menu *pMenu)
         g_lobbyLastCursor = pMenu->cursor;
     }
     Network_RebuildSessionPlayerList();
+    if (g_lobbyChatSelected != 0)
+        Sys_OfferTextInput(CFrontend::GetTextString(0x1c6), (char *)g_lobbyChatLine, 0xff);   // PORT
     if (g_lobbyChatSelected != 0 && Input_PopQueuedCharacter(&key)) {
         switch (key) {
         default:

@@ -32,6 +32,11 @@ class GameActivity : SDLActivity() {
     fun openTextEntry(label: String, text: String, maxLength: Int) =
         runOnUiThread { textEntry?.open(label, text, maxLength) }
 
+    // Called by sys.cpp: the game is on an entry it selects by itself (the
+    // lobby's chat line): only the chip shows, to open the bar.
+    @Keep
+    fun offerTextEntry(label: String) = runOnUiThread { textEntry?.offer(label) }
+
     // Called by sys.cpp: the game left the entry.
     @Keep
     fun endTextEntry() = runOnUiThread { textEntry?.end() }

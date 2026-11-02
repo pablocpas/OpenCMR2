@@ -68,6 +68,10 @@ int Sys_WaitEvent(SysEvent *event);
    keyboard; the text accepted there replaces the entry's, typed into it as
    characters. */
 void Sys_RequestTextInput(const char *label, const char *text, int maxLength);
+/* The same for an entry the game selects before the player chooses it (the
+   lobby's chat line): typed into, but neither keyboard nor text bar opens by
+   itself; Android shows a chip that opens the bar. */
+void Sys_OfferTextInput(const char *label, const char *text, int maxLength);
 
 /* ---- window ---- */
 

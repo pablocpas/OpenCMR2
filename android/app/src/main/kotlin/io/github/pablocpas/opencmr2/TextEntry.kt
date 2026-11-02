@@ -29,7 +29,8 @@ import android.widget.TextView
  * with the entry's label, its text and the system's keyboard below. The game
  * goes on behind it. Accepting replaces the entry's text (sys.cpp types it in);
  * cancelling keeps it. While the game is still on the entry, a chip at the top
- * opens the bar again.
+ * opens the bar again. An entry the game selects by itself (the lobby's chat
+ * line) starts with the chip.
  */
 class TextEntry(private val activity: Activity, parent: ViewGroup, private val onOpen: (Boolean) -> Unit) {
     private val density = activity.resources.displayMetrics.density
@@ -162,6 +163,13 @@ class TextEntry(private val activity: Activity, parent: ViewGroup, private val o
         }
     }
 
+    /** The game is on an entry it selected by itself: the chip opens the bar. */
+    fun offer(entryLabel: String) {
+        if (isOpen) return
+        this.entryLabel = entryLabel
+        showChip()
+    }
+
     /** The game left the entry. */
     fun end() {
         if (isOpen) close()
@@ -182,8 +190,14 @@ class TextEntry(private val activity: Activity, parent: ViewGroup, private val o
         if (!isOpen) return
         nativeTextEntered(edit.text.toString(), accepted)
         close()
+        showChip()
+    }
+
+    private fun showChip() {
         chip.text = "✎  " + entryLabel
+        bar.visibility = View.GONE
         chip.visibility = if (TextUtils.isEmpty(entryLabel)) View.GONE else View.VISIBLE
+        root.isVisible(true)
     }
 
     private fun close() {
