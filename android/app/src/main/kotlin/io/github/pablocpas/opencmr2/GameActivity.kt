@@ -1,16 +1,9 @@
 package io.github.pablocpas.opencmr2
 
-import android.app.AlertDialog
 import android.content.res.Configuration
 import android.os.Bundle
-import android.text.InputFilter
-import android.text.InputType
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.WindowManager
-import android.view.inputmethod.EditorInfo
-import android.widget.EditText
-import android.widget.FrameLayout
 import androidx.annotation.Keep
 import org.libsdl.app.SDLActivity
 import org.libsdl.app.SDLControllerManager
@@ -18,6 +11,7 @@ import org.libsdl.app.SDLControllerManager
 /** The game: SDL runs SDL_main from libmain.so, with the on-screen controls over it. */
 class GameActivity : SDLActivity() {
     private var controls: TouchControls? = null
+    private var textEntry: TextEntry? = null
 
     // Called by input_sdl.cpp before opening a controller.
     @Keep
@@ -32,51 +26,15 @@ class GameActivity : SDLActivity() {
     @Keep
     fun hasHardwareKeyboard(): Boolean = resources.configuration.keyboard == Configuration.KEYBOARD_QWERTY
 
-    // Called by sys.cpp as the game starts a text entry (a game's name, the
-    // chat line, a saved game's name) without a physical keyboard: a text box
-    // with the system's keyboard. The text accepted replaces the entry's.
+    // Called by sys.cpp, on the game's thread: the game starts editing a text
+    // entry without a physical keyboard, or the entry's chip asked for it again.
     @Keep
-    fun editText(text: String, maxLength: Int) {
-        runOnUiThread {
-            val edit = EditText(this).apply {
-                setText(text)
-                setSelection(text.length)
-                filters = arrayOf(InputFilter.LengthFilter(maxLength))
-                isSingleLine = true
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
-            }
-            val padding = (20 * resources.displayMetrics.density).toInt()
-            val frame = FrameLayout(this).apply {
-                setPadding(padding, padding / 2, padding, 0)
-                addView(edit)
-            }
-            var answered = false
-            fun answer(accepted: Boolean) {
-                if (!answered) {
-                    answered = true
-                    nativeTextEntered(edit.text.toString(), accepted)
-                }
-            }
-            val dialog = AlertDialog.Builder(this)
-                .setView(frame)
-                .setPositiveButton(android.R.string.ok) { _, _ -> answer(true) }
-                .setNegativeButton(android.R.string.cancel) { _, _ -> answer(false) }
-                .setOnDismissListener { answer(false) }
-                .create()
-            edit.setOnEditorActionListener { _, action, _ ->
-                if (action != EditorInfo.IME_ACTION_DONE) return@setOnEditorActionListener false
-                answer(true)
-                dialog.dismiss()
-                true
-            }
-            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-            dialog.show()
-            edit.requestFocus()
-        }
-    }
+    fun openTextEntry(label: String, text: String, maxLength: Int) =
+        runOnUiThread { textEntry?.open(label, text, maxLength) }
 
-    private external fun nativeTextEntered(text: String, accepted: Boolean)
+    // Called by sys.cpp: the game left the entry.
+    @Keep
+    fun endTextEntry() = runOnUiThread { textEntry?.end() }
 
     override fun getLibraries() = arrayOf("SDL3", "main")
 
@@ -85,8 +43,10 @@ class GameActivity : SDLActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // SDLActivity shows its own error when the libraries do not load.
-        if (!mBrokenLibraries && mLayout != null)
+        if (!mBrokenLibraries && mLayout != null) {
             controls = TouchControls(this, mLayout)
+            textEntry = TextEntry(this, mLayout) { open -> controls?.setSuspended(open) }
+        }
     }
 
     // Back (the button or the gesture) is the game's Escape. Android sends its
@@ -94,6 +54,8 @@ class GameActivity : SDLActivity() {
     // so the release is held back long enough for it to see the press.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         controls?.onInput(event.source)
+        if (textEntry?.onKey(event) == true)
+            return true
         if (event.keyCode != KeyEvent.KEYCODE_BACK || mBrokenLibraries ||
             SDLControllerManager.isDeviceSDLJoystick(event.deviceId))
             return super.dispatchKeyEvent(event)

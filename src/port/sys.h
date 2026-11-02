@@ -62,11 +62,12 @@ typedef struct SysEvent {
 int Sys_PollEvent(SysEvent *event);
 /* Waits for the next event (the game idles like this while inactive). */
 int Sys_WaitEvent(SysEvent *event);
-/* Called on every frame the game edits text, with the text and its most
-   characters: keeps text input on. Without a physical keyboard, Android
-   opens a text box with the system's keyboard as an entry starts; the text
-   accepted there replaces the entry's, typed into it as characters. */
-void Sys_RequestTextInput(const char *text, int maxLength);
+/* Called on every frame the game edits text, with the entry's label and text
+   (Windows-1252) and its most characters: keeps text input on. Without a
+   physical keyboard, Android edits the entry in a text bar with the system's
+   keyboard; the text accepted there replaces the entry's, typed into it as
+   characters. */
+void Sys_RequestTextInput(const char *label, const char *text, int maxLength);
 
 /* ---- window ---- */
 

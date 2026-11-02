@@ -2843,7 +2843,7 @@ void FrontendMenu_UpdateNetworkNameEntry(Menu *pMenu)
 
     g_unk0x00818cd8 = g_unk0x00818da8;
     strcpy(CFrontend::m_stringDest, g_unk0x00818da8);
-    Sys_RequestTextInput(g_unk0x00818da8, 19);   // PORT
+    Sys_RequestTextInput(CFrontend::GetTextString(0x1e7), g_unk0x00818da8, 19);   // PORT
     if (!Input_PopQueuedCharacter(&key))
         return;
     if (key != 8) {
@@ -8598,7 +8598,7 @@ void FrontendMenu_UpdateNetworkSessionDetails(Menu *pMenu)
         else
             g_unk0x00818cdc = (char *)g_sessionPassword;
         strcpy(CFrontend::m_stringDest, g_unk0x00818cdc);
-        Sys_RequestTextInput(g_unk0x00818cdc, 0x13);   // PORT
+        Sys_RequestTextInput(CFrontend::GetTextString(value == 0 ? 0x1bf : 0x1c3), g_unk0x00818cdc, 0x13);   // PORT
         if (Input_PopQueuedCharacter(&key) != 0) {
             if (key != 8) {
                 i = Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);

@@ -2832,7 +2832,7 @@ void GameMenu_HandleNetworkResultsChatInput(Menu *pMenu)
     }
     Network_RebuildSessionPlayerList();
     if (g_chatLineSelected)
-        Sys_RequestTextInput(g_chatLine, 0xff);   // PORT
+        Sys_RequestTextInput(CFrontend::GetTextString(0x1c6), g_chatLine, 0xff);   // PORT
     if (!g_chatLineSelected || !Input_PopQueuedCharacter(&key))
         return;
     switch (key) {

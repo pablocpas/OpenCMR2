@@ -913,18 +913,21 @@ Uint64 s_textInputUntil;
 bool s_textGiven;           // a character went to the game in this round of polls
 
 #ifdef __ANDROID__
-// Android without a physical keyboard: a text box (GameActivity.editText)
-// edits the entry instead, as typing into the game's own text one letter at
-// a time, with the keyboard over the touch controls, is awkward. The text
-// accepted replaces the entry's: Backspaces for its characters, then the new
-// ones, one a frame like typing, so the game's checks of length and
-// characters still apply.
+// Android without a physical keyboard: the entry is edited in a text bar
+// over the game (TextEntry.kt), as typing into the game's own text one letter
+// at a time, with the keyboard over the touch controls, is awkward. The bar
+// opens as an entry starts and closes when it ends; closed, a chip reopens
+// it. The text accepted replaces the entry's: Backspaces for its characters,
+// then the new ones, typed as the keyboard would, so the game's checks of
+// length and characters still apply.
+bool s_entryActive;
 bool s_entryHardKeyboard;   // the entry is typed on a physical keyboard
-std::string s_entryText;    // the entry's text as the game last gave it
-std::atomic<bool> s_textBoxOpen;
-std::mutex s_textBoxMutex;
-bool s_textBoxDone, s_textBoxAccepted;
-std::string s_textBoxText;  // UTF-8
+std::string s_entryLabel, s_entryText;  // as the game last gave them
+int s_entryMax;
+std::atomic<bool> s_textBarReopen;
+std::mutex s_textBarMutex;
+bool s_textBarDone, s_textBarAccepted;
+std::string s_textBarText;  // UTF-8
 
 bool AndroidCall(const char *name, const char *signature, ...)
 {
@@ -955,9 +958,8 @@ bool AndroidCall(const char *name, const char *signature, ...)
     return result;
 }
 
-void OpenTextBox(const std::string &text, int maxLength)
+std::string Utf8FromWindows1252(const std::string &text)
 {
-    // Windows-1252 to UTF-8.
     std::string utf8;
     for (unsigned char c : text) {
         Uint32 cp = c >= 0x80 && c < 0xa0 ? kWindows1252High[c - 0x80] : c;
@@ -965,26 +967,35 @@ void OpenTextBox(const std::string &text, int maxLength)
         if (cp != 0)
             utf8 += std::string(bytes, SDL_UCS4ToUTF8(cp, bytes) - bytes);
     }
-    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
-    jstring string = env != NULL ? env->NewStringUTF(utf8.c_str()) : NULL;
-    s_textBoxOpen = string != NULL && AndroidCall("editText", "(Ljava/lang/String;I)V", string, (jint)maxLength);
-    if (string != NULL)
-        env->DeleteLocalRef(string);
+    return utf8;
 }
 
-// The text box's answer, on the game's thread.
-void TakeTextBoxAnswer()
+void OpenTextBar()
 {
-    std::lock_guard<std::mutex> lock(s_textBoxMutex);
-    if (!s_textBoxDone)
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    if (env == NULL)
         return;
-    s_textBoxDone = false;
-    // The game held while the box was open: the entry goes on.
-    s_textInputUntil = SDL_GetTicks() + 1000;
-    if (!s_textBoxAccepted)
+    jstring label = env->NewStringUTF(Utf8FromWindows1252(s_entryLabel).c_str());
+    jstring text = env->NewStringUTF(Utf8FromWindows1252(s_entryText).c_str());
+    if (label != NULL && text != NULL)
+        AndroidCall("openTextEntry", "(Ljava/lang/String;Ljava/lang/String;I)V", label, text, (jint)s_entryMax);
+    if (label != NULL)
+        env->DeleteLocalRef(label);
+    if (text != NULL)
+        env->DeleteLocalRef(text);
+}
+
+// The text bar's answer, on the game's thread.
+void TakeTextBarAnswer()
+{
+    std::lock_guard<std::mutex> lock(s_textBarMutex);
+    if (!s_textBarDone)
+        return;
+    s_textBarDone = false;
+    if (!s_textBarAccepted || !s_entryActive)
         return;
     s_pendingText.assign(s_entryText.size(), 8);
-    const char *text = s_textBoxText.c_str();
+    const char *text = s_textBarText.c_str();
     Uint32 cp;
     while ((cp = SDL_StepUTF8(&text, NULL)) != 0) {
         int c = ToWindows1252(cp);
@@ -999,10 +1010,13 @@ void UpdateTextInput()
     if (s_window == NULL)
         return;
 #ifdef __ANDROID__
-    TakeTextBoxAnswer();
-    if (s_textBoxOpen)
-        s_textInputUntil = SDL_GetTicks() + 1000;
-    bool wanted = SDL_GetTicks() < s_textInputUntil && s_entryHardKeyboard;
+    TakeTextBarAnswer();
+    if (s_entryActive && SDL_GetTicks() >= s_textInputUntil) {
+        s_entryActive = false;
+        if (!s_entryHardKeyboard)
+            AndroidCall("endTextEntry", "()V");
+    }
+    bool wanted = s_entryActive && s_entryHardKeyboard;
 #else
     bool wanted = SDL_HasKeyboard() || SDL_GetTicks() < s_textInputUntil;
 #endif
@@ -1017,35 +1031,43 @@ void UpdateTextInput()
 } // namespace
 
 #ifdef __ANDROID__
-extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_GameActivity_nativeTextEntered(
-    JNIEnv *env, jobject, jstring text, jboolean accepted)
+extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_TextEntry_nativeTextEntered(
+    JNIEnv *env, jclass, jstring text, jboolean accepted)
 {
     const char *chars = env->GetStringUTFChars(text, NULL);
-    {
-        std::lock_guard<std::mutex> lock(s_textBoxMutex);
-        s_textBoxText = chars != NULL ? chars : "";
-        s_textBoxAccepted = accepted && chars != NULL;
-        s_textBoxDone = true;
-    }
+    std::lock_guard<std::mutex> lock(s_textBarMutex);
+    s_textBarText = chars != NULL ? chars : "";
+    s_textBarAccepted = accepted && chars != NULL;
+    s_textBarDone = true;
     if (chars != NULL)
         env->ReleaseStringUTFChars(text, chars);
-    s_textBoxOpen = false;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_TextEntry_nativeReopen(JNIEnv *, jclass)
+{
+    s_textBarReopen = true;
 }
 #endif
 
-extern "C" void Sys_RequestTextInput(const char *text, int maxLength)
+extern "C" void Sys_RequestTextInput(const char *label, const char *text, int maxLength)
 {
     bool starting = SDL_GetTicks() >= s_textInputUntil;
 #ifdef __ANDROID__
+    s_entryLabel = label != NULL ? label : "";
     s_entryText = text != NULL ? text : "";
+    s_entryMax = maxLength;
     if (starting) {
+        s_entryActive = true;
+        s_textBarReopen = false;
         s_entryHardKeyboard = AndroidCall("hasHardwareKeyboard", "()Z");
+        Sys_Log("input: text entry%s", s_entryHardKeyboard ? "" : ", text bar");
         if (!s_entryHardKeyboard)
-            OpenTextBox(s_entryText, maxLength);
+            OpenTextBar();
+    } else if (s_textBarReopen.exchange(false) && !s_entryHardKeyboard) {
+        OpenTextBar();
     }
-    if (starting)
-        Sys_Log("input: text entry%s", s_entryHardKeyboard ? "" : s_textBoxOpen ? ", text box" : ", no text box");
 #else
+    (void)label;
     (void)text;
     (void)maxLength;
     if (starting)

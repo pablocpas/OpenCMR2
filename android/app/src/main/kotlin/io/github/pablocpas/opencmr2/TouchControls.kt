@@ -225,10 +225,20 @@ class TouchControls(
     private fun isGamepad(device: InputDevice?) = device != null && !device.isVirtual &&
         device.supportsSource(InputDevice.SOURCE_GAMEPAD) && !device.supportsSource(InputDevice.SOURCE_TOUCHSCREEN)
 
+    private var suspended = false
+    private var shown = true
+
     private fun show(visible: Boolean) {
-        val show = preview || visible || ControllerProfiles.showTouch(activity) || ControllerProfiles.touchOnly(activity)
-        if (!show) releaseAll()
-        overlay.isVisible = show
+        shown = preview || visible || ControllerProfiles.showTouch(activity) || ControllerProfiles.touchOnly(activity)
+        if (!shown || suspended) releaseAll()
+        overlay.isVisible = shown && !suspended
+    }
+
+    /** Hidden while a text entry's bar is open, back as they were after. */
+    fun setSuspended(value: Boolean) {
+        suspended = value
+        if (suspended) releaseAll()
+        overlay.isVisible = shown && !suspended
     }
 
     private fun updateVisibility() =
@@ -240,7 +250,7 @@ class TouchControls(
      */
     fun onInput(source: Int) {
         if ((source and InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN) {
-            if (!overlay.isVisible) show(true)
+            if (!shown) show(true)
         } else if (overlay.isVisible && ((source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
                 (source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK)) {
             show(false)
