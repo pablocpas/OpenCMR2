@@ -60,6 +60,16 @@ ls -la "$shots"
 echo "--- helpers present and importable from the bundle"
 R="$A/Contents/Resources/enhancements/scenery-patch"
 for f in prepare.py uprez_prepare.py finland1_roads.py france1_prepare.py road_prepare.py convert.py requirements.txt; do [ -f "$R/$f" ] || fail "missing helper $f"; done
+echo "--- helper discovery inside the bundle (synthetic placeholder game folder, no real game data)"
+fx="$t/fixture"; mkdir -p "$fx/Game/Bigfiles" "$fx/FrontEnd" "$fx/Sounds" "$fx/CountrySpecific" "$fx/SetupRep"
+: > "$fx/Game/Bigfiles/common.bfl"; : > "$fx/FrontEnd/common.bfl"; : > "$fx/Sounds/surface.bfl"
+set +e
+OPENCMR2_LAUNCHER_SUPPORT="$t/s-fx" OPENCMR2_LAUNCHER_LOGDIR="$t/l-fx" OPENCMR2_LAUNCHER_DATA="$fx" OPENCMR2_LAUNCHER_MODS=none "$A/Contents/MacOS/OpenCMR2" > /dev/null 2>&1; rc=$?
+set -e
+echo "fixture launch exit code: $rc"; tail -40 "$t/l-fx/launcher.log"
+grep -q "helper missing beside executable" "$t/l-fx/launcher.log" && fail "game did not find the helpers inside the app bundle"
+grep -q "Enhancement helper exited\|Scenery preparation failed\|OPENCMR2_PACK=" "$t/l-fx/launcher.log" || fail "no evidence the bundled helper was started"
+echo "ok: the game found and started the bundled helper scripts from inside OpenCMR2.app (it rejects placeholder files, as it must)"
 echo "--- real launch path with empty data folder (venv setup, helper discovery, expected refusal)"
 set +e
 OPENCMR2_LAUNCHER_DATA="$t/data" OPENCMR2_LAUNCHER_MODS="$t/mods" "$A/Contents/MacOS/OpenCMR2" > "$t/launch.out" 2>&1; rc=$?
