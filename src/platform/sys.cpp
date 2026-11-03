@@ -35,6 +35,7 @@
 #include <mach/mach.h>
 #elif !defined(_WIN32)
 #include <unistd.h>
+#include "tuned_defaults.h"
 #endif
 
 namespace {
@@ -1382,10 +1383,10 @@ extern "C" int Sys_GetOption(const char *name, int fallback)
     bool locked=(lock==s_enhancements.overrides.end()?Platform_GetSettingInt("video.drone_locked",0):lock->second)!=0;
     // Saved locked drone parameters win over stale launch flags on the next run.
     // The lock itself remains live-editable; adaptive camera motion still runs.
-    if(locked)return Platform_GetSettingInt(name,fallback);
+    if(locked)return Platform_GetSettingInt(name,TunedDefault_Or(key.c_str(),fallback));
     }
     auto it=s_enhancements.overrides.find(key);
-    return it==s_enhancements.overrides.end()?Platform_GetSettingInt(name, fallback):it->second;
+    return it==s_enhancements.overrides.end()?Platform_GetSettingInt(name, TunedDefault_Or(key.c_str(),fallback)):it->second;
 }
 
 extern "C" const char *Sys_GetCaptureDir(int *intervalSeconds,int *count){
