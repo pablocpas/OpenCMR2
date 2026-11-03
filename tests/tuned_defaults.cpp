@@ -14,7 +14,7 @@ int main()
             if (!std::strcmp(rows[i].key, d.key)) { found = true; if (rows[i].fallback != d.value) { std::printf("FAIL %s row %d table %d\n", d.key, rows[i].fallback, d.value); ++fails; } }
         if (!found) { std::printf("FAIL %s not a panel row\n", d.key); ++fails; }
     }
-    if (TunedDefault_Or("video.fog_lights", 100) != 40 || TunedDefault_Or("video.unlisted_key", 7) != 7) { std::puts("FAIL lookup"); ++fails; }
+    if (TunedDefault_Or("video.fog_amount", 65) != 60 || TunedDefault_Or("video.fog_cull", 0) != 1 || TunedDefault_Or("video.fog_lights", 100) != 40 || TunedDefault_Or("video.unlisted_key", 7) != 7) { std::puts("FAIL lookup"); ++fails; }
     if (!fails) std::puts("tuned_defaults ok");
     return fails;
 }

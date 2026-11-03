@@ -10,7 +10,7 @@ static const TunedDefault kTunedDefaults[] = {
     {"video.speed_lines", 0}, {"video.speed_streak", 100}, {"video.tire_debris", 575},
     {"video.dust_plume_amount", 300}, {"video.spray_amount", 300}, {"video.exhaust_smoke_amount", 300},
     {"video.splash_amount", 300}, {"video.backfire_amount", 300}, {"video.sun_glare", 60},
-    {"video.fog", 1}, {"video.fog_glow", 100}, {"video.fog_clear", 60}, {"video.fog_cull", 1},
+    {"video.fog", 1}, {"video.fog_amount", 60}, {"video.fog_glow", 100}, {"video.fog_clear", 60}, {"video.fog_cull", 1},
     {"video.fog_spatial", 1}, {"video.fog_evolve", 60}, {"video.air_motes", 1},
     {"video.air_motes_amount", 500}, {"video.fog_lights", 40}, {"video.snow_glint", 100},
     {"video.camera_roll", 30}, {"video.drone_distance", 50},
