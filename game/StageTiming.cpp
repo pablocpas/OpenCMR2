@@ -9450,6 +9450,7 @@ void StageTiming_RestoreDeviceStageResources(void)
     StageTiming_InitForceFeedbackSlots();
     StageObject_LoadSkidTrailTextures();
     StageObjects_Init();
+    WindshieldGlass_RetryPending();   // OpenCMR2: CarEffects_Init has now filled its tables; retry transient cockpit-glass misses once
     if (CGameInfo::GetGameInfoSessionFlag() != 0) {
         Replay_LoadSelectedRun();
     } else {

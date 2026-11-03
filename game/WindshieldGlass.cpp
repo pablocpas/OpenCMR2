@@ -184,8 +184,11 @@ int WindshieldGlass_ResolveForCar(int car)
     unsigned group = WindshieldGlass_GroupForSlot(slot);
     int damaged = -1, broken = -1;
     if (group == 0 || !WgExteriorGlassTextures(car, group, &damaged, &broken)) {
-        Sys_Log("windshield glass: car %d window %d has no drawable damage textures, feature off",
+        Sys_Log("windshield glass: car %d window %d has no drawable damage textures yet, will retry",
                 car, window);
+        // Transient like the profile miss: the exterior part set may not be built at the first attach.
+        // WindshieldGlass_RetryPending runs once more after StageObjects_Init; it is bounded to that one call per stage setup.
+        info->resolved = 0;
         g_wgFailReason[car] = "no damage textures";
         return -1;
     }
@@ -485,11 +488,28 @@ int WindshieldGlass_SetupCar(int car)
     return g_wgInfo[car].window;
 }
 
+// Second attempt for cars whose first setup hit a transient miss (resolved == 0:
+// no glass profile / no damage textures yet). Called once after StageObjects_Init,
+// when CarEffects_Init has filled its tables and the car part sets exist. Cars that
+// resolved (1) or failed for a deterministic reason (-1) are not touched, and a car
+// that misses again stays at 0 with its reason shown in F10; there is no further loop.
+void WindshieldGlass_RetryPending(void)
+{
+    for (int car = 0; car < WG_MAX_CARS; car++) {
+        if (g_wgInfo[car].resolved != 0 || g_wgFailReason[car] == NULL || g_carInteriorRoots[car] == NULL)
+            continue;   // resolved, deterministic failure, never attempted this stage, or no interior
+        if (!Sys_GetOption("video.windshield_cracks", 1))
+            continue;
+        WindshieldGlass_SetupCar(car);
+    }
+}
+
 void WindshieldGlass_ResetCache(void)
 {
     WindshieldGlass_RestoreAll();
     for (int i = 0; i < WG_MAX_CARS; i++) {
         g_wgInfo[i].resolved = 0;
+        g_wgFailReason[i] = NULL;   // "never attempted" for the next stage; RetryPending only retries a miss from this stage
         g_wgGlassPartCount[i] = 0;
         g_wgAppliedState[i] = 0;
     }
