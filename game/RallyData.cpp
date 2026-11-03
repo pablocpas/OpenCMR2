@@ -6737,7 +6737,7 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             // Two short rows so the decisive reason is never clipped by the panel width (about 88 characters).
             snprintf(text,sizeof text,"Windshield: dirt %d wipe %d crack %d | glass %s %d",
                 Sys_GetOption("video.windscreen_dirt",40),Sys_GetOption("video.windscreen_wipers",1),Sys_GetOption("video.windshield_cracks",1),
-                wsResolved?"ok":WindshieldGlass_FailReason(mv),wsGlass);
+                (wsResolved&&Sys_GetOption("video.windshield_crack_overlay",0)==0)?"ok":WindshieldGlass_FailReason(mv),wsGlass);
             line(text,wsResolved?wsLit:wsDim);
             snprintf(text,sizeof text,"Windshield overlay: draw %u/%u | dirt %d | %s",wsDrawn,wsCalls,wsDirt,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached");
             line(text,wsDrawn>0?wsLit:wsDim);

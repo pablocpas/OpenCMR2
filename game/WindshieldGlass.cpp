@@ -18,6 +18,8 @@
 #include "StageBlock.h"
 #include "GraphicsOptions.h"
 #include "port/sys.h"
+#include "port/gfx.h"
+#include "Graphics.h"
 #include <cstdio>
 #include <cmath>
 
@@ -480,12 +482,133 @@ int WindshieldGlass_SetupCar(int car)
         WgDiagnoseInterior(g_carInteriorRoots[car], pCar->pBodyNode, car, &front, stats);
         Sys_Log("windshield glass: diag car %d lods=%d underBody=%d blendMeshes=%d semiParts=%d",
                 car, stats[0], stats[1], stats[2], stats[3]);
+        if (Sys_GetOption("video.windshield_crack_overlay", 0) != 0) {
+            // The interior model has no glass pane to retexture (the Subaru cockpit
+            // is open at the windscreen). Keep the resolved front window and its
+            // damage textures: WindshieldGlass_DrawCrackOverlay draws them on the
+            // projected window quad instead.
+            g_wgFailReason[car] = "overlay pending";
+            return g_wgInfo[car].window;
+        }
         g_wgInfo[car].resolved = -1;
         g_wgFailReason[car] = "no interior glass part";
         return -1;
     }
     Sys_Log("windshield glass: car %d selected %d interior glass parts", car, g_wgGlassPartCount[car]);
     return g_wgInfo[car].window;
+}
+
+// ---- projected crack overlay (video.windshield_crack_overlay, default off) ----
+// Cockpits whose interior model has no glass part (see "no interior glass part")
+// get the resolved front window's damaged/broken glass texture drawn as a
+// screen-space polygon. The corners are the same CIN window quad the resolver
+// classified, taken from car space to the camera with the scene's own world
+// matrices and projected with the game's projection terms (the near plane is
+// clipped at 0.1 model units; FixMatrix_ProjectWorldPointToView rejects
+// everything closer than 1.0, which is the whole cockpit). Not depth tested:
+// the dash and pillars are not masked.
+int WindshieldGlass_DrawCrackOverlay(int car, int view, int state, int resX, int resY)
+{
+    if (state < 1 || Sys_GetOption("video.windshield_crack_overlay", 0) == 0)
+        return 0;
+    if (car < 0 || car >= WG_MAX_CARS || g_wgInfo[car].resolved != 1 || g_wgGlassPartCount[car] != 0)
+        return 0;   // not this cockpit's problem: the interior glass parts handle it
+    Car *pCar = Car_Get(car);
+    SceneNode *cam = (view >= 0 && view < 3) ? g_viewNodes[view] : NULL;
+    if (pCar == NULL || pCar->pBodyNode == NULL || cam == NULL) {
+        g_wgFailReason[car] = "overlay: no car/camera node";
+        return 0;
+    }
+    if (g_pGraphics == NULL || resX != (int)g_pGraphics->resX || resY != (int)g_pGraphics->resY) {
+        g_wgFailReason[car] = "overlay: split view not supported";
+        return 0;
+    }
+    int texId = state >= 2 ? g_wgInfo[car].brokenTexture : g_wgInfo[car].damagedTexture;
+    Texture *tex = (texId >= 0 && texId < 2048) ? CGraphics::GetTextureBuffer()[texId] : NULL;
+    if (tex == NULL || tex->pSurface == NULL) {
+        g_wgFailReason[car] = "overlay: glass texture not loaded";
+        return 0;
+    }
+    SceneNode *frame = pCar->pBodyNode->pParent != NULL ? pCar->pBodyNode->pParent : pCar->pSceneRoot;
+    if (frame == NULL) {
+        g_wgFailReason[car] = "overlay: no car frame";
+        return 0;
+    }
+    const FixVector *verts = CarEffects_CarWindowVertices(car);
+    if (verts == NULL)
+        return 0;
+    unsigned char desc[6][4];
+    int mirror[6][4];
+    CarEffects_GetWindowLayout(desc, mirror);
+    int rawVerts[WG_WINDOWS][3];
+    for (int w = 0; w < WG_WINDOWS; w++) {
+        rawVerts[w][0] = verts[w].x;
+        rawVerts[w][1] = verts[w].y;
+        rawVerts[w][2] = verts[w].z;
+    }
+    WgQuad quads[WG_WINDOWS];
+    WindshieldGlass_BuildQuads(rawVerts, desc, mirror, quads);
+    const WgQuad *q = &quads[g_wgInfo[car].window];
+
+    // Car space -> camera space (x right, y up, z forward), in model units.
+    FixMatrix invView;
+    FixMatrix_Invert(&invView, &cam->world);
+    float vp[8][5];   // x, y, z, u, v
+    static const float kUV[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
+    float poly[4][5];
+    for (int j = 0; j < 4; j++) {
+        FixVector cs = {(int)q->v[j].x, (int)q->v[j].y, (int)q->v[j].z}, wp, vv;
+        FixMatrix_TransformPoint(&wp, &cs, &frame->world);
+        FixMatrix_TransformPoint(&vv, &wp, &invView);
+        poly[j][0] = vv.x / 65536.0f; poly[j][1] = vv.y / 65536.0f; poly[j][2] = vv.z / 65536.0f;
+        poly[j][3] = kUV[j][0]; poly[j][4] = kUV[j][1];
+    }
+    // Clip against the near plane.
+    const float kNear = 0.1f;
+    int n = 0;
+    for (int j = 0; j < 4; j++) {
+        const float *a = poly[j], *b = poly[(j + 1) % 4];
+        int ain = a[2] >= kNear, bin = b[2] >= kNear;
+        if (ain && n < 8) { for (int k = 0; k < 5; k++) vp[n][k] = a[k]; n++; }
+        if (ain != bin && n < 8) {
+            float t = (kNear - a[2]) / (b[2] - a[2]);
+            for (int k = 0; k < 5; k++) vp[n][k] = a[k] + (b[k] - a[k]) * t;
+            n++;
+        }
+    }
+    if (n < 3) {
+        g_wgFailReason[car] = "overlay: window behind camera";
+        return 0;
+    }
+    GfxTLVertex tl[8];
+    const float halfW = resX * 0.5f, halfH = resY * 0.5f;
+    for (int j = 0; j < n; j++) {
+        tl[j].sx = halfW + CGraphics::m_projection11 * vp[j][0] / vp[j][2] * halfW;
+        tl[j].sy = halfH - CGraphics::m_projection22 * vp[j][1] / vp[j][2] * halfH;
+        tl[j].sz = 0; tl[j].rhw = 1.0f;
+        tl[j].color = 0xffffffff; tl[j].specular = 0;
+        tl[j].tu = vp[j][3]; tl[j].tv = vp[j][4];
+    }
+    static int s_logged[WG_MAX_CARS];
+    if (s_logged[car] != state) {
+        s_logged[car] = state;
+        Sys_Log("windshield glass: car %d crack overlay state %d tex %d, %d corners, screen (%.0f,%.0f) (%.0f,%.0f) (%.0f,%.0f) (%.0f,%.0f) of %dx%d",
+                car, state, texId, n, tl[0].sx, tl[0].sy, tl[1].sx, tl[1].sy, tl[2].sx, tl[2].sy,
+                tl[n > 3 ? 3 : 2].sx, tl[n > 3 ? 3 : 2].sy, resX, resY);
+    }
+    Gfx_SetTexture(0, tex->pSurface);
+    Gfx_SetAlphaBlend(TRUE);
+    Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA);
+    Gfx_SetDestBlend(GFX_BLEND_INVSRCALPHA);
+    Gfx_SetDepthWrite(FALSE);
+    Gfx_SetDepthTest(FALSE);
+    Gfx_DrawPrimitiveTL(GFX_TRIANGLEFAN, tl, (DWORD)n);
+    Gfx_SetDepthTest(TRUE);
+    Gfx_SetDepthWrite(TRUE);
+    Gfx_SetAlphaBlend(FALSE);
+    Gfx_SetTexture(0, NULL);
+    g_wgFailReason[car] = "overlay drawn";
+    return 1;
 }
 
 // Second attempt for cars whose first setup hit a transient miss (resolved == 0:

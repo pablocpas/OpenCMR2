@@ -145,6 +145,8 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     // Draw-gating diagnostics (low volume, transitions only): why the dirt
     // overlay is not on screen - broken glass suppresses it, no dirt means
     // the accumulation sources never landed.
+    if (mview < 2)
+        WindshieldGlass_DrawCrackOverlay(mview, mview, g_windshieldGlassState[mview], resX, resY);
     int reason = !Windshield_OverlayVisible(g_windshieldGlassState[mview]) ? 1
                : Windshield_TotalDirt(m) == 0 ? 2 : 0;
     g_wsDrawCalls[mview]++;

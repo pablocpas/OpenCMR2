@@ -1333,6 +1333,7 @@ private:
     friend void Graphics_PresentFrameAndResetCounters(void);
     friend void Graphics_MarkTexturesAndDrawMeshParts(Mesh *pMesh);
     friend void CarLight_CacheBodyTextures(int car, int unused1, int unused2, BYTE flag);
+    friend int WindshieldGlass_DrawCrackOverlay(int car, int view, int state, int resX, int resY);
     friend void FixMatrix_ProjectWorldPointToView(int *pOut, FixVector *pPoint, SceneNode *pView);
     friend void Graphics_DrawMeshPartsByTexture(Mesh *pMesh);
     // Draws the mesh LOD record in use with the state its flags ask for.
