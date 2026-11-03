@@ -514,12 +514,35 @@ int WindshieldGlass_SetupCar(int car)
 // inner face set (flag 0x8000 clear), the one that faces the cockpit; the 0x8000
 // faces are the outer set. Nothing is derived from the CIN window quad except
 // the window/group choice the resolver already made.
+int WindshieldGlass_DrawGroupPane(int car, unsigned group, int state);
+
 int WindshieldGlass_DrawCrackPane(int car, int state)
 {
     if (state < 1 || Sys_GetOption("video.windshield_crack_overlay", 0) == 0)
         return 0;
     if (car < 0 || car >= WG_MAX_CARS || g_wgInfo[car].resolved != 1 || g_wgGlassPartCount[car] != 0)
         return 0;   // not this cockpit's problem: the interior glass parts handle it
+    return WindshieldGlass_DrawGroupPane(car, g_wgInfo[car].group, state);
+}
+
+// Side windows: the same exterior-triangle pane for the driver/passenger side
+// glass groups (slots 2 and 3, groups 0x40 and 0x80), each with its own
+// damage state. Offline check against the Subaru exterior: both groups have
+// inner (non-0x8000) faces and drawable damaged/broken textures 14/15.
+int WindshieldGlass_DrawSidePanes(int car, int stateSlot2, int stateSlot3)
+{
+    if (Sys_GetOption("video.windshield_crack_overlay", 0) == 0)
+        return 0;
+    if (car < 0 || car >= WG_MAX_CARS || g_wgInfo[car].resolved != 1)
+        return 0;
+    int n = 0;
+    if (stateSlot2 >= 1) n += WindshieldGlass_DrawGroupPane(car, WindshieldGlass_GroupForSlot(2), stateSlot2);
+    if (stateSlot3 >= 1) n += WindshieldGlass_DrawGroupPane(car, WindshieldGlass_GroupForSlot(3), stateSlot3);
+    return n;
+}
+
+int WindshieldGlass_DrawGroupPane(int car, unsigned group, int state)
+{
     CarPartSet *pParts = StageTiming_GetCarReplayRecord(car);
     int mi = pParts != NULL ? StageTiming_FindModelPartByNodeType(7, pParts) : -1;
     Mesh *pMesh = mi >= 0 ? pParts->geometry.meshes[mi] : NULL;
@@ -536,7 +559,7 @@ int WindshieldGlass_DrawCrackPane(int car, int state)
     for (int pass = 0; pass < 2 && nt == 0; pass++) {   // inner faces first, any face as the fallback
         for (int t = 0; t < pMesh->triangleCount && nt < MAXT; t++) {
             MeshTriangle *tri = &pMesh->pTriangles[t];
-            if (!WgTriInGroup(tri->flags, g_wgInfo[car].group))
+            if (!WgTriInGroup(tri->flags, group))
                 continue;
             if (pass == 0 && (tri->flags & 0x8000) != 0)
                 continue;
@@ -572,7 +595,7 @@ int WindshieldGlass_DrawCrackPane(int car, int state)
     if (s_logged[car] != state) {
         s_logged[car] = state;
         Sys_Log("windshield glass: car %d crack pane state %d: %d triangles (%s faces), texture %d, group 0x%x, node world pos (%.2f %.2f %.2f)",
-                car, state, nt, pureSeen ? "inner" : "fallback", tex[0], g_wgInfo[car].group,
+                car, state, nt, pureSeen ? "inner" : "fallback", tex[0], group,
                 wf[12], wf[13], wf[14]);
     }
     Gfx_PushState();
