@@ -4700,9 +4700,10 @@ void Race_ApplySpeedEffectParams(void)
             return;
         }
     }
-    {   // Cockpit (camera type 3) only: the interior's own depth keeps it out of the tunnel-vision blur. Unit: tenths of a world unit, default 16 = 1.6.
+    {   // Cockpit (camera type 3) only, opt-in: interior nearer than this stays out of the tunnel-vision blur. Unit: tenths of a world unit, default 0 = off.
+        // Default was 16 (1.6): an offline depth render of the Subaru cockpit shell from the driver eye put ~99 percent of the blur zone (pillars, doors, roof) nearer than 1.6, so tunnel vision never showed in the cockpit.
         int type = 0, drone = 0; AttractCapture_ViewSignature(0, &type, &drone);
-        int tenths = Sys_GetOption("video.cockpit_blur_clear", 16); if (tenths < 0) tenths = 0; if (tenths > 60) tenths = 60;
+        int tenths = Sys_GetOption("video.cockpit_blur_clear", 0); if (tenths < 0) tenths = 0; if (tenths > 60) tenths = 60;
         Gfx_SetTunnelNearClear(type == 3 ? tenths / 10.0f : 0.0f);
     }
     // OpenCMR2: speed-driven tunnel vision (visual only; reads speed, changes nothing in the sim).
