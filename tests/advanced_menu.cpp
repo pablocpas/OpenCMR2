@@ -65,11 +65,11 @@ int main(int argc,char **argv){
  }
  amounts->cursor=0;Menu_Update(amounts,2);Menu_Update(amounts,0);if(amounts->items[0].max!=61)++fail;
  amounts->items[0].max=100;Menu_Update(amounts,2);Menu_Update(amounts,0);if(amounts->items[0].max!=100)++fail;
- {Menu*atmo=FrontendMenu_GetAtmosphereAmounts(amounts);if(atmo->itemCount!=15||atmo->pParent!=amounts)++fail;
-  if(std::strcmp(atmo->items[0].text,"Fog (0/1)")||std::strcmp(atmo->items[4].text,"Fog light response % (head/rear lights)")||std::strcmp(atmo->items[9].text,"Air motes amount %")||std::strcmp(atmo->items[10].text,"Air motes cockpit size %")||std::strcmp(atmo->items[11].text,"Snow glints % (banks + falling flakes)")||std::strcmp(atmo->items[12].text,"Fog through windscreen glass (0/1)"))++fail;
-  for(int i=0;i<13;i++)if(atmo->items[i].value!=0x40+i)++fail;   // 13 data rows; item 13 is the OK row
+ {Menu*atmo=FrontendMenu_GetAtmosphereAmounts(amounts);if(atmo->itemCount!=16||atmo->pParent!=amounts)++fail;
+  if(std::strcmp(atmo->items[0].text,"Fog (0/1)")||std::strcmp(atmo->items[4].text,"Fog light response % (head/rear lights)")||std::strcmp(atmo->items[9].text,"Air motes amount %")||std::strcmp(atmo->items[10].text,"Air motes size %, every view")||std::strcmp(atmo->items[11].text,"Air motes cockpit size %")||std::strcmp(atmo->items[12].text,"Snow glints % (banks + falling flakes)")||std::strcmp(atmo->items[13].text,"Fog through windscreen glass (0/1)"))++fail;
+  for(int i=0;i<14;i++)if(atmo->items[i].value!=0x40+i)++fail;   // 14 data rows; item 14 is the OK row
   atmo->pfnCallback0(atmo,0); // EnterAtmosphere reads saved options; must not crash with defaults
-  for(int i=0;i<14;i++)if(atmo->items[i].max<0)++fail;}
+  for(int i=0;i<15;i++)if(atmo->items[i].max<0)++fail;}
  int n;const auto*rows=EffectAmount_Rows(n);if(n>=22)++fail;
  int remainder=0,sum=0;for(int i=0;i<100;i++)sum+=Effect_Accumulate(1,25,remainder);
  if(sum!=25||remainder!=0||Effect_Scale(200,-1)!=0||Effect_Scale(200,200)!=200)++fail;
