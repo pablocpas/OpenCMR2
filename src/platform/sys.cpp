@@ -6,6 +6,7 @@
 #include "platform/platform.h"
 #include "platform/testing.h"
 #include "platform/enhancements.h"
+#include "tuned_defaults.h"
 #include "port/sys.h"
 #include "port/gfx.h"
 #include "port/input.h"
@@ -35,7 +36,6 @@
 #include <mach/mach.h>
 #elif !defined(_WIN32)
 #include <unistd.h>
-#include "tuned_defaults.h"
 #endif
 
 namespace {
