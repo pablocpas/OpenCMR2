@@ -96,6 +96,16 @@ int main(){
     // The field caps at LIGHT_FIELD_MAX and keeps the first lights recorded.
     for (int i = 0; i < 16; ++i) LightField_Add(&pos, &dir, 0x1000, i, i, i);
     CHECK(g_fogLightSourceCount == LIGHT_FIELD_MAX);
+    // Full field: a priority light (headlight) replaces a non-priority one; a non-priority light is lost and counted.
+    LightField_Clear();
+    for (int i = 0; i < LIGHT_FIELD_MAX; ++i) LightField_Add(&pos, &dir, 0x1000, 1, 1, 1);
+    LightField_Add(&pos, &dir, 0x1000, 2, 2, 2);
+    CHECK(g_fogLightDropped == 1 && g_fogLightDroppedPrio == 0);
+    CHECK(LightField_Add(&pos, &dir, 0x8000, 7, 7, 7, 1) == LIGHT_FIELD_MAX);
+    CHECK(g_fogLightSources[LIGHT_FIELD_MAX - 1].r == 7 && g_fogLightDropped == 1);
+    for (int i = 0; i < LIGHT_FIELD_MAX; ++i) LightField_Add(&pos, &dir, 0x8000, 8, 8, 8, 1);   // fills the other slots with priority
+    LightField_Add(&pos, &dir, 0x8000, 9, 9, 9, 1);
+    CHECK(g_fogLightDroppedPrio == 2);   // 7 replacements fit, the 8th and 9th priority lights are lost
     // Clear resets for the next step.
     LightField_Clear();
     CHECK(g_fogLightSourceCount == 0);

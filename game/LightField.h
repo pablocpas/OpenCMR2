@@ -21,14 +21,28 @@ struct FogLightSource {
 
 extern FogLightSource g_fogLightSources[LIGHT_FIELD_MAX];
 extern int g_fogLightSourceCount;
+inline int g_fogLightDropped = 0;       // lights this step that found the field full and were lost (diagnostic)
+inline int g_fogLightDroppedPrio = 0;   // of those, priority lights (headlights)
+inline unsigned g_fogLightPrioMask = 0; // bit i set: source i is a priority light
 
-inline void LightField_Clear(void) { g_fogLightSourceCount = 0; }
+inline void LightField_Clear(void) { g_fogLightSourceCount = 0; g_fogLightDropped = 0; g_fogLightDroppedPrio = 0; g_fogLightPrioMask = 0; }
 
-// Records one enabled light; drops it when the field is full. Returns the count.
-inline int LightField_Add(const FixVector *pos, const FixVector *dir, int intensity, int r, int g, int b) {
-    if (!pos || intensity <= 0 || g_fogLightSourceCount >= LIGHT_FIELD_MAX)
+// Records one enabled light. When the field is full a priority light (headlight) replaces the
+// last non-priority source; any other light is lost and counted. Returns the count.
+inline int LightField_Add(const FixVector *pos, const FixVector *dir, int intensity, int r, int g, int b, int priority = 0) {
+    if (!pos || intensity <= 0)
         return g_fogLightSourceCount;
-    FogLightSource *p = &g_fogLightSources[g_fogLightSourceCount++];
+    int slot = -1;
+    if (g_fogLightSourceCount < LIGHT_FIELD_MAX) {
+        slot = g_fogLightSourceCount++;
+    } else {
+        if (priority)
+            for (int i = LIGHT_FIELD_MAX - 1; i >= 0; --i)
+                if (!(g_fogLightPrioMask & (1u << i))) { slot = i; break; }
+        if (slot < 0) { ++g_fogLightDropped; if (priority) ++g_fogLightDroppedPrio; return g_fogLightSourceCount; }
+    }
+    FogLightSource *p = &g_fogLightSources[slot];
+    if (priority) g_fogLightPrioMask |= 1u << slot; else g_fogLightPrioMask &= ~(1u << slot);
     p->pos = *pos;
     p->dir = dir ? *dir : FixVector{0, 0, 0};
     p->intensity = intensity > 0x10000 ? 0x10000 : intensity;

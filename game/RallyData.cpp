@@ -6172,6 +6172,7 @@ void TuningPanel_Update(void)
 // OpenCMR2 replay controls (keyboard): , slower  . faster  Space pause  Tab next camera. Active only while player 0's stream is playing back.
 // The recorded controls still run through the unchanged physics; only the time that feeds the step count is scaled (Car.cpp).
 #include "ReplayControls.h"
+#include "LightField.h"
 #include "FreeCam.h"
 #include "ReplayChaseOrbit.h"
 #include "ReplayStream.h"
@@ -6244,7 +6245,7 @@ static const char *ReplayCameraName(int type)
 void ReplayControls_Draw(void)
 {
     if (!ReplayControls_Active()) return;
-    char clock[40], speed[24], text[120];
+    char clock[40], speed[24], text[200];
     clock[0] = 0;
     ReplayStream *stream = Race_GetPlayerRecordPointer(0);
     if (stream != NULL && stream->type == 0 && stream->pFrames != NULL && stream->pLaneSamples != NULL && stream->lane >= 0 && stream->lane < stream->laneCount) {
@@ -6265,6 +6266,10 @@ void ReplayControls_Draw(void)
     if (!clock[0]) ReplayClock_FormatCentiseconds(StageTiming_GetClockTime(), clock, sizeof clock);   // not a controls stream: the stage clock only, no total
     g_replayControls.Label(speed, sizeof speed);
     snprintf(text, sizeof text, "replay %s  %s  cam %s  , . space tab", clock, speed, View_FreeCamActive() ? "free (wasd qe arrows r)" : ReplayChaseOrbit::Chase(View_GetActiveCameraMode(0)) ? "chase (arrows orbit, r reset)" : ReplayCameraName(View_GetActiveCameraMode(0)));
+    {   // diag: fog light field fill and losses (lights lost this step, headlights among them)
+        size_t n = strlen(text);
+        snprintf(text + n, sizeof text - n, " [lf %d/%d lost %d hl %d]", g_fogLightSourceCount, LIGHT_FIELD_MAX, g_fogLightDropped, g_fogLightDroppedPrio);
+    }
     DebugOverlayLayout layout = DebugOverlayLayout::For(g_pGraphics->resX, g_pGraphics->resY, 1);
     int width = std::min((int)strlen(text) * layout.font * 6 / 10 + 2 * layout.pad, g_pGraphics->resX - 2 * layout.x);
     short panel[4] = {(short)((g_pGraphics->resX - width) / 2), (short)(g_pGraphics->resY - layout.height - layout.y), (short)width, (short)layout.height};

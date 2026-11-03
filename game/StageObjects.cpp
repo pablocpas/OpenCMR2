@@ -11919,7 +11919,7 @@ void StageObject_UpdateCarLightFlagsAndGlows(Car *pCar)
                     worldPos = glow->pos;
                 }
                 LightField_Add(&worldPos, &worldDir, intensity * 2 > 0x10000 ? 0x10000 : intensity * 2,
-                               colour.x, colour.y, colour.z);
+                               colour.x, colour.y, colour.z, pPoint->type == 8 ? 1 : 0);   // type 8 = front headlight in the Subaru CIN (lamps 10-11 of 13)
             }
             FixVecScale(&colour, &colour, intensity);
             Glow_NoOpEntryCallback((BYTE)(INT_PTR)glow, (BYTE)colour.x, colour.y, colour.z);
