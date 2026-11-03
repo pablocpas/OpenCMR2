@@ -6725,6 +6725,23 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
         Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?3:2)*layout.line,layout.font,layout.width-2*layout.pad,colour);
         int row=spectator?7:6;
         auto line=[&](const char*s,const BYTE*c=nullptr){Font_DrawTextScaled(1,(char*)s,layout.x+layout.pad,layout.y+layout.pad+row++*layout.line,layout.font,layout.width-2*layout.pad,(BYTE*)(c?c:colour));};
+        {
+            // (Placed first: the panel has a fixed height and rows after the atmosphere block were clipped.)
+            // Windshield (cockpit dirt/cracks) state, so a screenshot shows why nothing is drawn: option, glass lookup, overlay draw gating.
+            unsigned wsCalls=0,wsDrawn=0;int wsReason=-1,wsGlass=-1,wsDirt=0,wsSlot=-1;
+            int mv=(int)(param2&1);
+            Windshield_GetDiag(mv,&wsCalls,&wsDrawn,&wsReason,&wsGlass,&wsDirt);
+            bool wsResolved=WindshieldGlass_GetInfo(mv,NULL,&wsSlot,NULL,NULL,NULL)!=0;
+            const char *wsWhy[]={"drawing","broken glass","no dirt"};
+            static const BYTE wsLit[4]={110,255,140,255},wsDim[4]={150,160,170,255};
+            // Two short rows so the decisive reason is never clipped by the panel width (about 88 characters).
+            snprintf(text,sizeof text,"Windshield: dirt %d wipe %d crack %d | glass %s %d",
+                Sys_GetOption("video.windscreen_dirt",40),Sys_GetOption("video.windscreen_wipers",1),Sys_GetOption("video.windshield_cracks",1),
+                wsResolved?"ok":WindshieldGlass_FailReason(mv),wsGlass);
+            line(text,wsResolved?wsLit:wsDim);
+            snprintf(text,sizeof text,"Windshield overlay: draw %u/%u | dirt %d | %s",wsDrawn,wsCalls,wsDirt,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached");
+            line(text,wsDrawn>0?wsLit:wsDim);
+        }
         if(hitchText[0])line(hitchText);
         for(int i=0;i<3;i++)line(Sys_GetLaunchSummary(i));
         GfxEffectStatus status=Gfx_GetEffectStatus();
@@ -6806,22 +6823,6 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
                 else snprintf(text,sizeof text,"Snow material: %s, %d ground vertices tagged snow (setting %d%%)",applied?"lifting":"tagged, no lift",tagged,sm);
                 line(text,sm>0&&applied?lit:dim);
             }
-        }
-        {
-            // Windshield (cockpit dirt/cracks) state, so a screenshot shows why nothing is drawn: option, glass lookup, overlay draw gating.
-            unsigned wsCalls=0,wsDrawn=0;int wsReason=-1,wsGlass=-1,wsDirt=0,wsSlot=-1;
-            int mv=(int)(param2&1);
-            Windshield_GetDiag(mv,&wsCalls,&wsDrawn,&wsReason,&wsGlass,&wsDirt);
-            bool wsResolved=WindshieldGlass_GetInfo(mv,NULL,&wsSlot,NULL,NULL,NULL)!=0;
-            const char *wsWhy[]={"drawing","broken glass","no dirt"};
-            static const BYTE wsLit[4]={110,255,140,255},wsDim[4]={150,160,170,255};
-            // Two short rows so the decisive reason is never clipped by the panel width (about 88 characters).
-            snprintf(text,sizeof text,"Windshield: dirt %d wipe %d crack %d | glass %s %d",
-                Sys_GetOption("video.windscreen_dirt",40),Sys_GetOption("video.windscreen_wipers",1),Sys_GetOption("video.windshield_cracks",1),
-                wsResolved?"ok":WindshieldGlass_FailReason(mv),wsGlass);
-            line(text,wsResolved?wsLit:wsDim);
-            snprintf(text,sizeof text,"Windshield overlay: draw %u/%u | dirt %d | %s",wsDrawn,wsCalls,wsDirt,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached");
-            line(text,wsDrawn>0?wsLit:wsDim);
         }
         {
             int viewType=0,drone=0,zoomRaw=0,fovYRaw=0,fovSet=70;
