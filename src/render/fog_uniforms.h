@@ -42,7 +42,7 @@ inline void FogUniforms_Pack(float *out, const FogUniformParams &p,
         out[12 + i*4 + 0] = on ? L->x : 0.0f;
         out[12 + i*4 + 1] = on ? L->y : 0.0f;
         out[12 + i*4 + 2] = on ? L->intensity : 0.0f;
-        out[12 + i*4 + 3] = 0.0f;
+        out[12 + i*4 + 3] = on ? L->startRamp : 0.0f;   // lights[i].w: wedge start ramp (0 = none)
         out[44 + i*4 + 0] = on ? L->depthRef : 0.0f;
         out[44 + i*4 + 1] = on ? L->r : 0.0f;
         out[44 + i*4 + 2] = on ? L->g : 0.0f;

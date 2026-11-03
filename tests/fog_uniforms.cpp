@@ -58,7 +58,7 @@ int main() {
         lights[i].x = 0.10f + i; lights[i].y = 0.20f + i;
         lights[i].depthRef = 0.30f + i * 0.01f; lights[i].intensity = 0.5f + i * 0.01f;
         lights[i].r = 0.9f; lights[i].g = 0.8f; lights[i].b = 0.7f;
-        lights[i].beamX = 0.31f + i; lights[i].beamY = 0.41f + i; lights[i].beamLen = 0.51f + i;
+        lights[i].startRamp = i == 7 ? 0.33f : 0.0f; lights[i].beamX = 0.31f + i; lights[i].beamY = 0.41f + i; lights[i].beamLen = 0.51f + i;
     }
     FogUniformParams p{};
     p.density = 0.03f; p.glow = 1.0f; p.nearZ = 1.5f; p.farZ = 900.0f;
@@ -71,6 +71,7 @@ int main() {
     CHECK(u[8] == 60.0f && u[9] == 1.0f && u[10] == 1.0f && u[11] == 0.0f);   // extra: clear, strength, half-range flag
     CHECK(u[104] == 0.31f + 7 && u[105] == 0.41f + 7 && u[106] == 0.51f + 7);   // beams[7] tail lanes
     CHECK(u[107] == 0.0f);
+    CHECK(u[12 + 7 * 4 + 3] == 0.33f && u[12 + 3] == 0.0f);   // lights[i].w carries startRamp (0 = none)
     CHECK(u[12 + 7 * 4] == 0.10f + 7 && u[44 + 7 * 4] == 0.30f + 7 * 0.01f);     // lights[7], depthRef
 #ifdef _WIN32
     CHECK(fencesOk());
