@@ -13811,6 +13811,17 @@ static int StageObject_ExtendInteriorDoorCard(SceneNode *pNode, float extend)
                 #undef NEAR_
                 if (top < 0 || bot < 0 || topNb < 0 || botNb < 0)
                     continue;
+                // UV bounds of the original card: it samples only a small patch of its atlas, so extrapolated UVs are clamped to
+                // that patch (instead of reading unrelated atlas content beyond it).
+                float uMin = 1e9f, uMax = -1e9f, vMin = 1e9f, vMax = -1e9f;
+                int ref[4] = { top, bot, topNb, botNb };
+                for (int r = 0; r < 4; r++) {
+                    float uu = v[ref[r]].textureCoordinates[0][0], vv = v[ref[r]].textureCoordinates[0][1];
+                    if (uu < uMin) uMin = uu;
+                    if (uu > uMax) uMax = uu;
+                    if (vv < vMin) vMin = vv;
+                    if (vv > vMax) vMax = vv;
+                }
                 float dx = v[top].x - v[topNb].x;   // negative: from the neighbour toward the rear
                 float t = extend / -dx;
                 // Rear top corner: continue the neighbour->corner line (position and UV).
@@ -13826,6 +13837,14 @@ static int StageObject_ExtendInteriorDoorCard(SceneNode *pNode, float extend)
                 for (int c = 0; c < 2; c++) {
                     v[bot].textureCoordinates[c][0] += (v[bot].textureCoordinates[c][0] - v[botNb].textureCoordinates[c][0]) * tb;
                     v[bot].textureCoordinates[c][1] += (v[bot].textureCoordinates[c][1] - v[botNb].textureCoordinates[c][1]) * tb;
+                }
+                int rear[2] = { top, bot };
+                for (int r = 0; r < 2; r++) {
+                    float *uv = v[rear[r]].textureCoordinates[0];
+                    if (uv[0] < uMin) uv[0] = uMin;
+                    if (uv[0] > uMax) uv[0] = uMax;
+                    if (uv[1] < vMin) uv[1] = vMin;
+                    if (uv[1] > vMax) uv[1] = vMax;
                 }
                 Mesh_RefreshVertices(pLod);
                 moved++;

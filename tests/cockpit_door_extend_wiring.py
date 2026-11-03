@@ -11,6 +11,7 @@ need("field_0x10 != 327" in so, "only the 327-vertex Subaru cabin mesh may be to
 need(all(k in so for k in ("top < 0 || bot < 0 || topNb < 0 || botNb < 0",)), "all four reference vertices must match before anything moves")
 need(so.count("Mesh_RefreshVertices(pLod)") >= 1, "vertices must be re-uploaded")
 need("StageObject_ExtendInteriorDoorCard(g_carInteriorRoots[car]" in so, "must be called after the interior is built")
+need("uv[0] < uMin" in so and "uv[1] > vMax" in so, "extended UVs must be clamped to the original card patch")
 need("--cockpit-door-extend" in en and "video.cockpit_door_extend" in en, "CLI flag must map to the option")
 need("n>80" in en, "CLI range must be capped")
 need("--cockpit-door-extend" in rb, "rebuild.sh must pass the flag through")
