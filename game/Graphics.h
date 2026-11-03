@@ -1336,6 +1336,7 @@ private:
     friend int WindshieldGlass_DrawCrackPane(int car, int state);
     friend int WindshieldGlass_DrawSidePanes(int car, int stateSlot2, int stateSlot3);
     friend int WindshieldGlass_DrawGroupPane(int car, unsigned group, int state);
+    friend int WindshieldGlass_DrawCockpitExtension(int car);
     friend void FixMatrix_ProjectWorldPointToView(int *pOut, FixVector *pPoint, SceneNode *pView);
     friend void Graphics_DrawMeshPartsByTexture(Mesh *pMesh);
     // Draws the mesh LOD record in use with the state its flags ask for.

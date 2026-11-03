@@ -342,6 +342,10 @@ const char *WindshieldGlass_FailReason(int car);   // F10 diagnostics only
 int WindshieldGlass_ApplyDamageState(int car, int state);
 int WindshieldGlass_DrawCrackPane(int car, int state);
 int WindshieldGlass_DrawSidePanes(int car, int stateSlot2, int stateSlot3);
+struct SceneNode;
+void WindshieldGlass_SetCockpitExtension(int car, SceneNode *node, int texture, float u, float v, float x, float yTop, float yBot, float z, float slope, float floorZ0);
+void WindshieldGlass_ClearCockpitExtensions(void);
+int WindshieldGlass_DrawCockpitExtension(int car);
 void Windshield_DrawCrackPane(int view);
 int WindshieldGlass_GetInfo(int car, int *window, int *slot, unsigned *group,
                             int *damagedTexture, int *brokenTexture);

@@ -13880,6 +13880,54 @@ static int StageObject_ExtendInteriorDoorCard(SceneNode *pNode, float extend)
     return moved;
 }
 
+// video.cockpit_extend_rear: registers the original Subaru door-card rear edge (same vertex match as the door extend above, run BEFORE it
+// moves anything) with the texture of the part that draws it, so WindshieldGlass can draw continuation strips in the card's mesh space.
+static int StageObject_RegisterCockpitExtension(SceneNode *pNode, int car)
+{
+    int found = 0;
+    for (; pNode != NULL; pNode = pNode->pNext) {
+        if (pNode->type == SCENE_NODE_MESH && pNode->pObject != NULL) {
+            Mesh *pMesh = (Mesh *)pNode->pObject;
+            int lods = pMesh->lodCount > 0 ? pMesh->lodCount : 1;
+            for (int i = 0; i < lods && !found; i++) {
+                Mesh *pLod = (Mesh *)((BYTE *)pMesh + i * offsetof(Mesh, field_0x108));
+                if (pLod->pVertexData == NULL || pLod->field_0x10 != 327)
+                    continue;
+                MeshVertexF *v = (MeshVertexF *)pLod->pVertexData;
+                int n = pLod->field_0x10, top = -1, bot = -1, topNb = -1;
+                #define NEAR_(a, b) (fabsf((a) - (b)) < 0.004f)
+                for (int k = 0; k < n; k++) {
+                    if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, -0.059f) && NEAR_(v[k].y, -0.109f)) top = k;
+                    else if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, -0.059f) && NEAR_(v[k].y, -0.465f) && NEAR_(v[k].textureCoordinates[0][0], 0.533f)) bot = k;
+                    else if (NEAR_(v[k].z, 0.642f) && NEAR_(v[k].x, 0.528f) && NEAR_(v[k].y, -0.051f) && NEAR_(v[k].textureCoordinates[0][0], 0.529f)) topNb = k;
+                }
+                #undef NEAR_
+                if (top < 0 || bot < 0 || topNb < 0)
+                    continue;
+                int tex = -1;
+                for (int pi = 0; pi < pLod->partCount && pi < 50 && tex < 0; pi++) {
+                    MeshPart *pPart = pLod->pParts[pi];
+                    if (pPart == NULL || pPart->pData == NULL)
+                        continue;
+                    for (int q = 0; q < pPart->indexCount; q++)
+                        if (pPart->minIndex + pPart->pData[q] == bot) { tex = pPart->texture; break; }
+                }
+                float u = 0.5f * (v[top].textureCoordinates[0][0] + v[bot].textureCoordinates[0][0]);
+                float vv = 0.5f * (v[top].textureCoordinates[0][1] + v[bot].textureCoordinates[0][1]);
+                float slope = (v[top].y - v[topNb].y) / (v[top].x - v[topNb].x);
+                WindshieldGlass_SetCockpitExtension(car, pNode, tex, u, vv, v[top].x, v[top].y, v[bot].y, v[top].z, slope, -0.108f);
+                Sys_Log("cockpit rear extension: car %d registered door-card rear edge x %.3f, part texture %d, uv %.3f %.3f", car, v[top].x, tex, u, vv);
+                found = 1;
+            }
+        }
+        if (!found && pNode->pFirstChild != NULL)
+            found = StageObject_RegisterCockpitExtension(pNode->pFirstChild, car);
+        if (found)
+            break;
+    }
+    return found;
+}
+
 // Loads the interior (cockpit) model of a player's car and hooks its nodes
 // (steering wheel, dash, driver) into the car's scene graph.
 // FUNCTION: CMR2 0x004760a0
@@ -13929,6 +13977,8 @@ void StageObject_LoadAndAttachCarInterior(BYTE record, BYTE car)
                                                 g_carInteriorArchives);
     if (Sys_GetOption("video.cockpit_glass_fog", 1))
         StageObject_FlagInteriorGlassNoZWrite(g_carInteriorRoots[car]);
+    if (Sys_GetOption("video.cockpit_extend_rear", 0) > 0)
+        StageObject_RegisterCockpitExtension(g_carInteriorRoots[car], car);
     if (Sys_GetOption("video.cockpit_door_extend", 0) > 0) {
         int ext = Sys_GetOption("video.cockpit_door_extend", 0);
         if (ext > 80) ext = 80;
