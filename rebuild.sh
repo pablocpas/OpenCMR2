@@ -125,81 +125,12 @@ if [ "$ALL_MODS" = 1 ]; then
         if [ "$TEST_PRESET" = off ]; then ALL_MODS_PRESET=off; else ALL_MODS_PRESET="overdo,$TEST_PRESET"; fi
     fi
     [ -d "$MODS" ] || die "owned car ZIP folder not found: $MODS (use --mods-dir or CMR2_MODS_DIR)"
-    FLAGS=(
-        --asset-upgrades
-        --trees
-        shell
-        --tree-wind
-        on
-        --spectators
-        animated
-        --driver-names
-        real
-        --cars
-        205-finland-1986,subaru-spain-1996,fabia-redbull,lancer-finland-2001
-        --mods-dir
-        "$MODS"
-        --roads
-        finland1
-        --effect
-        temporal_aa=off
-        --effect
-        spatial_aa=on
-        --effect
-        metalfx_spatial=on
-        --effect
-        volumetric_clouds=off
-        --effect
-        dust_plume=on
-        --effect
-        dust_volume=on
-        --effect
-        body_dirt=on
-        --effect
-        bloom=off
-        --effect
-        particles=off
-        --effect
-        shadows=on
-        --effect
-        god_rays=on
-        --effect
-        color_grading=off
-        --effect
-        motion_blur=off
-        --effect
-        depth_of_field=off
-        --test-preset
-        "$ALL_MODS_PRESET"
-        --speed-hold
-        0
-        --effect
-        vapor_trails=on
-        --effect
-        speed_lines=off
-        --speed-fov
-        100
-        --tire-debris
-        200
-        --tire-track-length
-        1000
-        --tire-track-history
-        8
-        --drone-distance
-        50
-        --sun-glare
-        60
-        --camera-roll
-        30
-        --speed-fov-cockpit
-        25
-        --tunnel-vision
-        130
-        --tunnel-lines
-        1
-        --brush-volume
-        1
-    )
+    # The preset lives in tools/all-mods.flags (shared with the macOS app launcher).
+    FLAGS=()
+    while IFS= read -r tok; do
+        case "$tok" in ""|"#"*) continue ;; "@MODS@") tok="$MODS" ;; "@PRESET@") tok="$ALL_MODS_PRESET" ;; esac
+        FLAGS+=("$tok")
+    done < tools/all-mods.flags
     # Textures after the preset: explicit choice wins; default is uprez.
     # "original" must be passed explicitly: the game's own --asset-upgrades
     # sets uprez, and only a later explicit flag overrides it.
