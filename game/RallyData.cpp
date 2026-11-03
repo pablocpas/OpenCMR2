@@ -6187,7 +6187,11 @@ bool ReplayControls_Active(void) { return Race_GetPlayerRecordField4(0) != 0; }
 BYTE InRaceMenu_IsOpening(void);
 // A menu owns the keyboard whenever the game is in menu/pause input mode (SetInputAndGamePaused(1): the Esc pause menu, the in-race menu and its opening
 // animation). CInput::ReadKeyboardDevice reads the arrows for the menu only in that mode, so the replay camera and replay keys must not clear them then.
-static bool ReplayMenuOwnsInput(void) { return CGameInfo::IsInRaceMenuOpen() != 0 || InRaceMenu_IsOpening() != 0 || CGameInfo::IsInputAndGamePaused() != 0; }
+bool Race_PauseMenuActive(void);
+// Replay mode (game mode 4) leaves SetInputAndGamePaused at 1 for the whole replay (Race_StartArcadeScene skips its reset), so the HUD showed p1
+// with no menu open and every replay camera key was treated as menu input. While a replay plays, the flag counts only when the Esc pause menu state
+// is running or the in-race menu is open/opening; outside a replay it is unchanged.
+static bool ReplayMenuOwnsInput(void) { return CGameInfo::IsInRaceMenuOpen() != 0 || InRaceMenu_IsOpening() != 0 || (CGameInfo::IsInputAndGamePaused() != 0 && (!ReplayControls_Active() || Race_PauseMenuActive())); }
 float ReplayControls_TimeScale(void) { return ReplayControls_Active() ? g_replayControls.Scale() : 1.0f; }
 // A replay key is usable when it is not on the game's refusal list (Esc, Return, arrows, [ ], C, F1/F2 ...). Space is allowed here although the list refuses it
 // for the F10 key: replay is the one place it is free, because the recorded controls run the car and live driving keys do nothing. The same reasoning drops the

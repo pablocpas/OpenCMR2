@@ -2391,11 +2391,13 @@ void Race_EnterCurrentModeScene(CallbackStateMachine *param1, int param2)
 
 // Starts the arcade race: initialises the sound system, the replay slots and
 // the race scene, and queues the arcade music track of the current rally.
+extern bool g_racePauseMenuActive;   // defined with Race_UpdatePauseState below
 // FUNCTION: CMR2 0x0041c0e0
 void Race_StartArcadeScene(CallbackStateMachine *param1, int param2)
 {
     char buffer[MAX_PATH];
 
+    g_racePauseMenuActive = false;
     CGameInfo::SetInputAndGamePaused(0);
     if ((char)param2 == 0) {
         Sound_Init(0x5622, 2, 0x10, 1);
@@ -3980,12 +3982,17 @@ int Race_AcceptStateTransition(void);
 // Update handler of the pause state (state table 0x5190b0): runs the pause
 // menu until it closes.
 // FUNCTION: CMR2 0x0041f420
+// OpenCMR2: 1 while the Esc pause menu state is running. In replay mode (game mode 4) SetInputAndGamePaused stays 1 for the whole
+// replay, so that flag alone cannot tell "pause menu open" from "replay playing": the replay camera input uses this one instead.
+bool g_racePauseMenuActive = false;
+bool Race_PauseMenuActive(void) { return g_racePauseMenuActive; }
 void Race_UpdatePauseState(CallbackStateMachine *p, BYTE index)
 {
     DeviceInfo *pDev;
 
     if (g_unk0x00538108 != 0) {
         if (Race_AcceptStateTransition()) {
+            g_racePauseMenuActive = false;
             CGameInfo::SetInputAndGamePaused(0);
             CGame::PromoteCallbackEntryByRule(p, index, 0, 2);
             return;
@@ -3993,6 +4000,7 @@ void Race_UpdatePauseState(CallbackStateMachine *p, BYTE index)
         g_unk0x00538108 = 0;
         return;
     }
+    g_racePauseMenuActive = true;
     CGameInfo::SetInputAndGamePaused(1);
     CInput::UpdateAllAvailableDevices();
     // The race logic step (which normally runs the live tuning panel) does not run while paused: tune from here, once per pause tick.
