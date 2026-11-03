@@ -29,13 +29,15 @@ jobs:
       - run: ctest --timeout 120 --preset macos
       - name: Package zip and DMG
         run: |
+          set -o pipefail
           version="$(python3 -c "import datetime;d=datetime.datetime.utcnow();print(f'{d.year}.{d.month}.{d.day}')").${GITHUB_RUN_NUMBER}-$(git rev-parse --short=8 HEAD)"
           python3 tools/package_release.py --binary build/macos/src/opencmr2 \
             --library build/macos/src/libSDL3.0.dylib \
             --license build/macos/_deps/sdl3-src/LICENSE.txt \
             --output dist/OpenCMR2-macOS-arm64.zip
           tools/make_dmg.sh dist/OpenCMR2-macOS-arm64.zip "$version" dist
-          tools/test_macos_app.sh dist/OpenCMR2-macOS-arm64-$version.dmg
+          mkdir -p dist/shots
+          OPENCMR2_TEST_SHOTS="$PWD/dist/shots" tools/test_macos_app.sh dist/OpenCMR2-macOS-arm64-$version.dmg 2>&1 | tee dist/test-macos-app.log
           echo "built from $(git rev-parse HEAD) version $version" | tee dist/BUILD-INFO.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -44,4 +46,6 @@ jobs:
             dist/*.dmg
             dist/*.dmg.sha256
             dist/BUILD-INFO.txt
+            dist/test-macos-app.log
+            dist/shots/*.png
           if-no-files-found: error

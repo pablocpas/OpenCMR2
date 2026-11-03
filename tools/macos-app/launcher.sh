@@ -3,7 +3,7 @@
 # asks once for the user's OWN game folder and car ZIP folder, prepares a private asset pack
 # under ~/Library/Application Support/OpenCMR2 (originals are never modified, nothing is bundled
 # or uploaded), then starts the game with the same options rebuild.sh uses.
-# Test hooks: OPENCMR2_LAUNCHER_DATA / _MODS / _PRESET, OPENCMR2_LAUNCHER_NO_DIALOG=1,
+# Test hooks: OPENCMR2_LAUNCHER_DATA / _MODS (a folder or 'none') / _PRESET / _PYTHON_CANDIDATES, OPENCMR2_LAUNCHER_NO_DIALOG=1,
 # OPENCMR2_LAUNCHER_DRY_RUN=1 (print the commands, run nothing), OPENCMR2_LAUNCHER_SUPPORT=DIR.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -15,9 +15,12 @@ CONF="$SUPPORT/launcher.conf"
 mkdir -p "$SUPPORT" "$LOGDIR"
 LOG="$LOGDIR/launcher.log"
 say() { printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; printf '%s\n' "$*" >&2; }
-alert() {   # alert "text"
+alert() {   # alert "text": says what happened and offers the log; never a silent exit
     say "ALERT: $1"
-    [ "${OPENCMR2_LAUNCHER_NO_DIALOG:-0}" = 1 ] || osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "OpenCMR2" buttons {"OK"} default button 1 with icon caution' -e 'end run' "$1 (Log: $LOG)" >/dev/null 2>&1
+    [ "${OPENCMR2_LAUNCHER_NO_DIALOG:-0}" = 1 ] && return 0
+    r="$(osascript -e 'on run argv' -e 'button returned of (display dialog (item 1 of argv) with title "OpenCMR2" buttons {"Show Log", "OK"} default button "OK" with icon caution)' -e 'end run' "$1" 2>/dev/null)"
+    [ "$r" = "Show Log" ] && open -R "$LOG" >/dev/null 2>&1
+    return 0
 }
 note() { [ "${OPENCMR2_LAUNCHER_NO_DIALOG:-0}" = 1 ] || osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "OpenCMR2"' -e 'end run' "$1" >/dev/null 2>&1; say "$1"; }
 choose() {  # choose "prompt"  -> prints a folder path, or nothing when cancelled
@@ -36,27 +39,42 @@ if [ -z "$DATA" ] || [ ! -d "$DATA" ]; then
     [ -n "$DATA" ] || { alert "No game folder chosen. OpenCMR2 needs your own installation; nothing was changed."; exit 1; }
     setconf DATA_DIR "$DATA"
 fi
-if [ -z "$MODS" ] || [ ! -d "$MODS" ]; then
-    MODS="$(choose 'Choose the folder with your own car mod ZIP files (the ones the OpenCMR2 all-mods preset uses)')"
-    [ -n "$MODS" ] || { alert "No car ZIP folder chosen. The all-mods preset needs your owned car ZIPs; nothing was changed."; exit 1; }
+# Car mod ZIPs are optional: without them the preset runs without the extra cars.
+if [ -z "$MODS" ]; then
+    r="skip"
+    if [ "${OPENCMR2_LAUNCHER_NO_DIALOG:-0}" != 1 ]; then
+        r="$(osascript -e 'on run argv' -e 'button returned of (display dialog (item 1 of argv) with title "OpenCMR2" buttons {"Skip car mods", "Choose folder..."} default button "Choose folder...")' -e 'end run' 'Optional: do you have your own car mod ZIP files (used by the all-mods preset)? Without them OpenCMR2 runs with the original cars.' 2>/dev/null)"
+    fi
+    MODS=none
+    if [ "$r" = "Choose folder..." ]; then
+        m="$(choose 'Choose the folder with your own car mod ZIP files')"; [ -n "$m" ] && MODS="$m"
+    fi
     setconf MODS_DIR "$MODS"
 fi
 [ -d "$DATA" ] || { alert "Game folder not found: $DATA"; exit 1; }
-[ -d "$MODS" ] || { alert "Car ZIP folder not found: $MODS"; exit 1; }
+SKIPCARS=0
+if [ "$MODS" = none ]; then SKIPCARS=1
+elif [ ! -d "$MODS" ]; then say "Car ZIP folder not found ($MODS): running without car mods"; SKIPCARS=1
+elif ! find "$MODS" -maxdepth 1 -iname '*.zip' 2>/dev/null | grep -q .; then say "No ZIP files in $MODS: running without car mods"; SKIPCARS=1
+fi
 
 # Test preset, the same rule as rebuild.sh --all-mods.
 case "$PRESET_EXTRA" in "") PRESET=overdo ;; off) PRESET=off ;; *) PRESET="overdo,$PRESET_EXTRA" ;; esac
 FLAGS=()
+skipnext=0
 while IFS= read -r tok; do
-    case "$tok" in ""|"#"*) continue ;; "@MODS@") tok="$MODS" ;; "@PRESET@") tok="$PRESET" ;; esac
+    case "$tok" in ""|"#"*) continue ;; esac
+    if [ "$skipnext" = 1 ]; then skipnext=0; continue; fi
+    if [ "$SKIPCARS" = 1 ]; then case "$tok" in --cars|--mods-dir) skipnext=1; continue ;; esac; fi
+    case "$tok" in "@MODS@") tok="$MODS" ;; "@PRESET@") tok="$PRESET" ;; esac
     FLAGS+=("$tok")
 done < "$RES/all-mods.flags"
 FLAGS+=(--textures=uprez)
 
 # Python 3.10+ with Pillow and numpy for the asset preparation helpers (not bundled).
 pick_python() {
-    for p in "${OPENCMR2_LAUNCHER_PYTHON:-}" /opt/homebrew/bin/python3 /usr/local/bin/python3 \
-             /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/bin/python3; do
+    local cands="${OPENCMR2_LAUNCHER_PYTHON_CANDIDATES:-/opt/homebrew/bin/python3 /usr/local/bin/python3 /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/bin/python3}"
+    for p in $cands; do
         [ -n "$p" ] && [ -x "$p" ] || continue
         "$p" -c 'import sys,venv;sys.exit(0 if sys.version_info>=(3,10) else 1)' 2>/dev/null && { printf '%s' "$p"; return 0; }
     done
