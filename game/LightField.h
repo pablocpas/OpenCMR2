@@ -21,9 +21,9 @@ struct FogLightSource {
 
 extern FogLightSource g_fogLightSources[LIGHT_FIELD_MAX];
 extern int g_fogLightSourceCount;
-extern int g_fogLightDropped;       // lights this step that found the field full and were lost (diagnostic)
-extern int g_fogLightDroppedPrio;   // of those, priority lights (headlights)
-extern unsigned g_fogLightPrioMask; // bit i set: source i is a priority light
+inline int g_fogLightDropped = 0;       // lights this step that found the field full and were lost (diagnostic)
+inline int g_fogLightDroppedPrio = 0;   // of those, priority lights (headlights)
+inline unsigned g_fogLightPrioMask = 0; // bit i set: source i is a priority light
 
 inline void LightField_Clear(void) { g_fogLightSourceCount = 0; g_fogLightDropped = 0; g_fogLightDroppedPrio = 0; g_fogLightPrioMask = 0; }
 

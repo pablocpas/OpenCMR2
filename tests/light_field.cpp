@@ -5,9 +5,6 @@ static int fails;
 #define CHECK(c) do{ if(!(c)){ std::printf("FAIL %d: %s\n", __LINE__, #c); ++fails; } }while(0)
 FogLightSource g_fogLightSources[LIGHT_FIELD_MAX];
 int g_fogLightSourceCount = 0;
-int g_fogLightDropped = 0;
-int g_fogLightDroppedPrio = 0;
-unsigned g_fogLightPrioMask = 0;
 int main(){
     // Clear/add/count, cap at LIGHT_FIELD_MAX, intensity clamped, zero/negative dropped.
     LightField_Clear();

@@ -5437,9 +5437,6 @@ unsigned g_airMoteNextSeed = 0;
 int g_snowGlintNextPeak = 0;
 FogLightSource g_fogLightSources[LIGHT_FIELD_MAX];
 int g_fogLightSourceCount = 0;
-int g_fogLightDropped = 0;
-int g_fogLightDroppedPrio = 0;
-unsigned g_fogLightPrioMask = 0;
 
 // Advances every active particle by one step: age, drag, gravity, alpha, size
 // and angle ramps, floor kill or bounce (unless the type has its own update).
