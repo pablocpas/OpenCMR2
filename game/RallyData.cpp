@@ -6175,7 +6175,6 @@ void TuningPanel_Update(void)
 #include "FreeCam.h"
 #include "ReplayChaseOrbit.h"
 #include "ReplayStream.h"
-int Race_GetPlayerRecordField4(BYTE index);
 int View_GetActiveCameraMode(BYTE index);
 BYTE View_GetActiveCameraFlags(BYTE index);
 void View_SwitchCamera(BYTE view, int type, int param, BYTE target, int blend);
@@ -6327,6 +6326,9 @@ int WindscreenWiperKeyPressed(void)
 // shared option. Held keys do not toggle repeatedly; independent of dirt amount.
 void WindscreenWiper_UpdateInput(void)
 {
+    // Replay: the live wiper key must not toggle anything (W also reads as accelerate in replay). The key
+    // state is still read so a key held across the end of the replay does not fire an edge afterwards.
+    if (Race_GetPlayerRecordField4(0) != 0) { WindscreenWiperKeyPressed(); return; }
     if (!WindscreenWiperKeyPressed()) return;
     int enabled = WindscreenWiper_Toggle(Sys_GetOption("video.windscreen_wipers", 1) != 0, true);
     Sys_SetOption("video.windscreen_wipers", enabled);
