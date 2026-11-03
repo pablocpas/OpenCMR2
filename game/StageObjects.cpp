@@ -13784,6 +13784,59 @@ static void StageObject_FlagInteriorGlassNoZWrite(SceneNode *pNode)
     }
 }
 
+// video.cockpit_door_extend (OpenCMR2 prototype, default 0 = off): the Subaru Impreza 555 cockpit model (suba5.c3d) ends its driver-side door
+// card in a vertical cut at the rear (x -0.059, z +0.644, y -0.465..-0.109 in mesh space), through which the ground shows. This moves the two
+// rear vertices of that card back by N/100 units, extending their position and UV along the card's existing gradient, then re-uploads the
+// vertices. It only acts when the vertex pattern of the original card is found (so other cars and an already extended mesh are untouched).
+static int StageObject_ExtendInteriorDoorCard(SceneNode *pNode, float extend)
+{
+    int moved = 0;
+    for (; pNode != NULL; pNode = pNode->pNext) {
+        if (pNode->type == SCENE_NODE_MESH && pNode->pObject != NULL) {
+            Mesh *pMesh = (Mesh *)pNode->pObject;
+            int lods = pMesh->lodCount > 0 ? pMesh->lodCount : 1;
+            for (int i = 0; i < lods; i++) {
+                Mesh *pLod = (Mesh *)((BYTE *)pMesh + i * offsetof(Mesh, field_0x108));
+                if (pLod->pVertexData == NULL || pLod->field_0x10 != 327)
+                    continue;
+                MeshVertexF *v = (MeshVertexF *)pLod->pVertexData;
+                int n = pLod->field_0x10, top = -1, bot = -1, topNb = -1, botNb = -1;
+                #define NEAR_(a, b) (fabsf((a) - (b)) < 0.004f)
+                for (int k = 0; k < n; k++) {
+                    if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, -0.059f) && NEAR_(v[k].y, -0.109f)) top = k;
+                    else if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, -0.059f) && NEAR_(v[k].y, -0.465f) && NEAR_(v[k].ny, 0.89f) && NEAR_(v[k].textureCoordinates[0][0], 0.533f)) bot = k;
+                    else if (NEAR_(v[k].z, 0.642f) && NEAR_(v[k].x, 0.528f) && NEAR_(v[k].y, -0.051f) && NEAR_(v[k].ny, -0.01f) && NEAR_(v[k].textureCoordinates[0][0], 0.529f)) topNb = k;
+                    else if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, 0.379f) && NEAR_(v[k].y, -0.465f) && NEAR_(v[k].textureCoordinates[0][0], 0.533f)) botNb = k;
+                }
+                #undef NEAR_
+                if (top < 0 || bot < 0 || topNb < 0 || botNb < 0)
+                    continue;
+                float dx = v[top].x - v[topNb].x;   // negative: from the neighbour toward the rear
+                float t = extend / -dx;
+                // Rear top corner: continue the neighbour->corner line (position and UV).
+                v[top].x -= extend;
+                v[top].y += (v[top].y - v[topNb].y) * t;
+                for (int c = 0; c < 2; c++) {
+                    v[top].textureCoordinates[c][0] += (v[top].textureCoordinates[c][0] - v[topNb].textureCoordinates[c][0]) * t;
+                    v[top].textureCoordinates[c][1] += (v[top].textureCoordinates[c][1] - v[topNb].textureCoordinates[c][1]) * t;
+                }
+                // Rear bottom corner: the card's lower edge is horizontal; keep y, extend UV along it.
+                float tb = extend / (v[botNb].x - v[bot].x);
+                v[bot].x -= extend;
+                for (int c = 0; c < 2; c++) {
+                    v[bot].textureCoordinates[c][0] += (v[bot].textureCoordinates[c][0] - v[botNb].textureCoordinates[c][0]) * tb;
+                    v[bot].textureCoordinates[c][1] += (v[bot].textureCoordinates[c][1] - v[botNb].textureCoordinates[c][1]) * tb;
+                }
+                Mesh_RefreshVertices(pLod);
+                moved++;
+            }
+        }
+        if (pNode->pFirstChild != NULL)
+            moved += StageObject_ExtendInteriorDoorCard(pNode->pFirstChild, extend);
+    }
+    return moved;
+}
+
 // Loads the interior (cockpit) model of a player's car and hooks its nodes
 // (steering wheel, dash, driver) into the car's scene graph.
 // FUNCTION: CMR2 0x004760a0
@@ -13833,6 +13886,13 @@ void StageObject_LoadAndAttachCarInterior(BYTE record, BYTE car)
                                                 g_carInteriorArchives);
     if (Sys_GetOption("video.cockpit_glass_fog", 1))
         StageObject_FlagInteriorGlassNoZWrite(g_carInteriorRoots[car]);
+    if (Sys_GetOption("video.cockpit_door_extend", 0) > 0) {
+        int ext = Sys_GetOption("video.cockpit_door_extend", 0);
+        if (ext > 80) ext = 80;
+        int n = StageObject_ExtendInteriorDoorCard(g_carInteriorRoots[car], ext / 100.0f);
+        Sys_Log("cockpit door extend: car %d extend %d/100, %d door-card meshes changed%s", car, ext, n,
+                n == 0 ? " (original Subaru door card not found, nothing changed)" : "");
+    }
     pRow->steeringReferenceNode = SceneNode_Create(g_carInteriorRoots[car]);
     pRow->steeringRestNode = SceneNode_FindByType(g_carInteriorRoots[car], 0x1a);
     pRow->steeringBlendNode = SceneNode_FindByType(g_carInteriorRoots[car], 0x1c);
