@@ -37,14 +37,6 @@ void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason,
 }
 
 
-// 1 when the resolved front glass of this car's cockpit view is in the broken damage state (2). Cracked/damaged (1), intact (0),
-// and unresolved or video.windshield_cracks off (-1) return 0, so the wipers keep running for anything but a broken windshield.
-int Windshield_FrontGlassBroken(int slot)
-{
-    if (slot < 0 || slot >= WINDSHIELD_MAX_VIEWS) return 0;
-    return g_windshieldGlassState[slot] == 2 ? 1 : 0;
-}
-
 int StageObject_GetViewWeatherField54(int index);
 CarPartSet *StageTiming_GetCarReplayRecord(int index);
 
@@ -57,6 +49,17 @@ static const float kPivotV = 1.02f;
 static const float kBladeRadius = 0.72f;
 static const float kBladeHalfWidth = 0.05f;   // radians
 static const float kBladeMaxAngle = 1.15f;    // radians of sweep at full arc
+
+// 1 when the resolved front glass of this car is in the broken damage state (partBroken). Read straight from the car's part record, so it
+// does not depend on the visual options (video.windshield_cracks, the crack overlay). Cracked/damaged only, intact and an unresolved
+// windshield return 0, so the wipers keep running for anything but a broken windshield.
+int Windshield_FrontGlassBroken(int slot)
+{
+    int wslot = -1;
+    if (slot < 0 || slot > 1 || !WindshieldGlass_GetInfo(slot, NULL, &wslot, NULL, NULL, NULL) || wslot < 0 || wslot >= 8) return 0;
+    CarPartSet *parts = StageTiming_GetCarReplayRecord(slot);
+    return parts != NULL && parts->partBroken[wslot] != 0 ? 1 : 0;
+}
 
 // Per-frame update for one view's map. `slot` is the cockpit slot (the wiper
 // state and CIN profile tables hold two: one per split-screen cockpit view).
