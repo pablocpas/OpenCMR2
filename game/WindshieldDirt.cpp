@@ -50,6 +50,17 @@ static const float kBladeRadius = 0.72f;
 static const float kBladeHalfWidth = 0.05f;   // radians
 static const float kBladeMaxAngle = 1.15f;    // radians of sweep at full arc
 
+// 1 when the resolved front glass of this car is in the broken damage state (partBroken). Read straight from the car's part record, so it
+// does not depend on the visual options (video.windshield_cracks, the crack overlay). Cracked/damaged only, intact and an unresolved
+// windshield return 0, so the wipers keep running for anything but a broken windshield.
+int Windshield_FrontGlassBroken(int slot)
+{
+    int wslot = -1;
+    if (slot < 0 || slot > 1 || !WindshieldGlass_GetInfo(slot, NULL, &wslot, NULL, NULL, NULL) || wslot < 0 || wslot >= 8) return 0;
+    CarPartSet *parts = StageTiming_GetCarReplayRecord(slot);
+    return parts != NULL && parts->partBroken[wslot] != 0 ? 1 : 0;
+}
+
 // Per-frame update for one view's map. `slot` is the cockpit slot (the wiper
 // state and CIN profile tables hold two: one per split-screen cockpit view).
 void Windshield_UpdateView(int view, int slot)
