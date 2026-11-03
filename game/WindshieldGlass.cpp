@@ -8,6 +8,7 @@
 // Geometry lives in game/WindshieldGlass.h (unit-tested pure functions).
 
 #include "port/types.h"
+#include "WindshieldGlassSelect.h"
 #include "WindshieldGlass.h"
 #include "FixedPoint.h"
 #include "SceneNode.h"
@@ -74,11 +75,6 @@ static int WgNodePointInCarSpace(SceneNode *node, SceneNode *bodyNode, WgVec3 *o
 // the mask's low 7 bits match the triangle flag's low 7 bits, its next 7 bits
 // match flag bits 9..15. Group 0x100 is therefore flag bit 0x400 and group
 // 0x80 is flag bit 0x200; a plain flags & group is not the native test.
-static int WgTriInGroup(unsigned flags, unsigned group)
-{
-    unsigned low = group & 0x7f, high = (group >> 7) & 0x7f;
-    return (flags & low) != 0 || (high & (flags >> 9)) != 0;
-}
 
 // Finds the exterior damaged/broken glass texture ids for one triangle group
 // on the node-type-7 body mesh: the same entries the native swap selects
@@ -570,9 +566,8 @@ int WindshieldGlass_DrawCrackPane(int car, int state)
         return 0;
     }
     GfxMatrix wm;
-    const int *m = (const int *)&node->world;
     float *wf = (float *)&wm;
-    for (int i = 0; i < 16; i++) wf[i] = m[i] / 65536.0f;
+    WgWorldFromFixed((const int *)&node->world, wf);
     static int s_logged[WG_MAX_CARS];
     if (s_logged[car] != state) {
         s_logged[car] = state;
