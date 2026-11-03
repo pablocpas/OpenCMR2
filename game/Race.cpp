@@ -2391,6 +2391,7 @@ void Race_EnterCurrentModeScene(CallbackStateMachine *param1, int param2)
 
 // Starts the arcade race: initialises the sound system, the replay slots and
 // the race scene, and queues the arcade music track of the current rally.
+extern bool g_racePauseMenuActive;   // defined with Race_UpdatePauseState below
 // FUNCTION: CMR2 0x0041c0e0
 void Race_StartArcadeScene(CallbackStateMachine *param1, int param2)
 {
