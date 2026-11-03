@@ -360,6 +360,13 @@ enum {GFX_RAYS_UNKNOWN, GFX_RAYS_OFF, GFX_RAYS_ENCODED, GFX_RAYS_NO_WORLD,
    Encoded means submitted to the GPU, not proof of pixels. */
 typedef struct GfxDofStatus {int reason;float target,smooth,range,blur;float focus,carDepth;int blurMode;float carU0,carV0,carU1,carV1;} GfxDofStatus;   /* blurMode 0 peripheral, 1 whole scene except the car (SDL_GPU only), -1 requested but the car region was unavailable (peripheral used); car* = the car rectangle (uv) */ /* carDepth > 0: focus follows the car (view-space depth); 0: fixed plane */
 void Gfx_SetDofStatus(GfxDofStatus status);
+/* Diagnostic only (cockpit fog investigation): how the last fog pass recovered view distance.
+   mode: 0 no fog pass this frame, 1 single projection (true view distance), 2 ambiguous (>1 near/far pair,
+   raw-depth ramp used), 3 no usable perspective projection (raw-depth ramp used). pairs = distinct near/far
+   pairs voted by depth-writing draws; near/far = dominant pair; votes = draws behind that pair. */
+typedef struct GfxFogDepthStatus {int mode,pairs,votes;float nearZ,farZ;} GfxFogDepthStatus;
+void Gfx_SetFogDepthStatus(GfxFogDepthStatus status);
+GfxFogDepthStatus Gfx_GetFogDepthStatus(void);
 GfxDofStatus Gfx_GetDofStatus(void);
 /* Diagnostic read of the current draw state: out[0..9] = depthTest, depthWrite, depthFunc, alphaBlend, srcBlend, destBlend, alphaTest, alphaRef, fog, lighting. */
 void Gfx_GetBlendDepthState(int *out);

@@ -6778,6 +6778,20 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
                 if(Sys_GetOption("video.fog",0)==0)snprintf(text,sizeof text,"Fog: off (video.fog=0)");
                 else snprintf(text,sizeof text,"Fog: %s (amount %d%%, glow %d%%)",fogEnc?"encoded":"requested, not encoded",Sys_GetOption("video.fog_amount",65),Sys_GetOption("video.fog_glow",60));
                 line(text,fogEnc?lit:dim);
+            if(fogEnc)
+            {   // Diagnostic (cockpit fog): how the fog pass got view distance this frame, and what the flagged interior parts did.
+                // Not a pixel sample: it cannot say what depth the windscreen pixels hold. "no glass profile" above is the windscreen
+                // dirt/crack overlay and is unrelated to this classification.
+                extern unsigned g_interiorDiag[4];
+                static unsigned prev[4]={0,0,0,0},delta[4]={0,0,0,0};
+                if(memcmp(prev,g_interiorDiag,sizeof prev)!=0){for(int di=0;di<4;++di){delta[di]=g_interiorDiag[di]-prev[di];prev[di]=g_interiorDiag[di];}}
+                GfxFogDepthStatus fd=Gfx_GetFogDepthStatus();
+                const char *mode=fd.mode==1?"single projection (true distance)":fd.mode==2?"AMBIGUOUS projection (raw-depth ramp)":fd.mode==3?"no usable projection (raw-depth ramp)":"no data";
+                snprintf(text,sizeof text,"Fog depth: %s, %d near/far pair(s), dominant near %.3f far %.1f (%d draws)",mode,fd.pairs,fd.nearZ,fd.farZ,fd.votes);
+                line(text,fd.mode==1?lit:dim);
+                snprintf(text,sizeof text,"Flagged-interior draws (last change; counts, not windscreen proof): no-depth-write %u, blend-off %u, no-semi-alpha %u, batch-path meshes %u (cockpit_glass_fog=%d)",delta[0],delta[1],delta[2],delta[3],Sys_GetOption("video.cockpit_glass_fog",1));
+                line(text,delta[0]>0?lit:dim);
+            }
             }
             {
                 int al=0;unsigned ad=0;AirMote_GetStats(&al,&ad);

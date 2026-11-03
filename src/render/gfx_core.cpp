@@ -1523,6 +1523,9 @@ extern "C" GfxEffectStatus Gfx_GetEffectStatus(){return effectStatus;}
 static GfxDofStatus dofStatus={0,0,0,0,0};
 extern "C" void Gfx_SetDofStatus(GfxDofStatus status){dofStatus=status;}
 extern "C" GfxDofStatus Gfx_GetDofStatus(void){return dofStatus;}
+static GfxFogDepthStatus fogDepthStatus={};
+extern "C" void Gfx_SetFogDepthStatus(GfxFogDepthStatus status){fogDepthStatus=status;}
+extern "C" GfxFogDepthStatus Gfx_GetFogDepthStatus(void){return fogDepthStatus;}
 
 static int raysStatus=GFX_RAYS_UNKNOWN;
 extern "C" void Gfx_SetRaysStatus(int reason){raysStatus=reason;}
