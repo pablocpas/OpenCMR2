@@ -35,7 +35,7 @@ MODS="${OPENCMR2_LAUNCHER_MODS:-$(getconf MODS_DIR)}"
 PRESET_EXTRA="${OPENCMR2_LAUNCHER_PRESET:-$(getconf TEST_PRESET)}"
 
 if [ -z "$DATA" ] || [ ! -d "$DATA" ]; then
-    DATA="$(choose 'Choose the folder of your own Colin McRae Rally 2.0 installation (the folder that contains Game, FrontEnd and Sounds, or a parent folder)')"
+    DATA="$(choose 'Choose your own Colin McRae Rally 2.0 game folder')"
     [ -n "$DATA" ] || { alert "No game folder chosen. OpenCMR2 needs your own installation; nothing was changed."; exit 1; }
     setconf DATA_DIR "$DATA"
 fi
@@ -47,7 +47,7 @@ if [ -z "$MODS" ]; then
     fi
     MODS=none
     if [ "$r" = "Choose folder..." ]; then
-        m="$(choose 'Choose the folder with your own car mod ZIP files')"; [ -n "$m" ] && MODS="$m"
+        m="$(choose 'Choose your own car mod ZIP folder')"; [ -n "$m" ] && MODS="$m"
     fi
     setconf MODS_DIR "$MODS"
 fi
