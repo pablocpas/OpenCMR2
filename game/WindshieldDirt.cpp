@@ -20,6 +20,7 @@ WindshieldMap g_windshieldMaps[WINDSHIELD_MAX_VIEWS];
 // Per-view state of the resolved front glass (0 intact, 1 damaged, 2 broken,
 // -1 feature off): drives the broken-glass overlay suppression.
 static int g_windshieldGlassState[WINDSHIELD_MAX_VIEWS];
+static int g_windshieldSideState[2][2];   // [view][slot 2/3]: 0 intact, 1 damaged, 2 broken
 // F10 diagnostics: how often the overlay draw was reached and actually drawn per view, and the last gating reason
 // (0 drawing, 1 broken glass, 2 no dirt). Counters only; no behaviour change.
 static unsigned g_wsDrawCalls[WINDSHIELD_MAX_VIEWS], g_wsDrawn[WINDSHIELD_MAX_VIEWS];
@@ -78,6 +79,8 @@ void Windshield_UpdateView(int view, int slot)
                 diagDamaged = parts->partDamaged[wslot] != 0;
                 glassState = diagBroken ? 2 : diagDamaged ? 1 : 0;
                 WindshieldGlass_ApplyDamageState(slot, glassState);
+                for (int sw = 0; sw < 2; sw++)   // side window damage slots 2 and 3
+                    g_windshieldSideState[slot][sw] = parts->partBroken[2 + sw] != 0 ? 2 : parts->partDamaged[2 + sw] != 0 ? 1 : 0;
             }
         }
     }
@@ -203,8 +206,11 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
 void Windshield_DrawCrackPane(int view)
 {
     int mview = view & (WINDSHIELD_MAX_VIEWS - 1);
-    if (mview < 2)
+    if (mview < 2) {
         WindshieldGlass_DrawCrackPane(mview, g_windshieldGlassState[mview]);
+        if (g_windshieldGlassState[mview] >= 0)
+            WindshieldGlass_DrawSidePanes(mview, g_windshieldSideState[mview][0], g_windshieldSideState[mview][1]);
+    }
 }
 
 void Windshield_ResetAll(void)
