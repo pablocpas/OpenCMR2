@@ -20,5 +20,5 @@ need("uniforms[2] = speedStreakClock;" in g and "? speedStreakSmooth : 0.0f;" in
 x = rd("src/render/gl_effects_executor.h")
 need("speedStreakClock, speedStreakSmooth}" in x, "GL must feed time and strength")
 need("speedStreakClock" in rd("src/render/gfx_gl.cpp"), "GL member missing")
-need('"video.speed_lines", 0, 1, 1, 1' in rd("game/TuningPanel.h"), "one on/off row for the lines, default on (user asked for an independent toggle)")
+need('"video.speed_lines", 0, 1, 1, 0' in rd("game/TuningPanel.h"), "one on/off row for the lines, default off per the tuned defaults (user asked for an independent toggle)")
 print("speed lines wiring ok" if ok else "FAILED"); sys.exit(0 if ok else 1)

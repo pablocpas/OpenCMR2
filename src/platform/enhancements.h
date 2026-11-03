@@ -163,13 +163,13 @@ struct EnhancementOptions {
             std::string part=testPreset.substr(begin,i-begin);begin=i+1;
             if(part=="overdo"){
                 static const std::pair<const char*,int> kOverdo[]={{"video.speed_motes",0},
-                    {"video.speed_fov",40},{"video.speed_fov_hold",1},{"video.depth_of_field",1},{"video.dof_blur",100},{"video.dof_blur_max_px",16},{"video.tunnel_vision",130},{"video.tunnel_lines",1},{"video.motion_blur",1},{"video.motion_blur_amount",60},{"video.speed_streak",100},{"video.dof_focus_car",1}};
+                    {"video.speed_fov",100},{"video.speed_fov_hold",1},{"video.depth_of_field",0},{"video.dof_blur",100},{"video.dof_blur_max_px",16},{"video.tunnel_vision",130},{"video.tunnel_lines",1},{"video.motion_blur",0},{"video.motion_blur_amount",60},{"video.speed_streak",100},{"video.dof_focus_car",1}};
                 for(auto&e:kOverdo)if(!overrides.count(e.first))overrides[e.first]=e.second;
             } else if(part=="atmosphere"){
                 // The requested exaggerated atmosphere starting look, separate from overdo so
                 // --all-mods keeps its established appearance. Per launch, nothing saved.
                 static const std::pair<const char*,int> kAtmosphere[]={
-                    {"video.fog",1},{"video.fog_amount",65},{"video.fog_glow",100},{"video.fog_clear",60},{"video.fog_lights",100},{"video.fog_spatial",1},{"video.fog_evolve",60},{"video.air_motes",1},{"video.air_motes_amount",500},{"video.snow_glint",100},
+                    {"video.fog",1},{"video.fog_amount",65},{"video.fog_glow",100},{"video.fog_clear",60},{"video.fog_lights",40},{"video.fog_spatial",1},{"video.fog_evolve",60},{"video.air_motes",1},{"video.air_motes_amount",500},{"video.snow_glint",100},
                     {"video.god_rays",1},{"video.god_rays_amount",80}};
                 for(auto&e:kAtmosphere)if(!overrides.count(e.first))overrides[e.first]=e.second;
             }
@@ -237,9 +237,9 @@ inline const char *EnhancementHelp(){return
 "                              camera reprojection, no object velocity), default off.\n"
 "  --speed-fov 0..500          Widen the regular cameras' view with speed (percent); default 0 = off\n"
 "  --drone-speed-drop 0..100    Drone height reduction at speed (default 100, 0 disables)\n"
-"  --drone-distance 50..150     Drone camera distance (default 60; saved locked preset wins)\n"
-"  --sun-glare 0..100          Restrained sun halo/eye response;0 off (default), capped for readability\n"
-"  --camera-roll 0..100        Optional damped corner roll for drone/chase, default 0 (off), 100 = up to four degrees\n"
+"  --drone-distance 50..150     Drone camera distance (default 50; saved locked preset wins)\n"
+"  --sun-glare 0..100          Restrained sun halo/eye response;0 off, default 60, capped for readability\n"
+"  --camera-roll 0..100        Optional damped corner roll for drone/chase, default 30, 100 = up to four degrees\n"
 "  --speed-fov-cockpit 0..100  Cockpit camera: share of --speed-fov it uses, percent (default 25; overrides opencmr2.ini)\n"
 "  --tunnel-vision 0..200      Tunnel vision strength, percent (default 130; overrides opencmr2.ini; --test-preset overdo sets 130 too)\n"
 "  --brush-volume 0|1          EXPERIMENTAL Greece1 roadside brush walls get depth away from the road (visual only, collision unchanged, needs --textures uprez/asset pack; default 0 = original flat quads; real-stage direction not yet verified)\n"

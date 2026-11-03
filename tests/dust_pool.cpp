@@ -5,7 +5,9 @@
 extern int g_particleCount,g_particleTypeCount,g_nextParticle;
 extern Particle *g_particles;
 extern ParticleType *g_particleTypes;
+extern "C" void Sys_SetOptionTemporary(const char *name, int value);
 int main(){
+ Sys_SetOptionTemporary("video.dust_plume_amount",200);   // the test pins the 200 cap maths; the built-in default is now the tuned 300
  Particle pool[400]={};ParticleType types[33]={};
  g_particles=pool;g_particleTypes=types;g_particleCount=400;g_particleTypeCount=33;g_nextParticle=0;
  types[DUST_PLUME_TYPE].flags=1;types[DUST_PLUME_TYPE].lifetime=DUST_PLUME_LIFE<<16;

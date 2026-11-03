@@ -63,8 +63,8 @@ int main(int argc,char **argv){
    FrontendMenu_DrawAdvancedGraphicsOptions(amounts);if(out){fclose(out);out=nullptr;}
    for(unsigned i=0;i<g_spriteCount1;i++){auto r=g_spriteLayer1[i].dst;if(r.y<80||r.y+r.h>=384||r.x+r.w>640)++fail;}
  }
- amounts->cursor=0;Menu_Update(amounts,2);Menu_Update(amounts,0);if(amounts->items[0].max!=17)++fail;
- amounts->items[0].max=35;Menu_Update(amounts,2);Menu_Update(amounts,0);if(amounts->items[0].max!=35)++fail;
+ amounts->cursor=0;Menu_Update(amounts,2);Menu_Update(amounts,0);if(amounts->items[0].max!=61)++fail;
+ amounts->items[0].max=100;Menu_Update(amounts,2);Menu_Update(amounts,0);if(amounts->items[0].max!=100)++fail;
  {Menu*atmo=FrontendMenu_GetAtmosphereAmounts(amounts);if(atmo->itemCount!=15||atmo->pParent!=amounts)++fail;
   if(std::strcmp(atmo->items[0].text,"Fog (0/1)")||std::strcmp(atmo->items[4].text,"Fog light response % (head/rear lights)")||std::strcmp(atmo->items[9].text,"Air motes amount %")||std::strcmp(atmo->items[10].text,"Air motes cockpit size %")||std::strcmp(atmo->items[11].text,"Snow glints % (banks + falling flakes)")||std::strcmp(atmo->items[12].text,"Fog through windscreen glass (0/1)"))++fail;
   for(int i=0;i<13;i++)if(atmo->items[i].value!=0x40+i)++fail;   // 13 data rows; item 13 is the OK row

@@ -23,7 +23,7 @@ need("SHADER_CODE(speedstreak_frag)" in g and "encoded|=256" in g, "pass not wir
 need(re.search(r"SpeedStreakPipeline\(\), gradingTarget", g) is not None, "streak must write gradingTarget")
 need("streakApplied ? godRaysBuf1 : gradingTarget" in g, "grading must not write its own input")
 need("Gfx_SetSpeedStreak(SpeedStreak_Strength(" in rd("game/Race.cpp") and 'Sys_GetOption("video.speed_streak", 0)' in rd("game/Race.cpp"), "per-tick feed missing or default not 0")
-need('"video.speed_streak", 0, 100, 10, 0' in rd("game/TuningPanel.h"), "panel row missing or default not 0")
+need('"video.speed_streak", 0, 100, 10, 100' in rd("game/TuningPanel.h"), "panel row missing or default not 0")
 need("Speed streak:" in rd("game/RallyData.cpp"), "overlay line missing")
 x = rd("src/render/gl_effects_executor.h")
 need("g_speedstreak_frag_glsl" in x and '"SpeedStreakUniforms"' in x and "run(10, 0, u, sizeof(u))" in x, "GL streak pass not wired")
