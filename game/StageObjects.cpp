@@ -9236,6 +9236,7 @@ void CarInterior_AnimateWipers(int index)
 
 // Rain intensity selects slow/fast wiper steps. Mode 1 finishes the current
 // sweep; angle and step keep their signed-short overflow and strict limits.
+int Windshield_FrontGlassBroken(int slot);   // WindshieldDirt.cpp
 // FUNCTION: CMR2 0x00476c70
 void CarInterior_UpdateWiperSweep(int index)
 {
@@ -9243,7 +9244,8 @@ void CarInterior_UpdateWiperSweep(int index)
 
     // The 3D cockpit blades must obey the same control as the dirt overlay.
     // Off finishes the current sweep and parks. Rain must not restart it.
-    if (Sys_GetOption("video.windscreen_wipers", 1) == 0) {
+    // The front glass is broken (damage state 2, not merely cracked): the blades stop after finishing the current sweep.
+    if (Sys_GetOption("video.windscreen_wipers", 1) == 0 || Windshield_FrontGlassBroken(index)) {
         if (g_carWiperStates[index].angle == 0) {
             g_carWiperStates[index].mode = 0;
             g_carWiperStates[index].sweepingForward = 1;

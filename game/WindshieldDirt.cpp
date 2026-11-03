@@ -37,6 +37,14 @@ void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason,
 }
 
 
+// 1 when the resolved front glass of this car's cockpit view is in the broken damage state (2). Cracked/damaged (1), intact (0),
+// and unresolved or video.windshield_cracks off (-1) return 0, so the wipers keep running for anything but a broken windshield.
+int Windshield_FrontGlassBroken(int slot)
+{
+    if (slot < 0 || slot >= WINDSHIELD_MAX_VIEWS) return 0;
+    return g_windshieldGlassState[slot] == 2 ? 1 : 0;
+}
+
 int StageObject_GetViewWeatherField54(int index);
 CarPartSet *StageTiming_GetCarReplayRecord(int index);
 
