@@ -8,6 +8,7 @@
 // Geometry lives in game/WindshieldGlass.h (unit-tested pure functions).
 
 #include "port/types.h"
+#include "WindshieldGlassSelect.h"
 #include "WindshieldGlass.h"
 #include "FixedPoint.h"
 #include "SceneNode.h"
@@ -18,6 +19,8 @@
 #include "StageBlock.h"
 #include "GraphicsOptions.h"
 #include "port/sys.h"
+#include "port/gfx.h"
+#include "Graphics.h"
 #include <cstdio>
 #include <cmath>
 
@@ -68,6 +71,11 @@ static int WgNodePointInCarSpace(SceneNode *node, SceneNode *bodyNode, WgVec3 *o
     return 1;
 }
 
+// Same group test as Game_SetTriangleField2CByGroup (the native damage swap):
+// the mask's low 7 bits match the triangle flag's low 7 bits, its next 7 bits
+// match flag bits 9..15. Group 0x100 is therefore flag bit 0x400 and group
+// 0x80 is flag bit 0x200; a plain flags & group is not the native test.
+
 // Finds the exterior damaged/broken glass texture ids for one triangle group
 // on the node-type-7 body mesh: the same entries the native swap selects
 // (StageObject_SetModelSubmeshVisibility: damaged -> 3, broken -> 5).
@@ -84,7 +92,7 @@ static int WgExteriorGlassTextures(int car, unsigned group, int *damaged, int *b
         return 0;
     for (int t = 0; t < pMesh->triangleCount; t++) {
         MeshTriangle *pTri = &pMesh->pTriangles[t];
-        if ((pTri->flags & group) == 0)
+        if (!WgTriInGroup(pTri->flags, group))
             continue;
         if (pTri->textures[3] > -1 && pTri->textures[5] > -1) {
             *damaged = pTri->textures[3];
@@ -480,12 +488,118 @@ int WindshieldGlass_SetupCar(int car)
         WgDiagnoseInterior(g_carInteriorRoots[car], pCar->pBodyNode, car, &front, stats);
         Sys_Log("windshield glass: diag car %d lods=%d underBody=%d blendMeshes=%d semiParts=%d",
                 car, stats[0], stats[1], stats[2], stats[3]);
+        if (Sys_GetOption("video.windshield_crack_overlay", 0) != 0) {
+            // The interior model has no glass pane to retexture (the Subaru cockpit
+            // is open at the windscreen). Keep the resolved front window and its
+            // damage textures: WindshieldGlass_DrawCrackOverlay draws them on the
+            // projected window quad instead.
+            g_wgFailReason[car] = "overlay pending";
+            return g_wgInfo[car].window;
+        }
         g_wgInfo[car].resolved = -1;
         g_wgFailReason[car] = "no interior glass part";
         return -1;
     }
     Sys_Log("windshield glass: car %d selected %d interior glass parts", car, g_wgGlassPartCount[car]);
     return g_wgInfo[car].window;
+}
+
+// ---- world-space crack pane (video.windshield_crack_overlay, default off) ----
+// Cockpits whose interior model has no glass part (see "no interior glass part")
+// get the car's own exterior front-glass triangles drawn again in the 3D pass:
+// the same vertices, UVs and node transform the body mesh uses, with the
+// damaged/broken texture the native swap would select (textures[3] / [5] of the
+// triangle), alpha blended with depth test on and depth write off, so the dash,
+// pillars and mirror hide it through the real depth buffer. The glass is the
+// inner face set (flag 0x8000 clear), the one that faces the cockpit; the 0x8000
+// faces are the outer set. Nothing is derived from the CIN window quad except
+// the window/group choice the resolver already made.
+int WindshieldGlass_DrawCrackPane(int car, int state)
+{
+    if (state < 1 || Sys_GetOption("video.windshield_crack_overlay", 0) == 0)
+        return 0;
+    if (car < 0 || car >= WG_MAX_CARS || g_wgInfo[car].resolved != 1 || g_wgGlassPartCount[car] != 0)
+        return 0;   // not this cockpit's problem: the interior glass parts handle it
+    CarPartSet *pParts = StageTiming_GetCarReplayRecord(car);
+    int mi = pParts != NULL ? StageTiming_FindModelPartByNodeType(7, pParts) : -1;
+    Mesh *pMesh = mi >= 0 ? pParts->geometry.meshes[mi] : NULL;
+    SceneNode *node = mi >= 0 ? pParts->geometry.nodes[mi] : NULL;
+    if (pMesh == NULL || node == NULL || pMesh->pVertexData == NULL || pMesh->pTriangles == NULL) {
+        g_wgFailReason[car] = "overlay: no exterior body mesh";
+        return 0;
+    }
+    const MeshVertexF *verts = (const MeshVertexF *)pMesh->pVertexData;
+    enum { MAXT = 24 };
+    GfxVertex gv[MAXT * 3];
+    int tex[MAXT];
+    int nt = 0, pureSeen = 0;
+    for (int pass = 0; pass < 2 && nt == 0; pass++) {   // inner faces first, any face as the fallback
+        for (int t = 0; t < pMesh->triangleCount && nt < MAXT; t++) {
+            MeshTriangle *tri = &pMesh->pTriangles[t];
+            if (!WgTriInGroup(tri->flags, g_wgInfo[car].group))
+                continue;
+            if (pass == 0 && (tri->flags & 0x8000) != 0)
+                continue;
+            int tx = tri->textures[state >= 2 ? 5 : 3];
+            if (tx < 0 || tx >= 2048 || CGraphics::GetTextureBuffer()[tx] == NULL ||
+                CGraphics::GetTextureBuffer()[tx]->pSurface == NULL)
+                continue;
+            int ok = 1;
+            for (int k = 0; k < 3; k++)
+                if (tri->vertexIndex[k] >= pMesh->field_0x10) ok = 0;
+            if (!ok) continue;
+            for (int k = 0; k < 3; k++) {
+                const MeshVertexF *v = &verts[tri->vertexIndex[k]];
+                GfxVertex *o = &gv[nt * 3 + k];
+                o->x = v->x; o->y = v->y; o->z = v->z;
+                o->nx = v->nx; o->ny = v->ny; o->nz = v->nz;
+                o->diffuse = 0xffffffff; o->specular = 0;
+                o->u0 = v->textureCoordinates[0][0]; o->v0 = v->textureCoordinates[0][1];
+                o->u1 = 0; o->v1 = 0;
+            }
+            tex[nt++] = tx;
+            if (pass == 0) pureSeen = 1;
+        }
+    }
+    if (nt == 0) {
+        g_wgFailReason[car] = "overlay: no drawable exterior glass triangles";
+        return 0;
+    }
+    GfxMatrix wm;
+    float *wf = (float *)&wm;
+    WgWorldFromFixed((const int *)&node->world, wf);
+    static int s_logged[WG_MAX_CARS];
+    if (s_logged[car] != state) {
+        s_logged[car] = state;
+        Sys_Log("windshield glass: car %d crack pane state %d: %d triangles (%s faces), texture %d, group 0x%x, node world pos (%.2f %.2f %.2f)",
+                car, state, nt, pureSeen ? "inner" : "fallback", tex[0], g_wgInfo[car].group,
+                wf[12], wf[13], wf[14]);
+    }
+    Gfx_PushState();
+    Gfx_SetTransform(GFX_TRANSFORM_WORLD, &wm);
+    Gfx_SetLighting(FALSE);
+    Gfx_SetDepthTest(TRUE);
+    Gfx_SetDepthWrite(FALSE);
+    Gfx_SetCullMode(GFX_CULL_NONE);
+    Gfx_SetAlphaBlend(TRUE);
+    Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA);
+    Gfx_SetDestBlend(GFX_BLEND_INVSRCALPHA);
+    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageAlphaOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageAlphaArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageAlphaArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    for (int t = 0; t < nt; t++) {
+        Gfx_SetTexture(0, CGraphics::GetTextureBuffer()[tex[t]]->pSurface);
+        Gfx_DrawPrimitive(GFX_TRIANGLELIST, &gv[t * 3], 3);
+    }
+    Gfx_SetTexture(0, NULL);
+    Gfx_PopState();
+    g_wgFailReason[car] = "overlay drawn";
+    return 1;
 }
 
 // Second attempt for cars whose first setup hit a transient miss (resolved == 0:

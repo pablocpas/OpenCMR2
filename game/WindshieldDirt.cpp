@@ -197,6 +197,16 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     Gfx_SetTexture(0, NULL);
 }
 
+// Called from the 3D pass of a cockpit view (Game_DrawSceneViewport) so the
+// crack pane is depth tested against the interior. The state is the one the
+// previous frame's Windshield_UpdateView left.
+void Windshield_DrawCrackPane(int view)
+{
+    int mview = view & (WINDSHIELD_MAX_VIEWS - 1);
+    if (mview < 2)
+        WindshieldGlass_DrawCrackPane(mview, g_windshieldGlassState[mview]);
+}
+
 void Windshield_ResetAll(void)
 {
     for (int i = 0; i < WINDSHIELD_MAX_VIEWS; i++)
