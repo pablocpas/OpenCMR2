@@ -625,6 +625,90 @@ int WindshieldGlass_DrawGroupPane(int car, unsigned group, int state)
     return 1;
 }
 
+// ---- cockpit rear extension (video.cockpit_extend_rear, default 0 = off) --------------------
+// The Subaru interior model stops behind the driver. This draws extra strips continuing the
+// driver-side door card rearward and the floor, in the same mesh space as the real door card
+// (registered at interior load from the card's own vertices and its own texture/UV patch).
+// The UV patch of the door card is a smooth blue gradient (u 0.49-0.53, v 0.81-0.84 of texture 1),
+// so the strips sample that patch: this is a stretched gradient, not a repeating pattern.
+struct WgCockpitExt {
+    int active;
+    SceneNode *node;
+    int texture;            // interior part texture id (index into the texture buffer)
+    float u, v;             // centre of the door-card UV patch
+    float x, yTop, yBot, z; // rear edge of the door card (mesh space)
+    float slope;            // dy/dx of the card's top edge
+    float floorZ0;          // floor strip inner z (the other floor edge)
+};
+static WgCockpitExt g_wgCockpitExt[WG_MAX_CARS];
+
+void WindshieldGlass_SetCockpitExtension(int car, SceneNode *node, int texture, float u, float v,
+                                         float x, float yTop, float yBot, float z, float slope, float floorZ0)
+{
+    if (car < 0 || car >= WG_MAX_CARS)
+        return;
+    WgCockpitExt *e = &g_wgCockpitExt[car];
+    e->active = node != NULL && texture >= 0;
+    e->node = node; e->texture = texture; e->u = u; e->v = v;
+    e->x = x; e->yTop = yTop; e->yBot = yBot; e->z = z; e->slope = slope; e->floorZ0 = floorZ0;
+}
+
+void WindshieldGlass_ClearCockpitExtensions(void)
+{
+    for (int i = 0; i < WG_MAX_CARS; i++)
+        g_wgCockpitExt[i].active = 0;
+}
+
+int WindshieldGlass_DrawCockpitExtension(int car)
+{
+    int len = Sys_GetOption("video.cockpit_extend_rear", 0);
+    if (len <= 0 || car < 0 || car >= WG_MAX_CARS || !g_wgCockpitExt[car].active)
+        return 0;
+    WgCockpitExt *e = &g_wgCockpitExt[car];
+    Texture *tx = (e->texture < 2048) ? CGraphics::GetTextureBuffer()[e->texture] : NULL;
+    if (tx == NULL || tx->pSurface == NULL)
+        return 0;
+    if (len > 150) len = 150;
+    float L = len / 100.0f;
+    float xr = e->x - L;
+    float yTopR = e->yTop + e->slope * (xr - e->x);
+    // Door strip (vertical, plane z) then floor strip (plane yBot).
+    float P[12][3] = {
+        {e->x, e->yTop, e->z}, {xr, yTopR, e->z}, {xr, e->yBot, e->z},
+        {e->x, e->yTop, e->z}, {xr, e->yBot, e->z}, {e->x, e->yBot, e->z},
+        {e->x, e->yBot, e->z}, {xr, e->yBot, e->z}, {xr, e->yBot, e->floorZ0},
+        {e->x, e->yBot, e->z}, {xr, e->yBot, e->floorZ0}, {e->x, e->yBot, e->floorZ0}};
+    GfxVertex gv[12];
+    for (int k = 0; k < 12; k++) {
+        GfxVertex *o = &gv[k];
+        o->x = P[k][0]; o->y = P[k][1]; o->z = P[k][2];
+        o->nx = 0; o->ny = (k >= 6) ? 1.0f : 0.0f; o->nz = (k >= 6) ? 0.0f : -1.0f;
+        o->diffuse = 0xffc0c0c0; o->specular = 0;
+        o->u0 = e->u; o->v0 = e->v; o->u1 = 0; o->v1 = 0;
+    }
+    GfxMatrix wm;
+    float *wf = (float *)&wm;
+    WgWorldFromFixed((const int *)&e->node->world, wf);
+    Gfx_PushState();
+    Gfx_SetTransform(GFX_TRANSFORM_WORLD, &wm);
+    Gfx_SetLighting(FALSE);
+    Gfx_SetDepthTest(TRUE);
+    Gfx_SetDepthWrite(TRUE);
+    Gfx_SetCullMode(GFX_CULL_NONE);
+    Gfx_SetAlphaBlend(FALSE);
+    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageAlphaOp(0, GFX_TOP_DISABLE);
+    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    Gfx_SetTexture(0, tx->pSurface);
+    Gfx_DrawPrimitive(GFX_TRIANGLELIST, gv, 12);
+    Gfx_SetTexture(0, NULL);
+    Gfx_PopState();
+    return 1;
+}
+
 // Second attempt for cars whose first setup hit a transient miss (resolved == 0:
 // no glass profile / no damage textures yet). Called once after StageObjects_Init,
 // when CarEffects_Init has filled its tables and the car part sets exist. Cars that
@@ -643,6 +727,7 @@ void WindshieldGlass_RetryPending(void)
 
 void WindshieldGlass_ResetCache(void)
 {
+    WindshieldGlass_ClearCockpitExtensions();
     WindshieldGlass_RestoreAll();
     for (int i = 0; i < WG_MAX_CARS; i++) {
         g_wgInfo[i].resolved = 0;
