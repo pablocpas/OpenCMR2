@@ -13804,8 +13804,8 @@ static int StageObject_ExtendInteriorDoorCard(SceneNode *pNode, float extend)
                 #define NEAR_(a, b) (fabsf((a) - (b)) < 0.004f)
                 for (int k = 0; k < n; k++) {
                     if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, -0.059f) && NEAR_(v[k].y, -0.109f)) top = k;
-                    else if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, -0.059f) && NEAR_(v[k].y, -0.465f) && NEAR_(v[k].ny, 0.89f) && NEAR_(v[k].textureCoordinates[0][0], 0.533f)) bot = k;
-                    else if (NEAR_(v[k].z, 0.642f) && NEAR_(v[k].x, 0.528f) && NEAR_(v[k].y, -0.051f) && NEAR_(v[k].ny, -0.01f) && NEAR_(v[k].textureCoordinates[0][0], 0.529f)) topNb = k;
+                    else if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, -0.059f) && NEAR_(v[k].y, -0.465f) && NEAR_(v[k].textureCoordinates[0][0], 0.533f)) bot = k;   // no normal test: ny is 0.894 here, on the tolerance edge
+                    else if (NEAR_(v[k].z, 0.642f) && NEAR_(v[k].x, 0.528f) && NEAR_(v[k].y, -0.051f) && NEAR_(v[k].textureCoordinates[0][0], 0.529f)) topNb = k;
                     else if (NEAR_(v[k].z, 0.644f) && NEAR_(v[k].x, 0.379f) && NEAR_(v[k].y, -0.465f) && NEAR_(v[k].textureCoordinates[0][0], 0.533f)) botNb = k;
                 }
                 #undef NEAR_
@@ -13822,6 +13822,11 @@ static int StageObject_ExtendInteriorDoorCard(SceneNode *pNode, float extend)
                     if (vv < vMin) vMin = vv;
                     if (vv > vMax) vMax = vv;
                 }
+                // The card is duplicated: other vertices share the rear corner positions with a second UV set (e.g. the second
+                // triangle pair at the same corners). Remember the originals so those copies move with the corners.
+                float topX = v[top].x, topY = v[top].y, topZ = v[top].z, botX = v[bot].x, botY = v[bot].y, botZ = v[bot].z;
+                float topU0 = v[top].textureCoordinates[0][0], topV0 = v[top].textureCoordinates[0][1];
+                float botU0 = v[bot].textureCoordinates[0][0], botV0 = v[bot].textureCoordinates[0][1];
                 float dx = v[top].x - v[topNb].x;   // negative: from the neighbour toward the rear
                 float t = extend / -dx;
                 // Rear top corner: continue the neighbour->corner line (position and UV).
@@ -13845,6 +13850,25 @@ static int StageObject_ExtendInteriorDoorCard(SceneNode *pNode, float extend)
                     if (uv[0] > uMax) uv[0] = uMax;
                     if (uv[1] < vMin) uv[1] = vMin;
                     if (uv[1] > vMax) uv[1] = vMax;
+                }
+                {   // coincident copies of the two rear corners: same position change, same UV change, clamped to the card patch
+                    #define NEAR_(a, b) (fabsf((a) - (b)) < 0.0015f)
+                    float dTopX = v[top].x - topX, dTopY = v[top].y - topY, dTopU = v[top].textureCoordinates[0][0] - topU0, dTopV = v[top].textureCoordinates[0][1] - topV0;
+                    float dBotX = v[bot].x - botX, dBotU = v[bot].textureCoordinates[0][0] - botU0, dBotV = v[bot].textureCoordinates[0][1] - botV0;
+                    for (int k = 0; k < n; k++) {
+                        if (k == top || k == bot) continue;
+                        float *uv = v[k].textureCoordinates[0];
+                        if (NEAR_(v[k].x, topX) && NEAR_(v[k].y, topY) && NEAR_(v[k].z, topZ)) {
+                            v[k].x += dTopX; v[k].y += dTopY; uv[0] += dTopU; uv[1] += dTopV;
+                        } else if (NEAR_(v[k].x, botX) && NEAR_(v[k].y, botY) && NEAR_(v[k].z, botZ)) {
+                            v[k].x += dBotX; uv[0] += dBotU; uv[1] += dBotV;
+                        } else continue;
+                        if (uv[0] < uMin) uv[0] = uMin;
+                        if (uv[0] > uMax) uv[0] = uMax;
+                        if (uv[1] < vMin) uv[1] = vMin;
+                        if (uv[1] > vMax) uv[1] = vMax;
+                    }
+                    #undef NEAR_
                 }
                 Mesh_RefreshVertices(pLod);
                 moved++;
