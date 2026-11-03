@@ -142,6 +142,9 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
             if (endZ < 1.0039f) endZ = 1.0039f;   // LightField_ClipBeamToNearPlane's plane
             float d = (proj43 < 0.0f && hasBeam && lampIn) ? proj33 + proj43 / endZ : 0.0f;
             fl->beamEndRef = (d > 1.0f ? 1.0f : (d < 0.0f ? 0.0f : d)); }
+        // Lamp at/behind the near plane (bonnet, bumper, car-mounted cameras): the anchor is the beam's near-plane crossing, which showed as two
+        // bright spots beside the camera. Fade the wedge in over a third of the screen height from there.
+        fl->startRamp = lampIn ? 0.0f : 0.33f;
         fl->intensity = src->intensity / 65536.0f;
         fl->r = src->r / 65536.0f;
         fl->g = src->g / 65536.0f;
