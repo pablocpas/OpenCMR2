@@ -7077,6 +7077,22 @@ void Graphics_BindCarPaintDirt(Texture *texture){
 // (windscreen glass) is drawn without depth writes; fully opaque parts of the
 // same mesh keep writing depth. Mesh flag 0x8 (alpha blending enabled for the
 // mesh) is required - without blending the alpha would not show anyway.
+// Diagnostic only (cockpit fog investigation). Counts draws of meshes carrying MESH_FLAG_GLASS_NO_ZWRITE (set on every
+// mesh of the interior model when video.cockpit_glass_fog is on), by what the draw path did with them. These are draw
+// counts per path, NOT a per-pixel or per-material classification: they cannot say which interior part is the windscreen,
+// and meshes that are not flagged (anything outside the interior model) are not counted at all.
+//   noZParts       part drawn with depth writes off (mesh flag 0x8 set and the part has alpha 1..249 vertices)
+//   flagBlendOff   part of a flagged mesh whose mesh flag 0x8 (alpha blending) is clear: keeps writing depth
+//   flagOpaqueAlpha part of a flagged mesh with 0x8 set but no vertex alpha in 1..249: keeps writing depth
+//   batchMeshes    whole flagged meshes drawn by Graphics_DrawMeshTextureBatches, which does not apply the glass rule
+unsigned g_interiorDiag[4] = {0, 0, 0, 0};
+static inline void Graphics_CountInteriorGlassPart(const Mesh *pMesh, bool glassNoZ)
+{
+    if (!(pMesh->flags & MESH_FLAG_GLASS_NO_ZWRITE)) return;
+    if (glassNoZ) g_interiorDiag[0]++;
+    else if (!(pMesh->flags & 0x8u)) g_interiorDiag[1]++;
+    else g_interiorDiag[2]++;
+}
 static bool Graphics_PartHasSemiTransparentAlpha(Mesh *pMesh, MeshPart *pPart)
 {
     if (pMesh->pVertexData == NULL || pPart->pData == NULL || pPart->indexCount <= 0)
@@ -7109,6 +7125,7 @@ void Graphics_DrawMeshPartsByTexture(Mesh *pMesh)
             Graphics_BindCarPaintDirt(CGraphics::m_pTextureManager->textureBuffer[pPart->texture]);
             bool glassNoZ = (pMesh->flags & (MESH_FLAG_GLASS_NO_ZWRITE | 0x8u)) == (MESH_FLAG_GLASS_NO_ZWRITE | 0x8u) &&
                             Graphics_PartHasSemiTransparentAlpha(pMesh, pPart);
+            Graphics_CountInteriorGlassPart(pMesh, glassNoZ);
             if (glassNoZ) CGraphics::SetZWriteEnable(0);
             if(!SceneryPack_DrawFixedPart(pMesh,pPart))
             Gfx_DrawIndexedPrimitiveVB(GFX_TRIANGLELIST, CGraphics::m_pTextureManager->pVertexBuffers[pMesh->vertexBufferIndex], pMesh->vertexOffset + pPart->minIndex, pMesh->field_0x10 - pPart->minIndex, pPart->pData, pPart->indexCount);
@@ -7138,6 +7155,7 @@ void Graphics_MarkTexturesAndDrawMeshParts(Mesh *pMesh)
             Graphics_BindCarPaintDirt(CGraphics::m_pTextureManager->textureBuffer[pPart->texture]);
             bool glassNoZ = (pMesh->flags & (MESH_FLAG_GLASS_NO_ZWRITE | 0x8u)) == (MESH_FLAG_GLASS_NO_ZWRITE | 0x8u) &&
                             Graphics_PartHasSemiTransparentAlpha(pMesh, pPart);
+            Graphics_CountInteriorGlassPart(pMesh, glassNoZ);
             if (glassNoZ) CGraphics::SetZWriteEnable(0);
             if(!SceneryPack_DrawFixedPart(pMesh,pPart))
             Gfx_DrawIndexedPrimitiveVB(GFX_TRIANGLELIST, CGraphics::m_pTextureManager->pVertexBuffers[pMesh->vertexBufferIndex], pMesh->vertexOffset + pPart->minIndex, pMesh->field_0x10 - pPart->minIndex, pPart->pData, pPart->indexCount);
@@ -7157,6 +7175,7 @@ unsigned short g_unk0x0059be74[2000];
 // FUNCTION: CMR2 0x0049c680
 void Graphics_DrawMeshTextureBatches(Mesh *pMesh)
 {
+    if (pMesh->flags & MESH_FLAG_GLASS_NO_ZWRITE) g_interiorDiag[3]++;   // diagnostic only, see g_interiorDiag
     MeshTriangle *pTri = pMesh->pTriangles;
     int total = pMesh->triangleCount;
     int count = 0;

@@ -322,15 +322,19 @@ struct Executor : GfxExecutor {
         for (ProjVote &v : projVotes)
             if (!v.count) { v = { n, f, 1 }; return; }
     }
+    int lastResolveDistinct = 0, lastResolveVotes = 0; float lastResolveNear = 0.0f, lastResolveFar = 0.0f;   // diagnostic copy for the F10 fog line
     void ResolveProjection(float *outNear, float *outFar)
     {
         *outNear = *outFar = 0.0f;
+        lastResolveDistinct = 0; lastResolveVotes = 0; lastResolveNear = lastResolveFar = 0.0f;
         int best = -1, distinct = 0;
         for (int i = 0; i < 4; ++i) { if (projVotes[i].count) distinct++; if (best < 0 || projVotes[i].count > projVotes[best].count) best = i; }
         if (best >= 0 && projVotes[best].count) {
             // More than one near/far pair among depth-writing draws: the whole-frame depth is ambiguous, so
             // keep the old raw-depth rule (near = far = 0 tells dof.frag to use it) instead of guessing.
             if (distinct == 1) { *outNear = projVotes[best].n; *outFar = projVotes[best].f; }
+            lastResolveDistinct = distinct; lastResolveVotes = projVotes[best].count;
+            lastResolveNear = projVotes[best].n; lastResolveFar = projVotes[best].f;
             static int lastDistinct = -1;
             if (distinct != lastDistinct) {
                 lastDistinct = distinct;
@@ -2731,6 +2735,8 @@ struct Executor : GfxExecutor {
         if (raceWorld && fogEnabled && fogAmount > 0 && sampledDepth && backDepth != nullptr &&
             fogBuf1 != nullptr && FogPipeline() != nullptr) {
             ResolveProjection(&sceneNear, &sceneFar);
+            Gfx_SetFogDepthStatus(GfxFogDepthStatus{ lastResolveDistinct == 0 ? 3 : lastResolveDistinct == 1 ? 1 : 2,
+                lastResolveDistinct, lastResolveVotes, lastResolveNear, lastResolveFar });
             // FogUniforms: packed by the single shared packer (render/fog_uniforms.h).
             FogUniformParams fogP;
             fogP.density = Fog_Density(fogAmount);

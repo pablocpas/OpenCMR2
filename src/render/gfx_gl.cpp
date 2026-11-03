@@ -1336,6 +1336,11 @@ struct Executor : GfxExecutor {
                                     Fog_VoteProjection(fogVotes,vn,vf);
                             }
                         Fog_ResolveProjectionVote(fogVotes,&glFogNearZ,&glFogFarZ);
+                        {   // diagnostic copy for the F10 fog line (same fields as the SDL_GPU path)
+                            int pairs=0,best=-1;
+                            for(int vi=0;vi<4;++vi){if(fogVotes[vi].count)pairs++;if(fogVotes[vi].count&&(best<0||fogVotes[vi].count>fogVotes[best].count))best=vi;}
+                            Gfx_SetFogDepthStatus(GfxFogDepthStatus{pairs==0?3:pairs==1?1:2,pairs,best>=0?fogVotes[best].count:0,best>=0?fogVotes[best].n:0.0f,best>=0?fogVotes[best].f:0.0f});
+                        }
                     }
                     if(c.raceWorld&&c.playerObject!=0&&Sys_GetOption("video.dof_focus_car",0)!=0){   // same car-depth rule as SDL_GPU
                         DofFocusAccum acc;float vn=0,vf=0;bool haveProj=false;
