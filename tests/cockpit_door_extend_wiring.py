@@ -12,6 +12,7 @@ need(all(k in so for k in ("top < 0 || bot < 0 || topNb < 0 || botNb < 0",)), "a
 need(so.count("Mesh_RefreshVertices(pLod)") >= 1, "vertices must be re-uploaded")
 need("StageObject_ExtendInteriorDoorCard(g_carInteriorRoots[car]" in so, "must be called after the interior is built")
 need("uv[0] < uMin" in so and "uv[1] > vMax" in so, "extended UVs must be clamped to the original card patch")
+need("no normal test" in so and "coincident copies of the two rear corners" in so, "bottom corner must match without the borderline normal test and duplicates must move too")
 need("--cockpit-door-extend" in en and "video.cockpit_door_extend" in en, "CLI flag must map to the option")
 need("n>80" in en, "CLI range must be capped")
 need("--cockpit-door-extend" in rb, "rebuild.sh must pass the flag through")
