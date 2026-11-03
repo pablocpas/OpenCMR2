@@ -12672,18 +12672,18 @@ Menu atmosphereAmounts;
 // Atmosphere gets its own submenu: Menu::items is layout-locked at 22 entries
 // (LayoutChecks MenuSizeCheck), so these rows cannot join the main list.
 const EffectAmountRow kAtmosphereRows[]={
- {"Fog (0/1)","video.fog",0,2},
+ {"Fog (0/1)","video.fog",1,2},
  {"Fog amount % (100 = deliberately heavy)","video.fog_amount",65,101},
- {"Fog sun glow %","video.fog_glow",60,101},
- {"Fog near clear dist, world units (0 off)","video.fog_clear",0,201},
- {"Fog light response % (head/rear lights)","video.fog_lights",100,201},
- {"Fog draw cull (0/1, experimental, unmeasured)","video.fog_cull",0,2},
- {"Fog spatial pockets (0/1)","video.fog_spatial",0,2},
- {"Fog evolve (100 neutral; <100 clears, >100 thickens)","video.fog_evolve",100,201},
- {"Air motes (0/1)","video.air_motes",0,2},
- {"Air motes amount %","video.air_motes_amount",200,501},
+ {"Fog sun glow %","video.fog_glow",100,101},
+ {"Fog near clear dist, world units (0 off)","video.fog_clear",60,201},
+ {"Fog light response % (head/rear lights)","video.fog_lights",40,201},
+ {"Fog draw cull (0/1, experimental, unmeasured)","video.fog_cull",1,2},
+ {"Fog spatial pockets (0/1)","video.fog_spatial",1,2},
+ {"Fog evolve (100 neutral; <100 clears, >100 thickens)","video.fog_evolve",60,201},
+ {"Air motes (0/1)","video.air_motes",1,2},
+ {"Air motes amount %","video.air_motes_amount",500,501},
  {"Air motes cockpit size %","video.air_motes_cockpit_size",50,101},
- {"Snow glints % (banks + falling flakes)","video.snow_glint",200,201},
+ {"Snow glints % (banks + falling flakes)","video.snow_glint",100,201},
  {"Fog through windscreen glass (0/1)","video.cockpit_glass_fog",1,2},
  {"Brush wall depth %","video.brush_relief",100,101},
 };

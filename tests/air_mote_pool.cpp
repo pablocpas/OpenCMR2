@@ -12,7 +12,9 @@ extern FixVector g_airMoteDrift;
 extern unsigned g_airMoteNextSeed;
 void AirMote_Init(Particle*,ParticleType*,void*);
 void Particle_Spawn(int,FixVector*,FixVector*,int,FixMatrix*,BYTE*,BYTE,void*,BYTE);
+extern "C" void Sys_SetOptionTemporary(const char *name, int value);
 int main(){
+ Sys_SetOptionTemporary("video.air_motes_amount",200);   // the test pins the 200 budget; the built-in default is now the tuned 500
  Particle pool[400]={};ParticleType types[0x23]={};
  g_particles=pool;g_particleTypes=types;g_particleCount=400;g_particleTypeCount=0x23;g_nextParticle=0;
  types[AIR_MOTE_TYPE].flags=1;types[AIR_MOTE_TYPE].lifetime=AIR_MOTE_LIFE<<16;

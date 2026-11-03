@@ -11,18 +11,18 @@ inline int Effect_Accumulate(int amount,int percent,int &remainder){
 struct EffectAmountRow{const char*label;const char*key;int initial,count;};
 inline const EffectAmountRow* EffectAmount_Rows(int &count){
  static const EffectAmountRow rows[]={
- {"Motion blur %","video.motion_blur_amount",16,36},
+ {"Motion blur %","video.motion_blur_amount",60,101},
  {"Bloom %","video.bloom_amount",24,101},
  {"Precip density %","video.precipitation_amount",47,101},
  {"Shadow softness %","video.shadow_softness",25,101},
  {"Shadow map quality","video.shadow_quality",1,3},
- {"Defocus blur %","video.dof_blur",30,101},
+ {"Defocus blur %","video.dof_blur",100,101},
  {"Sun rays %","video.god_rays_amount",39,101},
  {"Grade blend %","video.grade_amount",100,101},
  {"Camera shake %","video.camera_shake_amount",100,101},
  {"Lens dirt","video.lens_dirt",1,2},
  {"Lens dirt %","video.lens_dirt_amount",100,101},
- {"Sun glare % (0 off)","video.sun_glare",0,101},
+ {"Sun glare % (0 off)","video.sun_glare",60,101},
  {"Lens flare","video.lens_flare",1,2},
  {"Lens flare %","video.lens_flare_amount",100,101},
  {"Dust plume","video.dust_plume",1,2},

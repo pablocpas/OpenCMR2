@@ -10,7 +10,7 @@ void TuningPanel_Update();bool TuningPanel_IsOpen();bool TuningPanel_InfoShown()
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"line%d %s\n",__LINE__,#x);return 1;}}while(0)
 int main(){
  auto old=std::filesystem::current_path();auto tmp=std::filesystem::temp_directory_path()/("opencmr-tuning-runtime-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
- std::filesystem::create_directories(tmp);std::filesystem::current_path(tmp);std::ofstream("opencmr2.ini")<<"[video]\n";
+ std::filesystem::create_directories(tmp);std::filesystem::current_path(tmp);std::ofstream("opencmr2.ini")<<"[video]\ndrone_distance=60\n";
  BYTE keys[256]={};Platform_SetTestKeyboard(keys);TuningPanel_Update();
  CHECK(TuningPanel_InfoShown()&&!TuningPanel_IsOpen()&&!TuningPanel_FpsOnly());
  for(int lap=0;lap<2;lap++)for(int mode=1;mode<=4;mode++){
