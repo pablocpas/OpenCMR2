@@ -2060,21 +2060,22 @@ const FixVector *CarEffects_CarWindowVertices(int car)
 {
     if (car < 0 || car >= 8)
         return NULL;
-    if (g_carWindowVerts[car] != NULL)
-        return g_carWindowVerts[car];
     // OpenCMR2: the cockpit glass is resolved when the interior attaches, which
     // StageTiming_RestoreDeviceStageResources runs (View_SetupCameras) BEFORE
     // StageObjects_Init fills g_carWindowVerts (CarEffects_Init). The table was
-    // therefore still empty on the first attach and the windshield feature
-    // latched off ("no glass profile") with nothing re-running the resolve.
-    // The CIN glass section is already loaded then (CarInterior_CacheProfilePointers
-    // reads the CIN in the same attach) and CarInfo_GetSection is a pure offset
-    // lookup, so read the same field CarEffects_Init would store.
+    // therefore empty (first stage) or left over from the previous stage's CIN
+    // buffer at attach, and the windshield feature latched off ("no glass
+    // profile"). Read the CIN glass section directly when it is loaded: it is
+    // the same field CarEffects_Init stores, CarInfo_GetSection is a pure
+    // offset lookup, and the same attach already reads the interior profile
+    // from this CIN. The table is only the fallback when the CIN is not there.
     Car *pCar = Car_Get(car);
-    if (pCar == NULL || CarInfo_GetDirectory(pCar->index) == NULL)
-        return NULL;
-    CarGlassProfile *pProfile = (CarGlassProfile *)CarInfo_GetSection(pCar, CAR_INFO_GLASS);
-    return pProfile != NULL ? pProfile->windowVertices : NULL;
+    if (pCar != NULL && CarInfo_GetDirectory(pCar->index) != NULL) {
+        CarGlassProfile *pProfile = (CarGlassProfile *)CarInfo_GetSection(pCar, CAR_INFO_GLASS);
+        if (pProfile != NULL)
+            return pProfile->windowVertices;
+    }
+    return g_carWindowVerts[car];
 }
 
 void CarEffects_GetWindowLayout(unsigned char vertex[6][4], int mirrorZ[6][4])
