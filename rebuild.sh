@@ -38,8 +38,8 @@
 #                               --all-mods sets 1; explicit value wins). Experimental, launch-only passthrough
 #   --cockpit-door-extend N     Experimental, default off: extend the Subaru Impreza 555 cockpit driver-door card rearward by N/100 model units (0-80),
 #                               to cover the see-through cut edge; matches only the original Subaru interior geometry, other cars are untouched. Native look unverified
-#   --windshield-crack-overlay 0|1  Experimental, default off: in cockpits whose interior model has no glass part (the Subaru), draw the damaged/broken
-#                               front-window texture on the projected window quad. Not depth tested; native look unverified
+#   --windshield-crack-overlay 0|1  Experimental, default off: in cockpits whose interior model has no glass part (the Subaru), redraw the car's exterior
+#                               front-glass triangles with the damaged/broken texture, depth tested against the dash. Native look unverified
 #   --fog-amount N / --fog-glow N / --air-motes-amount N / --snow-glint N / --snow-material N
 #                               Other atmosphere dials (docs/ATMOSPHERE.md), also launch-only passthrough
 #   --export-brush-placement    Read-only export of Greece1 roadside wall placement vs the stage route to a NEW JSON
