@@ -2825,6 +2825,8 @@ static void Game_BeginDistanceFade(void)
 // immediate.
 // FUNCTION: CMR2 0x0049d3f0
 BYTE View_GetActiveCameraFlags(BYTE index);
+void AttractCapture_ViewSignature(int view, int *type, int *drone);   // Car.cpp
+void Windshield_DrawCrackPane(int view);   // WindshieldDirt.cpp
 int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, int bit, BYTE flag)
 {
     GfxViewport viewport;
@@ -2953,6 +2955,13 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
         Billboard_Draw(pCamera);
         Scene_DrawShadowBatches(bit);
         Gfx_SetPlayerObject((unsigned)View_GetActiveCameraFlags((BYTE)bit) + 1); // debug object mask: the followed car's objectId
+        // OpenCMR2: cockpit windscreen crack pane (video.windshield_crack_overlay), depth tested inside the 3D pass.
+        if (bit >= 0 && bit < 2 && pCamera == g_viewNodes[bit]) {
+            int paneType = 0, paneDrone = 0;
+            AttractCapture_ViewSignature(bit, &paneType, &paneDrone);
+            if (paneType == 3)
+                Windshield_DrawCrackPane(bit);
+        }
         Gfx_FlushDustVolume(); // completed world depth/projection, before HUD
     }
     Flare_SampleVisibility(NULL, NULL, 0);

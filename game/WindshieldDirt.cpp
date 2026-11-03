@@ -145,8 +145,6 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     // Draw-gating diagnostics (low volume, transitions only): why the dirt
     // overlay is not on screen - broken glass suppresses it, no dirt means
     // the accumulation sources never landed.
-    if (mview < 2)
-        WindshieldGlass_DrawCrackOverlay(mview, mview, g_windshieldGlassState[mview], resX, resY);
     int reason = !Windshield_OverlayVisible(g_windshieldGlassState[mview]) ? 1
                : Windshield_TotalDirt(m) == 0 ? 2 : 0;
     g_wsDrawCalls[mview]++;
@@ -197,6 +195,16 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     Gfx_SetDepthWrite(TRUE);
     Gfx_SetAlphaBlend(FALSE);
     Gfx_SetTexture(0, NULL);
+}
+
+// Called from the 3D pass of a cockpit view (Game_DrawSceneViewport) so the
+// crack pane is depth tested against the interior. The state is the one the
+// previous frame's Windshield_UpdateView left.
+void Windshield_DrawCrackPane(int view)
+{
+    int mview = view & (WINDSHIELD_MAX_VIEWS - 1);
+    if (mview < 2)
+        WindshieldGlass_DrawCrackPane(mview, g_windshieldGlassState[mview]);
 }
 
 void Windshield_ResetAll(void)

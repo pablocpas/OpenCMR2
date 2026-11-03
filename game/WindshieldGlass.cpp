@@ -498,29 +498,161 @@ int WindshieldGlass_SetupCar(int car)
     return g_wgInfo[car].window;
 }
 
-// ---- projected crack overlay (video.windshield_crack_overlay, default off) ----
+// ---- world-space crack pane (video.windshield_crack_overlay, default off) ----
 // Cockpits whose interior model has no glass part (see "no interior glass part")
-// get the resolved front window's damaged/broken glass texture drawn as a
-// screen-space polygon. The corners are the same CIN window quad the resolver
-// classified, taken from car space to the camera with the scene's own world
-// matrices and projected with the game's projection terms (the near plane is
-// clipped at 0.1 model units; FixMatrix_ProjectWorldPointToView rejects
-// everything closer than 1.0, which is the whole cockpit). Not depth tested:
-// the dash and pillars are not masked.
-int WindshieldGlass_DrawCrackOverlay(int car, int view, int state, int resX, int resY)
+// get the resolved front window's damaged/broken glass texture drawn as a real
+// world-space polygon on the window's CIN quad, inside the 3D pass (after the
+// interior and the world are drawn, before the world effects), so the depth
+// buffer hides the pane behind the dash, pillars and mirror. Texture
+// coordinates are not guessed: they are fitted to the car's own exterior front
+// glass triangles (same material group the damage textures come from). The
+// fit is refused when the exterior glass does not sit on the CIN quad.
+
+// Solves the 3x3 system m * x = r in place (Gauss with partial pivoting).
+static int WgSolve3(double m[3][3], double r[3], double x[3])
+{
+    for (int c = 0; c < 3; c++) {
+        int piv = c;
+        for (int i = c + 1; i < 3; i++)
+            if (fabs(m[i][c]) > fabs(m[piv][c])) piv = i;
+        if (fabs(m[piv][c]) < 1e-12) return 0;
+        for (int k = 0; k < 3; k++) { double t = m[c][k]; m[c][k] = m[piv][k]; m[piv][k] = t; }
+        double t = r[c]; r[c] = r[piv]; r[piv] = t;
+        for (int i = c + 1; i < 3; i++) {
+            double f = m[i][c] / m[c][c];
+            for (int k = c; k < 3; k++) m[i][k] -= f * m[c][k];
+            r[i] -= f * r[c];
+        }
+    }
+    for (int i = 2; i >= 0; i--) {
+        double v = r[i];
+        for (int k = i + 1; k < 3; k++) v -= m[i][k] * x[k];
+        x[i] = v / m[i][i];
+    }
+    return 1;
+}
+
+// Fits u,v as an affine function of the pane's two principal in-plane axes over
+// the exterior glass vertices of `group`, then evaluates it at the quad corners
+// (car space, model units). Returns a reason string on failure, NULL on success.
+static const char *WgFitGlassUV(int car, unsigned group, const WgQuad *quad, float uv[4][2])
+{
+    CarPartSet *pParts = StageTiming_GetCarReplayRecord(car);
+    if (pParts == NULL) return "overlay: no exterior parts";
+    int mi = StageTiming_FindModelPartByNodeType(7, pParts);
+    if (mi < 0) return "overlay: no exterior body mesh";
+    Mesh *pMesh = pParts->geometry.meshes[mi];
+    if (pMesh == NULL || pMesh->pVertexData == NULL || pMesh->pTriangles == NULL)
+        return "overlay: no exterior body mesh";
+    const MeshVertexF *verts = (const MeshVertexF *)pMesh->pVertexData;
+    enum { MAXP = 256 };
+    static double P[MAXP][5];   // x y z u v
+    int n = 0;
+    for (int t = 0; t < pMesh->triangleCount; t++) {
+        MeshTriangle *tri = &pMesh->pTriangles[t];
+        if ((tri->flags & group) == 0) continue;
+        for (int k = 0; k < 3; k++) {
+            int vi = tri->vertexIndex[k];
+            if (vi < 0 || vi >= pMesh->field_0x10) return "overlay: exterior glass index out of range";
+            const MeshVertexF *v = &verts[vi];
+            int dup = 0;
+            for (int i = 0; i < n; i++)
+                if (P[i][0] == v->x && P[i][1] == v->y && P[i][2] == v->z && P[i][3] == v->textureCoordinates[0][0] &&
+                    P[i][4] == v->textureCoordinates[0][1]) { dup = 1; break; }
+            if (!dup && n < MAXP) {
+                P[n][0] = v->x; P[n][1] = v->y; P[n][2] = v->z;
+                P[n][3] = v->textureCoordinates[0][0]; P[n][4] = v->textureCoordinates[0][1];
+                n++;
+            }
+        }
+    }
+    if (n < 3) return "overlay: exterior glass triangles not found";
+    // Frame check: the exterior glass must sit on the CIN quad (bounding boxes agree).
+    double qmin[3] = {1e30, 1e30, 1e30}, qmax[3] = {-1e30, -1e30, -1e30};
+    double pmin[3] = {1e30, 1e30, 1e30}, pmax[3] = {-1e30, -1e30, -1e30};
+    for (int j = 0; j < 4; j++) {
+        double c[3] = {quad->v[j].x / 65536.0, quad->v[j].y / 65536.0, quad->v[j].z / 65536.0};
+        for (int a = 0; a < 3; a++) { if (c[a] < qmin[a]) qmin[a] = c[a]; if (c[a] > qmax[a]) qmax[a] = c[a]; }
+    }
+    double mean[3] = {0, 0, 0};
+    for (int i = 0; i < n; i++)
+        for (int a = 0; a < 3; a++) {
+            if (P[i][a] < pmin[a]) pmin[a] = P[i][a];
+            if (P[i][a] > pmax[a]) pmax[a] = P[i][a];
+            mean[a] += P[i][a] / n;
+        }
+    for (int a = 0; a < 3; a++)
+        if (fabs(pmin[a] - qmin[a]) > 0.15 || fabs(pmax[a] - qmax[a]) > 0.15)
+            return "overlay: exterior glass is not on the CIN window";
+    // Principal axes of the pane.
+    double cov[3][3] = {{0}};
+    for (int i = 0; i < n; i++)
+        for (int a = 0; a < 3; a++)
+            for (int b = 0; b < 3; b++)
+                cov[a][b] += (P[i][a] - mean[a]) * (P[i][b] - mean[b]);
+    double e1[3] = {0, 0, 1}, e2[3] = {1, 0, 0};
+    for (int it = 0; it < 60; it++) {
+        double w[3] = {0, 0, 0};
+        for (int a = 0; a < 3; a++) for (int b = 0; b < 3; b++) w[a] += cov[a][b] * e1[b];
+        double l = sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+        if (l < 1e-12) return "overlay: degenerate exterior glass";
+        for (int a = 0; a < 3; a++) e1[a] = w[a] / l;
+    }
+    for (int it = 0; it < 60; it++) {
+        double d = e2[0] * e1[0] + e2[1] * e1[1] + e2[2] * e1[2];
+        double w[3] = {e2[0] - d * e1[0], e2[1] - d * e1[1], e2[2] - d * e1[2]}, w2[3] = {0, 0, 0};
+        for (int a = 0; a < 3; a++) for (int b = 0; b < 3; b++) w2[a] += cov[a][b] * w[b];
+        double d2 = w2[0] * e1[0] + w2[1] * e1[1] + w2[2] * e1[2];
+        for (int a = 0; a < 3; a++) w2[a] -= d2 * e1[a];
+        double l = sqrt(w2[0] * w2[0] + w2[1] * w2[1] + w2[2] * w2[2]);
+        if (l < 1e-12) return "overlay: degenerate exterior glass";
+        for (int a = 0; a < 3; a++) e2[a] = w2[a] / l;
+    }
+    // Least squares u,v = c0 + c1*s + c2*t.
+    double A[3][3] = {{0}}, ru[3] = {0}, rv[3] = {0};
+    double S[MAXP][2];
+    for (int i = 0; i < n; i++) {
+        double d[3] = {P[i][0] - mean[0], P[i][1] - mean[1], P[i][2] - mean[2]};
+        S[i][0] = d[0] * e1[0] + d[1] * e1[1] + d[2] * e1[2];
+        S[i][1] = d[0] * e2[0] + d[1] * e2[1] + d[2] * e2[2];
+        double f[3] = {1.0, S[i][0], S[i][1]};
+        for (int a = 0; a < 3; a++) {
+            for (int b = 0; b < 3; b++) A[a][b] += f[a] * f[b];
+            ru[a] += f[a] * P[i][3]; rv[a] += f[a] * P[i][4];
+        }
+    }
+    double A2[3][3], rv2[3], cu[3], cv[3];
+    for (int a = 0; a < 3; a++) for (int b = 0; b < 3; b++) A2[a][b] = A[a][b];
+    for (int a = 0; a < 3; a++) rv2[a] = rv[a];
+    if (!WgSolve3(A, ru, cu) || !WgSolve3(A2, rv2, cv)) return "overlay: exterior glass UV fit failed";
+    double worst = 0;
+    for (int i = 0; i < n; i++) {
+        double eu = cu[0] + cu[1] * S[i][0] + cu[2] * S[i][1] - P[i][3];
+        double ev = cv[0] + cv[1] * S[i][0] + cv[2] * S[i][1] - P[i][4];
+        double e = fabs(eu) > fabs(ev) ? fabs(eu) : fabs(ev);
+        if (e > worst) worst = e;
+    }
+    if (worst > 0.05) return "overlay: exterior glass UV is not planar";
+    for (int j = 0; j < 4; j++) {
+        double d[3] = {quad->v[j].x / 65536.0 - mean[0], quad->v[j].y / 65536.0 - mean[1], quad->v[j].z / 65536.0 - mean[2]};
+        double s = d[0] * e1[0] + d[1] * e1[1] + d[2] * e1[2];
+        double t = d[0] * e2[0] + d[1] * e2[1] + d[2] * e2[2];
+        uv[j][0] = (float)(cu[0] + cu[1] * s + cu[2] * t);
+        uv[j][1] = (float)(cv[0] + cv[1] * s + cv[2] * t);
+    }
+    return NULL;
+}
+
+// Draws the pane for `car` in the current 3D pass. state: 1 damaged, 2 broken.
+int WindshieldGlass_DrawCrackPane(int car, int state)
 {
     if (state < 1 || Sys_GetOption("video.windshield_crack_overlay", 0) == 0)
         return 0;
     if (car < 0 || car >= WG_MAX_CARS || g_wgInfo[car].resolved != 1 || g_wgGlassPartCount[car] != 0)
         return 0;   // not this cockpit's problem: the interior glass parts handle it
     Car *pCar = Car_Get(car);
-    SceneNode *cam = (view >= 0 && view < 3) ? g_viewNodes[view] : NULL;
-    if (pCar == NULL || pCar->pBodyNode == NULL || cam == NULL) {
-        g_wgFailReason[car] = "overlay: no car/camera node";
-        return 0;
-    }
-    if (g_pGraphics == NULL || resX != (int)g_pGraphics->resX || resY != (int)g_pGraphics->resY) {
-        g_wgFailReason[car] = "overlay: split view not supported";
+    if (pCar == NULL || pCar->pBodyNode == NULL) {
+        g_wgFailReason[car] = "overlay: no car node";
         return 0;
     }
     int texId = state >= 2 ? g_wgInfo[car].brokenTexture : g_wgInfo[car].damagedTexture;
@@ -550,63 +682,58 @@ int WindshieldGlass_DrawCrackOverlay(int car, int view, int state, int resX, int
     WindshieldGlass_BuildQuads(rawVerts, desc, mirror, quads);
     const WgQuad *q = &quads[g_wgInfo[car].window];
 
-    // Car space -> camera space (x right, y up, z forward), in model units.
-    FixMatrix invView;
-    FixMatrix_Invert(&invView, &cam->world);
-    float vp[8][5];   // x, y, z, u, v
-    static const float kUV[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
-    float poly[4][5];
-    for (int j = 0; j < 4; j++) {
-        FixVector cs = {(int)q->v[j].x, (int)q->v[j].y, (int)q->v[j].z}, wp, vv;
-        FixMatrix_TransformPoint(&wp, &cs, &frame->world);
-        FixMatrix_TransformPoint(&vv, &wp, &invView);
-        poly[j][0] = vv.x / 65536.0f; poly[j][1] = vv.y / 65536.0f; poly[j][2] = vv.z / 65536.0f;
-        poly[j][3] = kUV[j][0]; poly[j][4] = kUV[j][1];
-    }
-    // Clip against the near plane.
-    const float kNear = 0.1f;
-    int n = 0;
-    for (int j = 0; j < 4; j++) {
-        const float *a = poly[j], *b = poly[(j + 1) % 4];
-        int ain = a[2] >= kNear, bin = b[2] >= kNear;
-        if (ain && n < 8) { for (int k = 0; k < 5; k++) vp[n][k] = a[k]; n++; }
-        if (ain != bin && n < 8) {
-            float t = (kNear - a[2]) / (b[2] - a[2]);
-            for (int k = 0; k < 5; k++) vp[n][k] = a[k] + (b[k] - a[k]) * t;
-            n++;
-        }
-    }
-    if (n < 3) {
-        g_wgFailReason[car] = "overlay: window behind camera";
+    float uv[4][2];
+    const char *why = WgFitGlassUV(car, g_wgInfo[car].group, q, uv);
+    if (why != NULL) {
+        static const char *s_lastWhy[WG_MAX_CARS];
+        if (s_lastWhy[car] != why) { s_lastWhy[car] = why; Sys_Log("windshield glass: car %d %s", car, why); }
+        g_wgFailReason[car] = why;
         return 0;
     }
-    GfxTLVertex tl[8];
-    const float halfW = resX * 0.5f, halfH = resY * 0.5f;
-    for (int j = 0; j < n; j++) {
-        tl[j].sx = halfW + CGraphics::m_projection11 * vp[j][0] / vp[j][2] * halfW;
-        tl[j].sy = halfH - CGraphics::m_projection22 * vp[j][1] / vp[j][2] * halfH;
-        tl[j].sz = 0; tl[j].rhw = 1.0f;
-        tl[j].color = 0xffffffff; tl[j].specular = 0;
-        tl[j].tu = vp[j][3]; tl[j].tv = vp[j][4];
+    GfxVertex gv[4];
+    float wc[4][3];
+    for (int j = 0; j < 4; j++) {
+        FixVector cs = {(int)q->v[j].x, (int)q->v[j].y, (int)q->v[j].z}, wp;
+        FixMatrix_TransformPoint(&wp, &cs, &frame->world);
+        wc[j][0] = wp.x / 65536.0f; wc[j][1] = wp.y / 65536.0f; wc[j][2] = wp.z / 65536.0f;
+        gv[j].x = wc[j][0]; gv[j].y = wc[j][1]; gv[j].z = wc[j][2];
+        gv[j].nx = 0; gv[j].ny = 1; gv[j].nz = 0;
+        gv[j].diffuse = 0xffffffff; gv[j].specular = 0;
+        gv[j].u0 = uv[j][0]; gv[j].v0 = uv[j][1];
+        gv[j].u1 = 0; gv[j].v1 = 0;
     }
     static int s_logged[WG_MAX_CARS];
     if (s_logged[car] != state) {
         s_logged[car] = state;
-        Sys_Log("windshield glass: car %d crack overlay state %d tex %d, %d corners, screen (%.0f,%.0f) (%.0f,%.0f) (%.0f,%.0f) (%.0f,%.0f) of %dx%d",
-                car, state, texId, n, tl[0].sx, tl[0].sy, tl[1].sx, tl[1].sy, tl[2].sx, tl[2].sy,
-                tl[n > 3 ? 3 : 2].sx, tl[n > 3 ? 3 : 2].sy, resX, resY);
+        Sys_Log("windshield glass: car %d crack pane state %d tex %d uv (%.2f,%.2f) (%.2f,%.2f) (%.2f,%.2f) (%.2f,%.2f) world (%.2f %.2f %.2f) (%.2f %.2f %.2f)",
+                car, state, texId, uv[0][0], uv[0][1], uv[1][0], uv[1][1], uv[2][0], uv[2][1], uv[3][0], uv[3][1],
+                wc[0][0], wc[0][1], wc[0][2], wc[2][0], wc[2][1], wc[2][2]);
     }
-    Gfx_SetTexture(0, tex->pSurface);
+    GfxMatrix id = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    Gfx_PushState();
+    Gfx_SetTransform(GFX_TRANSFORM_WORLD, &id);
+    Gfx_SetLighting(FALSE);
+    Gfx_SetDepthTest(TRUE);
+    Gfx_SetDepthWrite(FALSE);
+    Gfx_SetCullMode(GFX_CULL_NONE);
     Gfx_SetAlphaBlend(TRUE);
     Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA);
     Gfx_SetDestBlend(GFX_BLEND_INVSRCALPHA);
-    Gfx_SetDepthWrite(FALSE);
-    Gfx_SetDepthTest(FALSE);
-    Gfx_DrawPrimitiveTL(GFX_TRIANGLEFAN, tl, (DWORD)n);
-    Gfx_SetDepthTest(TRUE);
-    Gfx_SetDepthWrite(TRUE);
-    Gfx_SetAlphaBlend(FALSE);
+    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageAlphaOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageAlphaArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageAlphaArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    Gfx_SetTexture(0, tex->pSurface);
+    static const unsigned short kIdx[6] = {0, 1, 2, 0, 2, 3};
+    GfxVertex tris[6];
+    for (int k = 0; k < 6; k++) tris[k] = gv[kIdx[k]];
+    Gfx_DrawPrimitive(GFX_TRIANGLELIST, tris, 6);
     Gfx_SetTexture(0, NULL);
+    Gfx_PopState();
     g_wgFailReason[car] = "overlay drawn";
     return 1;
 }

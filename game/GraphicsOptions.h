@@ -340,7 +340,8 @@ int WindshieldGlass_ResolveForCar(int car);
 void WindshieldGlass_RetryPending(void);
 const char *WindshieldGlass_FailReason(int car);   // F10 diagnostics only
 int WindshieldGlass_ApplyDamageState(int car, int state);
-int WindshieldGlass_DrawCrackOverlay(int car, int view, int state, int resX, int resY);
+int WindshieldGlass_DrawCrackPane(int car, int state);
+void Windshield_DrawCrackPane(int view);
 int WindshieldGlass_GetInfo(int car, int *window, int *slot, unsigned *group,
                             int *damagedTexture, int *brokenTexture);
 void WindshieldGlass_RestoreAll(void);
