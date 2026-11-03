@@ -54,7 +54,7 @@ speed_lines=off
 --speed-fov
 100
 --tire-debris
-200
+575
 --tire-track-length
 1000
 --tire-track-history
