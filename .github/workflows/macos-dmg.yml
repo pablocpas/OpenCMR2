@@ -1,6 +1,8 @@
 name: macos-dmg
 
-# Manual only: builds the macOS arm64 package and wraps it in a versioned DMG.
+# Manual only: builds the macOS arm64 package, assembles OpenCMR2.app (a launcher that reproduces
+# rebuild.sh --all-mods from the user's own game folder), wraps it in a versioned DMG and runs launch-path
+# checks (no gameplay: that needs the user's game data).
 # No game assets are included. Free on this public repository; one macOS job.
 on:
   workflow_dispatch:
@@ -33,6 +35,7 @@ jobs:
             --license build/macos/_deps/sdl3-src/LICENSE.txt \
             --output dist/OpenCMR2-macOS-arm64.zip
           tools/make_dmg.sh dist/OpenCMR2-macOS-arm64.zip "$version" dist
+          tools/test_macos_app.sh dist/OpenCMR2-macOS-arm64-$version.dmg
           echo "built from $(git rev-parse HEAD) version $version" | tee dist/BUILD-INFO.txt
       - uses: actions/upload-artifact@v4
         with:
