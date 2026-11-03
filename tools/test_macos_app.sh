@@ -62,7 +62,8 @@ R="$A/Contents/Resources/enhancements/scenery-patch"
 for f in prepare.py uprez_prepare.py finland1_roads.py france1_prepare.py road_prepare.py convert.py requirements.txt; do [ -f "$R/$f" ] || fail "missing helper $f"; done
 echo "--- helper discovery inside the bundle (synthetic placeholder game folder, no real game data)"
 fx="$t/fixture"; mkdir -p "$fx/Game/Bigfiles" "$fx/FrontEnd" "$fx/Sounds" "$fx/CountrySpecific" "$fx/SetupRep"
-: > "$fx/Game/Bigfiles/common.bfl"; : > "$fx/FrontEnd/common.bfl"; : > "$fx/Sounds/surface.bfl"
+# The game only accepts non-empty files and non-empty folders; the content is a placeholder byte.
+for f in Game/Bigfiles/common.bfl FrontEnd/common.bfl Sounds/surface.bfl CountrySpecific/placeholder SetupRep/placeholder; do printf x > "$fx/$f"; done
 set +e
 OPENCMR2_LAUNCHER_SUPPORT="$t/s-fx" OPENCMR2_LAUNCHER_LOGDIR="$t/l-fx" OPENCMR2_LAUNCHER_DATA="$fx" OPENCMR2_LAUNCHER_MODS=none "$A/Contents/MacOS/OpenCMR2" > /dev/null 2>&1; rc=$?
 set -e
