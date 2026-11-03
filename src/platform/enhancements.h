@@ -250,7 +250,7 @@ inline const char *EnhancementHelp(){return
 "  --tunnel-vision 0..200      Tunnel vision strength, percent (default 130; overrides opencmr2.ini; --test-preset overdo sets 130 too)\n"
 "  --brush-volume 0|1          EXPERIMENTAL Greece1 roadside brush walls get depth away from the road (visual only, collision unchanged, needs --textures uprez/asset pack; default 0 = original flat quads; real-stage direction not yet verified)\n"
 "  --tunnel-lines 0|1          Radial lines inside the tunnel-vision zone (default 1; overrides opencmr2.ini)\n"
-"  --cockpit-blur-clear 0..60  Cockpit: tenths of a world unit; interior nearer than this stays out of the tunnel-vision blur (default 16 = 1.6; 0 = off)\n"
+"  --cockpit-blur-clear 0..60  Cockpit: tenths of a world unit; interior nearer than this stays out of the tunnel-vision blur (default 0 = off: the interior fills the blur zone, so any value above 0 hides tunnel vision in the cockpit; 16 = the old 1.6)\n"
 "  --speed-streak 0..100       Directional radial speed streak (SDL_GPU only); default 0 = off\n""  --speed-hold 0|1            Hold speed effects at full speed (overdo sets 1); 0 = real car speed\n"
 "  Replay keys (no flag): while a replay plays, , slower  . faster  Space pause or resume  Tab next camera (last stop: free camera). In chase cameras (4/5/6, including drone), arrows orbit and R resets the active camera to its normal pose. Free-camera controls are unchanged. A small bar shows replay time, speed and camera.\n"
 "    Free camera (replay only, works paused): W/S forward/back, A/D left/right, Q/E down/up, Shift fast, arrow keys turn and tilt, R back to the chase pose, Tab leaves it.\n"

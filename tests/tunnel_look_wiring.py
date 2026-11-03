@@ -29,4 +29,6 @@ need('kTunnelRadiusPerHeight * (float)backHeight' in g,'SDL_GPU uses the shared 
 need('kTunnelRadiusPerHeight * (float)backHeight' in e,'GL uses the shared radius')
 need('render/tunnel_vision.h' in g and 'render/tunnel_vision.h' in gl,'both backends include it')
 need('0.014f' not in g and '0.014f' not in e,'no stale radius literal')
+r=open('game/Race.cpp').read()
+need('Sys_GetOption("video.cockpit_blur_clear", 0)' in r,'cockpit interior depth exemption is opt-in (default 0): it covered ~99 percent of the blur zone')
 sys.exit(0 if ok else 1)
