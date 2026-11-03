@@ -6270,6 +6270,10 @@ void ReplayControls_Draw(void)
         size_t n = strlen(text);
         snprintf(text + n, sizeof text - n, " [lf %d/%d lost %d hl %d]", g_fogLightSourceCount, LIGHT_FIELD_MAX, g_fogLightDropped, g_fogLightDroppedPrio);
     }
+    {   // diag: which guard would block the camera keys (menu, opening, game-paused flag, tuning panel, captured)
+        size_t n = strlen(text);
+        snprintf(text + n, sizeof text - n, " [m%d o%d p%d t%d cap%d]", CGameInfo::IsInRaceMenuOpen() != 0, InRaceMenu_IsOpening() != 0, CGameInfo::IsInputAndGamePaused() != 0, TuningPanel_IsOpen() ? 1 : 0, ReplayChaseOrbit::InputCaptured(ReplayMenuOwnsInput(), TuningPanel_IsOpen()) ? 1 : 0);
+    }
     DebugOverlayLayout layout = DebugOverlayLayout::For(g_pGraphics->resX, g_pGraphics->resY, 1);
     int width = std::min((int)strlen(text) * layout.font * 6 / 10 + 2 * layout.pad, g_pGraphics->resX - 2 * layout.x);
     short panel[4] = {(short)((g_pGraphics->resX - width) / 2), (short)(g_pGraphics->resY - layout.height - layout.y), (short)width, (short)layout.height};
