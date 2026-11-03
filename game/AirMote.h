@@ -135,3 +135,10 @@ inline int AirMote_CockpitSize(int baseSize, int viewType, int sizePercent) {
     int p = sizePercent < 25 ? 25 : sizePercent > 100 ? 100 : sizePercent;
     return viewType == 3 ? baseSize * p / 100 : baseSize;
 }
+// video.air_motes_size (percent of the calibrated speck, 25..100, default 60): the 2026-11-04 request "make the floating specks
+// smaller in every view" (after the cockpit-only one above). Applies to every camera; the cockpit still takes its own extra
+// scale on top (default 60 x 50 = 30 percent there). 100 = the old calibrated size outside the cockpit.
+inline int AirMote_Size(int baseSize, int viewType, int cockpitPercent, int allViewsPercent) {
+    int a = allViewsPercent < 25 ? 25 : allViewsPercent > 100 ? 100 : allViewsPercent;
+    return AirMote_CockpitSize(baseSize, viewType, cockpitPercent) * a / 100;
+}

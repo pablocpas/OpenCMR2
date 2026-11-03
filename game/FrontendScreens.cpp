@@ -12682,6 +12682,7 @@ const EffectAmountRow kAtmosphereRows[]={
  {"Fog evolve (100 neutral; <100 clears, >100 thickens)","video.fog_evolve",60,201},
  {"Air motes (0/1)","video.air_motes",1,2},
  {"Air motes amount %","video.air_motes_amount",500,501},
+ {"Air motes size %, every view","video.air_motes_size",60,101},
  {"Air motes cockpit size %","video.air_motes_cockpit_size",50,101},
  {"Snow glints % (banks + falling flakes)","video.snow_glint",100,201},
  {"Fog through windscreen glass (0/1)","video.cockpit_glass_fog",1,2},

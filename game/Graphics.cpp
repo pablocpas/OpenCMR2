@@ -7285,11 +7285,11 @@ void AttractCapture_ViewSignature(int view, int *type, int *drone);   // Car.cpp
 void AirMote_Update(Particle *p, ParticleType *type, SceneNode *)
 {
     AirMote_Step(*p, g_airMoteDrift);
-    // Cockpit-only size scale (AirMote.h); other views keep the spawn size.
+    // Size scales (AirMote.h): every view takes video.air_motes_size, the cockpit also its own extra scale.
     if (p && type) {
         int vt = 0, dr = 0;
         AttractCapture_ViewSignature(0, &vt, &dr);
-        p->size = AirMote_CockpitSize(type->size, vt, Sys_GetOption("video.air_motes_cockpit_size", 50));
+        p->size = AirMote_Size(type->size, vt, Sys_GetOption("video.air_motes_cockpit_size", 50), Sys_GetOption("video.air_motes_size", 60));
     }
 }
 

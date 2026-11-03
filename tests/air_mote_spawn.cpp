@@ -18,6 +18,10 @@ int main(){
     CHECK(AirMote_CockpitSize(0x1000, 3, 100) == 0x1000); // full size opt-out
     CHECK(AirMote_CockpitSize(0x1000, 3, 0) == 0x400);    // clamped to the 25% floor
     CHECK(AirMote_CockpitSize(0x1000, 3, 999) == 0x1000); // clamped to 100%
+    CHECK(AirMote_Size(0x1000, 0, 50, 60) == 0x999);      // chase/other view: 60 percent
+    CHECK(AirMote_Size(0x1000, 3, 50, 60) == 0x4cc);      // cockpit: 50 percent then 60 percent
+    CHECK(AirMote_Size(0x1000, 0, 50, 100) == 0x1000);    // 100 = the old size outside the cockpit
+    CHECK(AirMote_Size(0x1000, 1, 50, 0) == 0x400);       // clamped to the 25% floor
     CHECK(AirMote_Cap(100) == 48);
     CHECK(AirMote_Cap(0) == 0);
     CHECK(AirMote_Cap(300) == 144);
