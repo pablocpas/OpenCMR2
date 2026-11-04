@@ -69,6 +69,7 @@ CarSceneRecord *StageTiming_GetStartTableRecord(int index);
 void StageDeform_ApplyRadialDent(void);
 void StageDeform_ApplyPlanarDent(void);
 int StageTiming_FindModelPartByNodeType(unsigned int type, CarPartSet *pModel);
+CarPartSet *StageTiming_GetCarReplayRecord(int index);
 CarPartSet *CarPart_GetSet(int carIndex);
 
 #include "StageWeatherParticle.h"

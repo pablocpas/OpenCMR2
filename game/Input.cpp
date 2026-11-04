@@ -916,7 +916,7 @@ void CInput::ReadKeyboardDevice(DeviceInfo *pDevice)
                        pDevice == &m_availableDevices[1] ? 1 : -1;
         if (keyboard >= 0) {
             BYTE keys[9];
-            memcpy(keys, &pDevice->keyboard.field_0x468, sizeof(keys));
+            memcpy(keys, &pDevice->keyboard.steerLeftKey, sizeof(keys));
             Sys_ApplyGameplayKeys(keyboard, keys);
             unsigned int keyActions = 0;
             for (int action = 0; action < 9; ++action)

@@ -20,12 +20,12 @@
 #include <fstream>
 
 // ---- stubs -------------------------------------------------------------
-DWORD CInput::m_unk0x0059f8f8 = 0;
-DWORD CInput::m_unk0x0059f8f4 = 0;
-DWORD CInput::m_unk0x0059f8f0 = 0;
-DWORD CInput::m_unk0x0059f900 = 0;
-DWORD CInput::m_unk0x0059f90c = 0;
-DWORD CInput::m_unk0x0059f910 = 0;
+DWORD CInput::m_menuMoveSound = 0;
+DWORD CInput::m_menuBackSound = 0;
+DWORD CInput::m_menuErrorSound = 0;
+DWORD CInput::m_menuSoundVolume = 0;
+DWORD CInput::m_menuChangeSound = 0;
+DWORD CInput::m_menuSelectSound = 0;
 int Sound_PlaySampleWithParameters(unsigned short, int, int, int, int, int) { return 0; }
 
 static Graphics g_graphics;

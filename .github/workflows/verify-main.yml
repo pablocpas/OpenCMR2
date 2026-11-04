@@ -1,0 +1,41 @@
+name: verify-main
+
+# Compile + test every push to main. The build workflow covers PRs, tags and
+# manual runs; a merge produced outside a PR (for example a local upstream
+# merge pushed straight to main) used to land without ever being compiled,
+# which is how renamed input/texture structures broke the build on 2026-11-05.
+# Linux x86_64 only: no packaging, no artifacts, no extra release matrix.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-main-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv clang ninja-build glslang-tools \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libegl1-mesa-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+      - uses: actions/checkout@v4
+      # Ubuntu 24.04 has no SDL3 package: the build fetches it.
+      - run: python3 -m venv .ci-python
+      - run: .ci-python/bin/python -m pip install -r tools/scenery-patch/requirements.txt
+      - run: echo "$GITHUB_WORKSPACE/.ci-python/bin" >> "$GITHUB_PATH"
+      - run: cmake --preset linux -DOPENCMR2_VENDORED_SDL=ON
+      - run: cmake --build --preset linux
+      - run: ctest --timeout 120 --preset linux

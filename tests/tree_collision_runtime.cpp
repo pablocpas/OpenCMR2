@@ -21,7 +21,7 @@ extern void Scene_InitFixedMathTables();
 extern short *g_sectorListIndexA,*g_sectorListIndexB;
 extern unsigned short *g_sectorListCountA;
 extern SectorObjectEntry **g_sectorListEntriesA;
-extern CollisionBox g_unk0x00590ed0[8];
+extern CollisionBox g_carCollisionBoxes[8];
 #define REQUIRE(x) do { if(!(x)){fprintf(stderr,"tree collision line %d: %s\n",__LINE__,#x);exit(1);} } while(0)
 struct Result {int hit, speed, contacts, impulseX, impulseZ; unsigned flags; FixVector position;};
 static Result Run(int option,int x,int z,unsigned flags,int speed){
@@ -37,7 +37,7 @@ static Result Run(int option,int x,int z,unsigned flags,int speed){
     car.collisionRadius=0x40000;car.speed=speed;car.velocity={speed,0,0};car.pWorld=&car.physicsMatrix;
     car.right.x=car.up.y=car.forward.z=0x10000;car.physicsMatrix.right.x=car.physicsMatrix.up.y=car.physicsMatrix.forward.z=0x10000;
     car.halfExtents={0x8000,0x10000,0x10000};car.previousContactCount=1;car.contactSurfaces[0][0]=0;
-    auto &box=g_unk0x00590ed0[0];box={};box.built=1;box.halfWidth=0x8000;box.halfLength=0x10000;box.top=0x10000;box.bottom=-0x10000;
+    auto &box=g_carCollisionBoxes[0];box={};box.built=1;box.halfWidth=0x8000;box.halfLength=0x10000;box.top=0x10000;box.bottom=-0x10000;
     box.axisA={0x10000,0,0};box.axisB={0,0,0x10000};box.pVertex=&car.position;
     const int signs[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
     for(int i=0;i<4;i++)box.points[i]={signs[i][0]*box.halfWidth,0,signs[i][1]*box.halfLength};

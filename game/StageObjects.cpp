@@ -1270,7 +1270,7 @@ static bool DrawTrailSegment(const TrailPoint *pCur, const TrailPoint *pPrev)
         return false;
     switch ((g_stageSurfaceInfo[pCur->material & 0xf].flags >> 2) & 3) {
     case 1:
-        pTexture = g_unk0x00588744;
+        pTexture = g_skidMarkTexture;
         break;
     case 2:
         a.colour[0] = 0;
@@ -1283,10 +1283,10 @@ static bool DrawTrailSegment(const TrailPoint *pCur, const TrailPoint *pPrev)
         b.colour[2] = 0;
         b.colour[3] = (BYTE)(alpha1 / 3);
         *(DWORD *)d.colour = *(DWORD *)b.colour;
-        pTexture = g_unk0x00588748;
+        pTexture = g_skidBlankTexture;
         break;
     default:
-        pTexture = g_unk0x00588740;
+        pTexture = g_skidTrailTexture;
         break;
     }
     Quad2D_QueueFixedTriangle(0, &b, &a, &c, pTexture, 0x26);
@@ -1366,12 +1366,7 @@ void CarEffects_DrawTyreMarks(int index)
         do {
             found = 0;
             cur = ((*pHead % ring) - j + ring) % ring;
-    for (wheel = 4; wheel != 0; wheel--, pHead++, base += TRAIL_MAX) {
-        j = 0;
-        do {
-            found = 0;
             step = g_stageSurfaceInfo[8].flags;
-            cur = ((*pHead % ring) - j + ring) % ring;
             if (step > 1) {
                 k = cur - step + ring;
                 do {
@@ -10444,7 +10439,7 @@ void StageObject_DrawProjectedViewIcon(int *pViewRect, int param_2)
     Gfx_SetFogLights(NULL, 0);
     if (param_2 == 0)
         SnowMaterial_UpdateFrame();   // video.snow_material: once per frame, view 0
-    if (g_unk0x00547ad0 == 0 || g_sunGlowTexture == 0)
+    if (g_sunGlowTexture == 0)
         return;
     uv.x = g_sunGlowTexture->field_0x11c;
     uv.y = g_sunGlowTexture->field_0x11e;
@@ -11834,13 +11829,13 @@ void CarLight_UpdateFlagsAndGlows(Car *pCar)
     else
         CarLight_SetChannelMasks(LIGHT_CAR, 0, 0, 8);
     if (pCar->field_0xb58 != 0) {
-        CarLight_SetChannelMasks(LIGHT_CAR, vA == 0, vB == 0, 1);
+        CarLight_SetChannelMasks(LIGHT_CAR, broken0 == 0, broken1 == 0, 1);
         // OpenCMR2: the shared type-8 channel was never damage-gated, so its
         // lamps kept shining with every lamp glass broken. Darken it only
         // when BOTH sides' lamp glass is broken: the channel carries a
         // single shared level, so single-side gating could extinguish an
         // intact lamp. Per-side behaviour stays exactly as the original.
-        CarLight_SetChannelMasks(LIGHT_CAR, vA == 0 || vB == 0, vA == 0 || vB == 0, 0x10);
+        CarLight_SetChannelMasks(LIGHT_CAR, broken0 == 0 || broken1 == 0, broken0 == 0 || broken1 == 0, 0x10);
     } else {
         CarLight_SetChannelMasks(LIGHT_CAR, 0, 0, 1);
         CarLight_SetChannelMasks(LIGHT_CAR, 0, 0, 0x10);
@@ -11909,7 +11904,7 @@ void CarLight_UpdateFlagsAndGlows(Car *pCar)
                 } else {
                     worldPos = glow->pos;
                 }
-                LightField_Add(&worldPos, &worldDir, intensity * 2 > 0x10000 ? 0x10000 : intensity * 2,
+                LightField_Add(&worldPos, &worldDir, glowIntensity * 2 > 0x10000 ? 0x10000 : glowIntensity * 2,
                                colour.x, colour.y, colour.z, pPoint->type == 8 ? 1 : 0);   // type 8 = front headlight in the Subaru CIN (lamps 10-11 of 13)
             }
             FixVecScale(&colour, &colour, glowIntensity);
@@ -14675,10 +14670,13 @@ extern BillboardDef g_rainSplashBillboard;
 extern BillboardDef g_snowBillboard;
 extern double g_fixedDegreesToAngle12;
 
+extern Texture *g_rainTexture, *g_splatTexture, *g_snowTextures[3];
+
 // Draws the precipitation of one view. Rain: each drop is a streak quad
 // along the wind (+0x20) widened across the view, plus a splash billboard for
 // the drops that hit the ground, then the car throws spray. Snow: each flake
 // is a billboard swaying along +0x38 with the sine of its phase.
+extern Texture *g_rainTexture;
 // FUNCTION: CMR2 0x00460390
 void StageWeather_DrawViewPrecipitation(int index, int view)
 {
@@ -14783,7 +14781,7 @@ void StageWeather_DrawViewPrecipitation(int index, int view)
             g_precipitation.quad.v[2].x -= sideF[0];
             g_precipitation.quad.v[2].y -= sideF[1];
             g_precipitation.quad.v[2].z -= sideF[2];
-            Quad2D_Queue(&g_precipitation.quad, g_unk0x00543e90, 0x16);
+            Quad2D_Queue(&g_precipitation.quad, g_rainTexture, 0x16);
             if (pNode->wrapped != 0) {
                 forward = *(FixVector *)pNode;
                 forward.y -= 0xc0000;
@@ -14792,7 +14790,7 @@ void StageWeather_DrawViewPrecipitation(int index, int view)
                 g_rainSplashBillboard.pos.x = offset.x + forward.x;
                 g_rainSplashBillboard.pos.y = offset.y + forward.y;
                 g_rainSplashBillboard.pos.z = offset.z + forward.z;
-                Billboard_Add(&g_rainSplashBillboard, g_unk0x00543ea4);
+                Billboard_Add(&g_rainSplashBillboard, g_splatTexture);
             }
         }
         if (CGameInfo::IsInRaceMenuOpen() == 0) {
@@ -14894,10 +14892,10 @@ void StageWeather_DrawViewPrecipitation(int index, int view)
                 int sb = (int)(g_snowBillboard.b * m); if (sb > 255) sb = 255;
                 BYTE savedR = g_snowBillboard.r, savedG = g_snowBillboard.g, savedB = g_snowBillboard.b;
                 g_snowBillboard.r = (BYTE)sr; g_snowBillboard.g = (BYTE)sg; g_snowBillboard.b = (BYTE)sb;
-                Billboard_Add(&g_snowBillboard, g_unk0x00543ea8[pNode->textureVariant]);
+                Billboard_Add(&g_snowBillboard, g_snowTextures[pNode->textureVariant]);
                 g_snowBillboard.r = savedR; g_snowBillboard.g = savedG; g_snowBillboard.b = savedB;
             } else {
-                Billboard_Add(&g_snowBillboard, g_unk0x00543ea8[pNode->textureVariant]);
+                Billboard_Add(&g_snowBillboard, g_snowTextures[pNode->textureVariant]);
             }
         }
     }

@@ -28,28 +28,28 @@ int main(){
  for(auto value:{"left=Escape","fly=A","3:left=A","left=not-a-key","left="}){error.clear();CHECK(parse(bad,value,error)&&!error.empty());}
  error.clear();char a[]="test",b[]="--bind-key";char *args[]={a,b};int i=1;CHECK(bad.Consume(i,2,args,error)&&!error.empty());
  // Actual gameplay/menu routing does not mutate device bindings or control table.
- DeviceInfo &device=CInput::m_availableDevices[0];memcpy(&device.keyboard.field_0x468,base,9);
- memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0xcb]=0x80;CGameInfo::m_unk0x0059f8d0=0;CInput::ReadKeyboardDevice(&device);CHECK(device.field_0x4==1);CHECK(!memcmp(&device.keyboard.field_0x468,base,9));
- CGameInfo::m_unk0x0059f8d0=1;CInput::m_keyboardState[0x1c]=0x80;CInput::ReadKeyboardDevice(&device);CHECK(device.field_0x4==(1|0x10));
+ DeviceInfo &device=CInput::m_availableDevices[0];memcpy(&device.keyboard.steerLeftKey,base,9);
+ memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0xcb]=0x80;CGameInfo::m_fixedMenuKeys=0;CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);CHECK(!memcmp(&device.keyboard.steerLeftKey,base,9));
+ CGameInfo::m_fixedMenuKeys=1;CInput::m_keyboardState[0x1c]=0x80;CInput::ReadKeyboardDevice(&device);CHECK(device.held==(1|0x10));
  // Nine keys/labels followed by a tenth button action: no overwrite of names.
- ControllerData data={};memset(data.keyNames,'Z',sizeof data.keyNames);data.field_0x13e[0]=data.field_0x13e[8]=0x11;data.field_0x128=data.field_0x138=1;
- FrontendControls_ClearDuplicateBinding(&data,8);CHECK(data.field_0x13e[0]==0&&data.keyNames[0][0]==0);CHECK(data.keyNames[8][0]=='Z');CHECK(data.field_0x128==0);CHECK(data.field_0x13e[8]==0x11);
+ ControllerData data={};memset(data.keyNames,'Z',sizeof data.keyNames);data.keys[0]=data.keys[8]=0x11;data.actionMasks[0]=data.actionMasks[8]=1;
+ FrontendControls_ClearDuplicateBinding(&data,8);CHECK(data.keys[0]==0&&data.keyNames[0][0]==0);CHECK(data.keyNames[8][0]=='Z');CHECK(data.actionMasks[0]==0);CHECK(data.keys[8]==0x11);
  char names[sizeof data.keyNames];memcpy(names,data.keyNames,sizeof names);FrontendControls_ClearDuplicateBinding(&data,9);CHECK(!memcmp(names,data.keyNames,sizeof names));
  // Capture Escape cancels, leaving the complete working/saved records alone.
- g_controlsSelectedSlot=0;g_controlsDeviceSelection.slots[0]=0;device.field_0x0=1;g_controlsCopy[0]=data;auto before=g_controlsCopy[0];g_controlsBindingCaptureState=1;g_unk0x0082a7e0=-1;memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[1]=0x80;Menu menu={};menu.cursor=0;FrontendControls_UpdateBindingCapture(&menu);CHECK(g_controlsBindingCaptureState==0);CHECK(!memcmp(&before,&g_controlsCopy[0],sizeof before));
+ g_controlsSelectedSlot=0;g_controlsDeviceSelection.slots[0]=0;device.type=1;g_controlsCopy[0]=data;auto before=g_controlsCopy[0];g_controlsBindingCaptureState=1;g_unk0x0082a7e0=-1;memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[1]=0x80;Menu menu={};menu.cursor=0;FrontendControls_UpdateBindingCapture(&menu);CHECK(g_controlsBindingCaptureState==0);CHECK(!memcmp(&before,&g_controlsCopy[0],sizeof before));
  // Capture a held supported key, not the last unrelated queued event.
- g_controlsBindingCaptureState=1;g_unk0x0082a7e0=-1;memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0x11]=0x80;CInput::QueueVirtualKeyPress(0x2e);FrontendControls_UpdateBindingCapture(&menu);CHECK(g_controlsBindingCaptureState==0);CHECK(g_controlsCopy[0].field_0x13e[0]==0x11);CHECK(g_controlsCopy[0].keyNames[0][0]!='C');
+ g_controlsBindingCaptureState=1;g_unk0x0082a7e0=-1;memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0x11]=0x80;CInput::QueueVirtualKeyPress(0x2e);FrontendControls_UpdateBindingCapture(&menu);CHECK(g_controlsBindingCaptureState==0);CHECK(g_controlsCopy[0].keys[0]==0x11);CHECK(g_controlsCopy[0].keyNames[0][0]!='C');
  // Extension capture is outside the packed driving keys. Confirm must release;
  // an occupied driving key is refused; Escape leaves both settings and keys alone.
  const int oldWiper=Sys_GetOption("video.windscreen_wiper_key",17);
- CInput::m_controllerInfo[0].field_0x13e[0]=0x11;
- g_controlsCopy[0].field_0x13e[1]=0x13; // unsaved driving edit must also be reserved
+ CInput::m_controllerInfo[0].keys[0]=0x11;
+ g_controlsCopy[0].keys[1]=0x13; // unsaved driving edit must also be reserved
  FrontendControls_BeginWiperBinding(&menu,nullptr);
  FrontendControls_UpdateWiperBinding(&menu,0);CHECK(!menu.flag2);
  memset(CInput::m_keyboardState,0,256);FrontendControls_UpdateWiperBinding(&menu,0);
  CInput::m_keyboardState[0x11]=0x80;FrontendControls_UpdateWiperBinding(&menu,0);CHECK(!menu.flag2);
  memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0x13]=0x80;FrontendControls_UpdateWiperBinding(&menu,0);CHECK(!menu.flag2);
  memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[1]=0x80;FrontendControls_UpdateWiperBinding(&menu,0);CHECK(menu.flag2);
- CHECK(Sys_GetOption("video.windscreen_wiper_key",17)==oldWiper);CHECK(CInput::m_controllerInfo[0].field_0x13e[0]==0x11);
+ CHECK(Sys_GetOption("video.windscreen_wiper_key",17)==oldWiper);CHECK(CInput::m_controllerInfo[0].keys[0]==0x11);
  puts("key remapping: parsing, swaps, duplicates, two keyboards, menu context, capture cancel and bounded labels pass");return 0;
 }

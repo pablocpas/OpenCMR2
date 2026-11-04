@@ -209,6 +209,16 @@ void CheckRecords(Pad &pad)
     SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
     MenuFrame();
     Check((Device(0).pressed & 0x3f) == 0, "a trigger does not navigate");
+    // Both triggers held: still no navigation, the driving pedal positions
+    // are preserved, and the stick navigates on top of them.
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+    MenuFrame();
+    Check((Device(0).pressed & 0xf) == 0, "both triggers do not navigate");
+    Check(Device(2).joystick.bindings[5].position == -0x10000 && Device(2).joystick.bindings[2].position == -0x10000,
+          "menu polling preserves both driving pedals");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, SDL_JOYSTICK_AXIS_MIN);
+    MenuFrame();
+    Check((Device(0).pressed & 0xf) == 4, "held triggers do not swallow stick navigation");
     Release(pad);
     MenuFrame();
 
@@ -340,6 +350,23 @@ void CheckRacePresses(Pad &pad)
     for (int i = 0; i < 10; ++i) {
         CInput::UpdateRaceDevices(1);
         Check((Device(0).pressed & 0x20) == 0, "held gear keys never repeat");
+    }
+    // Two players: each device keeps its edges until its own player runs,
+    // and holding a button repeats for neither of them.
+    memset(s_keys, 0, sizeof(s_keys));
+    Release(pad);
+    CInput::UpdateAllAvailableDevices();
+    s_keys[kRightBracket] = s_keys[Device(1).keyboard.shiftDownKey] = 0x80;
+    CInput::UpdateRaceDevices(0);
+    CInput::UpdateRaceDevices(1);
+    Check((Device(0).pressed & 0x20) != 0 && (Device(1).pressed & 0x20) == 0,
+          "player one does not consume player two presses");
+    CInput::UpdateRaceDevices(2);
+    Check((Device(1).pressed & 0x20) != 0, "player two receives the deferred press");
+    for (int i = 0; i < 10; ++i) {
+        CInput::UpdateRaceDevices(3);
+        Check(((Device(0).pressed | Device(1).pressed) & 0x20) == 0,
+              "held gear buttons never repeat for either player");
     }
     // Pending actions cannot leak out of a race into a frontend/pause menu.
     memset(s_keys, 0, sizeof(s_keys));

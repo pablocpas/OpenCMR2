@@ -29,7 +29,7 @@ int main(int argc,char**argv){
  FontGlyph glyph={};glyph.width=7;glyph.height=16;glyph.field_0xa[0]=8;short map[256];for(auto&v:map)v=0;
  FontSlot fonts[2]={};for(auto&f:fonts){f.loaded=1;f.pHeader=&h;f.pGlyphs=&glyph;f.pCharMap=map;f.pTexture=&arrow;}g_fonts=fonts;g_fontCount=2;Font_SetBlendMode(1);
  FrontendMenu_BuildDeviceBindings();Menu*m=FrontendMenu_GetDeviceBindings();m->items[9].enabled=m->items[9].visible=0;m->cursor=10;
- CInput::m_availableDevices[0].field_0x0=1;
+ CInput::m_availableDevices[0].type=1;
  if(argc>1)out=fopen(argv[1],"w");FrontendControls_DrawDeviceBindings(m);if(out)fclose(out);
  for(unsigned i=0;i<g_spriteCount1;i++){auto r=g_spriteLayer1[i].dst;if(r.y<55||r.y+r.h>470)fail++;}
  m->items[9].enabled=m->items[9].visible=1;FrontendControls_DrawDeviceBindings(m);
