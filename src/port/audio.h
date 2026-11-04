@@ -93,6 +93,15 @@ void Audio_GetMinDistance(AudioBuffer *buffer, float *distance);
 void Audio_GetMaxDistance(AudioBuffer *buffer, float *distance);
 void Audio_GetRolloffFactor(AudioBuffer *buffer, float *rolloff);
 
+/* ---- offline mix tap (replay video export) -------------------------------
+   Audio_GetOutputRate returns 0 when audio is not initialized.
+   Audio_MixOffline renders `frames` output frames as 16-bit PCM and advances
+   buffer playback exactly like live output. It refuses (returns 0) unless the
+   device is paused with Audio_SetPaused(1), so the live callback and the
+   offline tap can never advance the same cursors concurrently. */
+int Audio_GetOutputRate(void);
+int Audio_MixOffline(short *dst, int frames);
+
 /* Queued float PCM for movie sound. The mixer resamples to its output rate.
    Starts after the first video frame is presented; releasing discards queued
    sound immediately, including when the user skips a movie. */

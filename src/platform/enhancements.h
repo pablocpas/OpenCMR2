@@ -7,6 +7,7 @@
 #include <utility>
 struct EnhancementOptions {
     std::string captureDir;int captureInterval=5,captureCount=7;
+    std::string replayExportDir;   // --replay-export: fixed-step PNG+WAV dump of the first replay played, MP4 when ffmpeg is on PATH
     std::string trees, spectators, names, cars, modsDir, carNames, roads, textures;
     bool installDependencies=false,prepareOnly=false;
     std::string treeCoverage;int spectatorGain=100;   // experimental pack options: --tree-coverage reviewed|all, --spectator-gain 100..400 (percent)
@@ -20,7 +21,7 @@ struct EnhancementOptions {
         if(equal==key.npos && key=="--asset-upgrades"){trees="shell";treeCoverage="all";spectators="animated";textures="uprez";roads="finland1";return true;}
         if(equal==key.npos && key=="--prepare-only"){prepareOnly=true;return true;}
         if(equal==key.npos && key=="--install-enhancement-deps"){installDependencies=true;return true;}
-        if(key!="--camera-roll"&&key!="--sun-glare"&&key!="--textures"&&key!="--roads"&&key!="--tree-wind"&&key!="--car-names"&&key!="--trees"&&key!="--spectators"&&key!="--driver-names"&&key!="--cars"&&key!="--mods-dir"&&key!="--effect"&&key!="--attract-capture"&&key!="--capture-interval"&&key!="--capture-count"&&key!="--speed-fov"&&key!="--tunnel-vision"&&key!="--tunnel-lines"&&key!="--speed-motes-stretch"&&key!="--speed-motes-amount"&&key!="--speed-motes-size"&&key!="--dof-blur-max-px"&&key!="--speed-streak"&&key!="--speed-hold"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--cockpit-eye-shift"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--camera-move-chase"&&key!="--camera-move-cockpit"&&key!="--camera-move-car"&&key!="--fov-dolly-curve"&&key!="--tire-debris"&&key!="--tree-rustle"&&key!="--spectator-irregular"&&key!="--tire-track-length"&&key!="--tire-track-history"&&key!="--camera-move-type"&&key!="--fov-preview"&&key!="--dof-focus-car"&&key!="--drone-speed-drop"&&key!="--drone-distance"&&key!="--speed-fov-cockpit"&&key!="--cockpit-blur-clear"&&key!="--test-preset"&&key!="--fog-amount"&&key!="--fog-glow"&&key!="--fog-clear"&&key!="--fog-lights"&&key!="--fog-cull"&&key!="--fog-spatial"&&key!="--brush-volume"&&key!="--fog-evolve"&&key!="--air-motes-amount"&&key!="--snow-glint"&&key!="--cockpit-door-extend"&&key!="--cockpit-extend-rear"&&key!="--windshield-crack-overlay"&&key!="--diag-replay-glass")return false;
+        if(key!="--camera-roll"&&key!="--sun-glare"&&key!="--textures"&&key!="--roads"&&key!="--tree-wind"&&key!="--car-names"&&key!="--trees"&&key!="--spectators"&&key!="--driver-names"&&key!="--cars"&&key!="--mods-dir"&&key!="--effect"&&key!="--attract-capture"&&key!="--capture-interval"&&key!="--capture-count"&&key!="--speed-fov"&&key!="--tunnel-vision"&&key!="--tunnel-lines"&&key!="--speed-motes-stretch"&&key!="--speed-motes-amount"&&key!="--speed-motes-size"&&key!="--dof-blur-max-px"&&key!="--speed-streak"&&key!="--speed-hold"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--cockpit-eye-shift"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--camera-move-chase"&&key!="--camera-move-cockpit"&&key!="--camera-move-car"&&key!="--fov-dolly-curve"&&key!="--tire-debris"&&key!="--tree-rustle"&&key!="--spectator-irregular"&&key!="--tire-track-length"&&key!="--tire-track-history"&&key!="--camera-move-type"&&key!="--fov-preview"&&key!="--dof-focus-car"&&key!="--drone-speed-drop"&&key!="--drone-distance"&&key!="--speed-fov-cockpit"&&key!="--cockpit-blur-clear"&&key!="--test-preset"&&key!="--fog-amount"&&key!="--fog-glow"&&key!="--fog-clear"&&key!="--fog-lights"&&key!="--fog-cull"&&key!="--fog-spatial"&&key!="--brush-volume"&&key!="--fog-evolve"&&key!="--air-motes-amount"&&key!="--snow-glint"&&key!="--cockpit-door-extend"&&key!="--cockpit-extend-rear"&&key!="--windshield-crack-overlay"&&key!="--diag-replay-glass"&&key!="--replay-export")return false;
         if(equal==std::string::npos && i+1>=argc){error="Missing value for "+key;return true;}
         std::string value=equal==std::string::npos?argv[++i]:inlineValue;
         if(key=="--camera-roll"){char*end=nullptr;long n=strtol(value.c_str(),&end,10);if(value.empty()||*end||n<0||n>100)error="--camera-roll expects 0..100";else overrides["video.camera_roll"]=(int)n;}
@@ -158,6 +159,12 @@ struct EnhancementOptions {
             if(!ok)error="--test-preset expects overdo, atmosphere or off (comma-separated to combine)";else testPreset=value;
         }
         if(key=="--attract-capture"){if(value.empty())error="--attract-capture needs an output folder";else captureDir=value;}
+        if(key=="--replay-export"){
+            // OpenCMR2: export the first replay played after launch as fixed-step PNG frames + a WAV of the
+            // mixed game audio (25 sim steps/sec, one frame and one audio slice per step), then assemble
+            // replay.mp4 with ffmpeg when it is on PATH (the exact command is always written to the folder).
+            if(value.empty())error="--replay-export needs an output folder";else replayExportDir=value;
+        }
         if(key=="--capture-interval"||key=="--capture-count"){
             char *end=nullptr;long n=strtol(value.c_str(),&end,10);bool interval=key=="--capture-interval";
             if(value.empty()||*end||n<1||n>(interval?60:120))error=key+(interval?" expects 1..60 seconds":" expects 1..120 shots");
@@ -289,6 +296,10 @@ inline const char *EnhancementHelp(){return
 "                              Explicit flags override it; nothing is saved. fog_cull stays opt-in (experimental, unmeasured)\n"
 "  --attract-capture DIR       Start the attract demo at once, save PNGs of the frame at\n"
 "                              stage-clock 0, N, 2N... s into DIR (+ capture.csv), then quit\n"
+"  --replay-export DIR         Export the first replay played this launch into DIR: one PNG per sim step\n"
+"                              (25 fps, every step captured however long saving takes) plus the mixed game\n"
+"                              audio as WAV; replay.mp4 is assembled when ffmpeg is on PATH (the exact\n"
+"                              command is saved as export-command.txt either way)\n"
 "  --capture-interval SEC      Seconds of stage clock between shots (1..60, default 5)\n"
 "  --capture-count N           Number of shots (1..120, default 7 = 0..30 s)\n"
 "  --prepare-only              Prepare/validate selections, then exit\n"

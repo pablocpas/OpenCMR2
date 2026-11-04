@@ -38,6 +38,20 @@
 #include <unistd.h>
 #endif
 
+// Detached child spawn (Sys_RunDetached, replay-export ffmpeg assembly).
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <spawn.h>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#define OPENCMR2_ENVIRON (*_NSGetEnviron())
+#else
+extern char **environ;
+#define OPENCMR2_ENVIRON environ
+#endif
+#endif
+
 namespace {
 
 SDL_Window *s_window;
@@ -1394,6 +1408,22 @@ extern "C" const char *Sys_GetCaptureDir(int *intervalSeconds,int *count){
  if(count)*count=s_enhancements.captureCount;
  return s_enhancements.captureDir.empty()?NULL:s_enhancements.captureDir.c_str();
 }
+extern "C" const char *Sys_GetReplayExportDir(void){
+ return s_enhancements.replayExportDir.empty()?NULL:s_enhancements.replayExportDir.c_str();
+}
+// Detached spawn for the replay-export ffmpeg assembly: no shell, argv only, so
+// export paths with spaces or metacharacters are passed verbatim. Not found =
+// FALSE, the caller keeps the frames/WAV and points at the saved command file.
+extern "C" BOOL Sys_RunDetached(const char *path, const char *const argv[]){
+ if(path==NULL||argv==NULL)return FALSE;
+#ifdef _WIN32
+ return _spawnvp(_P_NOWAIT,path,argv)!=-1?TRUE:FALSE;
+#else
+ pid_t pid=-1;
+ return posix_spawnp(&pid,path,NULL,NULL,(char *const *)argv,OPENCMR2_ENVIRON)==0?TRUE:FALSE;
+#endif
+}
+
 extern "C" void Sys_RequestQuit(void){SDL_Event e;SDL_zero(e);e.type=SDL_EVENT_QUIT;SDL_PushEvent(&e);}
 extern "C" const char *Sys_GetLaunchSummary(int line){
  static std::string summary;

@@ -166,6 +166,11 @@ void Sys_SetOptionTemporary(const char *name, int value);
 const char *Sys_GetLaunchSummary(int line);
 /* --attract-capture: output folder (NULL when off) plus interval seconds and shot count. */
 const char *Sys_GetCaptureDir(int *intervalSeconds, int *count);
+const char *Sys_GetReplayExportDir(void);
+/* Runs a detached child process by PATH lookup with an explicit argv (no
+   shell; argv[0] is the program). Returns FALSE when the program cannot be
+   started (for example not installed). The caller cannot wait on the child. */
+BOOL Sys_RunDetached(const char *path, const char *const argv[]);
 void Sys_RequestQuit(void);
 /* The option's text, or fallback when it is not set. */
 const char *Sys_GetOptionText(const char *name, const char *fallback);
