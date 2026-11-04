@@ -2,6 +2,7 @@
 #include "CarBodyDirt.h"
 #include "Car.h"
 #include "port/sys.h"
+#include "CockpitWindow.h"
 #include "RaceCallbackStorage.h"
 #include "FloatToInt.h"
 #include "StageBlock.h"
@@ -2150,11 +2151,31 @@ static int CarPaintOwner(SceneNode *node){
  }
  return -1;
 }
-static void DrawCarScopedLOD(SceneNode*node,Mesh*mesh){
+void AttractCapture_ViewSignature(int view, int *type, int *drone);   // Car.cpp
+// bit: view index of the current viewport draw, or -1 when the draw is not
+// tied to a player view (full-scene passes). Cockpit window glass skips depth
+// writes per cockpit view only; every other view and pass is unchanged.
+static void DrawCarScopedLOD(SceneNode*node,Mesh*mesh,int bit){
  int previous=CarBodyDirt::drawingCar;CarBodyDirt::drawingCar=CarPaintOwner(node);
- Gfx_SetObjectId(CarBodyDirt::drawingCar>=0?(unsigned)CarBodyDirt::drawingCar+1:0);
- Graphics_DrawMeshLOD(mesh,0,0,0);
- Gfx_SetObjectId(0);
+ int noZ=0;
+ if(bit>=0&&bit<2&&CarBodyDirt::drawingCar>=0){
+  int viewType=0,viewDrone=0;AttractCapture_ViewSignature(bit,&viewType,&viewDrone);
+  noZ=CockpitWindow_SkipDepthWrite(node->flags&0xff,1,viewType,Sys_GetOption("video.cockpit_glass_fog",1))?1:0;
+ }
+ if(noZ&&CGraphics::GetZWriteEnable()==1){
+  static Mesh*logged[8];static int logCount=0,li;for(li=0;li<logCount;li++)if(logged[li]==mesh)break;
+  if(li==logCount&&logCount<8){logged[logCount++]=mesh;
+   Sys_Log("cockpit window: no depth writes in cockpit view for exterior window mesh (flags 0x%x, %d tris; video.cockpit_glass_fog)",(unsigned)mesh->flags,(int)mesh->triangleCount);}
+  CGraphics::SetZWriteEnable(0);
+  Gfx_SetObjectId(CarBodyDirt::drawingCar>=0?(unsigned)CarBodyDirt::drawingCar+1:0);
+  Graphics_DrawMeshLOD(mesh,0,0,0);
+  Gfx_SetObjectId(0);
+  CGraphics::SetZWriteEnable(1);
+ }else{
+  Gfx_SetObjectId(CarBodyDirt::drawingCar>=0?(unsigned)CarBodyDirt::drawingCar+1:0);
+  Graphics_DrawMeshLOD(mesh,0,0,0);
+  Gfx_SetObjectId(0);
+ }
  Gfx_SetBodyDirt(0,0,0,0);CarBodyDirt::drawingCar=previous;
 }
 
@@ -2170,7 +2191,7 @@ void Game_DrawViewMaskNodes(SceneNode *pNode, int bit)
             if ((mask & pNode->viewMask) != 0) {
                 if (pMesh != NULL) {
                     Gfx_SetTransform(GFX_TRANSFORM_WORLD, (GfxMatrix *)pNode->worldF);
-                    DrawCarScopedLOD(pNode,pMesh);
+                    DrawCarScopedLOD(pNode,pMesh,bit);
                 }
                 if ((pNode->viewMask & mask) != 0 && pNode->pFirstChild != NULL)
                     Game_DrawViewMaskNodes(pNode->pFirstChild, bit);
@@ -2190,7 +2211,7 @@ void Game_DrawViewMaskNode(SceneNode *pNode, int bit)
         if ((pNode->viewMask & (1 << bit)) != 0) {
             if (pMesh != NULL) {
                 Gfx_SetTransform(GFX_TRANSFORM_WORLD, (GfxMatrix *)pNode->worldF);
-                DrawCarScopedLOD(pNode,pMesh);
+                DrawCarScopedLOD(pNode,pMesh,bit);
             }
         }
     }
@@ -2634,7 +2655,7 @@ void Game_DrawWorldMeshNodesAnd2DLayer(void)
             pMesh = (Mesh *)pNode->pObject;
             if (pNode->viewMask != 0 && pMesh != NULL) {
                 Gfx_SetTransform(GFX_TRANSFORM_WORLD, (GfxMatrix *)pNode->worldF);
-                DrawCarScopedLOD(pNode,pMesh);
+                DrawCarScopedLOD(pNode,pMesh,-1);
             }
         }
     }

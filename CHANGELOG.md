@@ -4,6 +4,14 @@ All notable changes to OpenCMR2 are documented here.
 
 ## [Unreleased]
 ### Added
+- Cockpit view: the car's exterior window glass no longer writes depth while a
+  cockpit camera is active (`video.cockpit_glass_fog`, default on). The glass
+  distance used to fill the depth buffer across the whole windscreen, so the
+  fog pass saw "glass" instead of the world (no fog in cockpit) and the
+  depth-tested windscreen crack pane was occluded by the very glass it
+  reproduces (cracks submitted but invisible). Chase and other views are
+  unchanged; a one-time log line per window mesh confirms engagement.
+  Native verification pending.
 - Scenery patcher: hash-pinned source index for the 45 Greece `tre_*` cards
   (grehit/grelot), converted only with `--all-trees`; cliff cards are pinned but
   never converted. No assets bundled; native look unverified.
