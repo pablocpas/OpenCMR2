@@ -858,6 +858,7 @@ int g_unk0x00537198[2];
 #include "Car.h"
 #include "RallyRouteNode.h"
 #include "AttractCapture.h"
+#include "ReplayExport.h"
 int RallyData_GetActiveCarRaceRecordField0(Car *p);
 
 // Stores the player's route position twice and frees the first five race slots.
@@ -4750,6 +4751,7 @@ void Race_UpdateFrameEffects(int param_1)
         AttractCapture::Tick(StageTiming_GetClockTime(), (BYTE)RallyDataCountryIndex(), (BYTE)RallyDataStageIndex(), pCapture->speed,
                              pCapture->position.x, pCapture->position.y, pCapture->position.z, viewType, drone);
     }
+    ReplayExport::Tick();   // OpenCMR2: --replay-export frame/audio driver (no-op unless exporting a replay)
     Race_ApplySpeedEffectParams();
     // OpenCMR2: windscreen dirt accumulates while driving; faster = more dirt.
     if (Sys_GetOption("video.windscreen_dirt", 40) != 0) {

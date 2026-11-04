@@ -42,6 +42,23 @@
 #include <unistd.h>
 #endif
 
+// Detached child spawn (Sys_RunDetached, replay-export ffmpeg assembly).
+#ifdef _WIN32
+#include <process.h>
+#include <io.h>
+#else
+#include <spawn.h>
+#include <sys/wait.h>
+#include <errno.h>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#define OPENCMR2_ENVIRON (*_NSGetEnviron())
+#else
+extern char **environ;
+#define OPENCMR2_ENVIRON environ
+#endif
+#endif
+
 namespace {
 
 SDL_Window *s_window;
@@ -1662,6 +1679,48 @@ extern "C" const char *Sys_GetCaptureDir(int *intervalSeconds,int *count){
  if(count)*count=s_enhancements.captureCount;
  return s_enhancements.captureDir.empty()?NULL:s_enhancements.captureDir.c_str();
 }
+extern "C" const char *Sys_GetReplayExportDir(void){
+ return s_enhancements.replayExportDir.empty()?NULL:s_enhancements.replayExportDir.c_str();
+}
+// External-tool support for the replay-export ffmpeg assembly: no shell, argv
+// only, so export paths with spaces or metacharacters are passed verbatim.
+extern "C" BOOL Sys_CommandExists(const char *name){
+ if(name==NULL||!*name)return FALSE;
+#ifdef _WIN32
+ char out[MAX_PATH];
+ return SearchPathA(NULL,name,".exe",MAX_PATH,out,NULL)!=0?TRUE:FALSE;
+#else
+ const char *path=getenv("PATH");
+ if(path==NULL)return FALSE;
+ char probe[1024];
+ for(const char *p=path;;){
+  const char *colon=strchr(p,':');
+  size_t n=colon?(size_t)(colon-p):strlen(p);
+  if(n>0&&n+strlen(name)+2<sizeof probe){
+   memcpy(probe,p,n);probe[n]='\0';
+   strcat(probe,"/");strcat(probe,name);
+   if(access(probe,X_OK)==0)return TRUE;
+  }
+  if(colon==NULL)break;
+  p=colon+1;
+ }
+ return FALSE;
+#endif
+}
+extern "C" int Sys_RunAndWait(const char *path, const char *const argv[]){
+ if(path==NULL||argv==NULL)return -1;
+#ifdef _WIN32
+ intptr_t r=_spawnvp(_P_WAIT,path,argv);
+ return r==-1?-1:(int)r;
+#else
+ pid_t pid=-1;
+ if(posix_spawnp(&pid,path,NULL,NULL,(char *const *)argv,OPENCMR2_ENVIRON)!=0)return -1;
+ int status=0;
+ while(waitpid(pid,&status,0)<0)if(errno!=EINTR)return -1;
+ return WIFEXITED(status)?WEXITSTATUS(status):-1;
+#endif
+}
+
 extern "C" void Sys_RequestQuit(void){SDL_Event e;SDL_zero(e);e.type=SDL_EVENT_QUIT;SDL_PushEvent(&e);}
 extern "C" const char *Sys_GetLaunchSummary(int line){
  static std::string summary;

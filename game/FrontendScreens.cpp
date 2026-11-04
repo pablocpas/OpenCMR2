@@ -33,6 +33,7 @@
 #include "RecordBits.h"
 #include "StageInfo.h"
 #include "AttractCapture.h"
+#include "ReplayExport.h"
 
 extern int g_unk0x00819744;
 
@@ -5445,6 +5446,7 @@ void FrontendMenu_EnterMain(Menu *pMenu, int param)
 
     g_mainMenuInputTime = Sys_GetTicks();
     AttractCapture::OnMainMenu();
+    ReplayExport::OnMainMenu();   // OpenCMR2: leaving to the menu ends a --replay-export capture
     FrontendAnimation_ResetMainPath();
     // PORT: guarantee the draw a path before the first update runs
     // (boot render ordering; native NULL deref in EvaluatePathSpline).
