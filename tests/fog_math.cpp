@@ -148,7 +148,7 @@ int main(){
     // FogUniforms layout pin: shaders/fog.frag declares fog, sun, extra,
     // lights[8], lightInfo[8], beams[8] = 27 vec4; the executors' beam writes
     // reach index 76 + 7*4 + 2 = 106 with all 8 lights.
-    CHECK(kFogUniformFloats == 140);
+    CHECK(kFogUniformFloats == 148);
     CHECK(76 + 7 * 4 + 3 <= kFogUniformFloats);
 
     return fails;

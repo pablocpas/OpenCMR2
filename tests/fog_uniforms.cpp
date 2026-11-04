@@ -32,7 +32,7 @@ static const float kCanary = -13579.2468f;
 #endif
 
 int main() {
-    CHECK(kFogUniformFloats == 140);
+    CHECK(kFogUniformFloats == 148);
 #ifdef _WIN32
     std::vector<float> buf(kFence + kFogUniformFloats + kFence, kCanary);
     float *u = buf.data() + kFence;

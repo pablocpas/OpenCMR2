@@ -4,11 +4,12 @@
 // executors (SDL_GPU in gfx_gpu.cpp, GL in gl_effects_executor.h) call this:
 // the 23-vs-27-vec4 stack overflow came from two hand-copied fill loops whose
 // size constant drifted from the shader when beams[8] was added. Layout:
-// fog, sun, extra, lights[8], lightInfo[8], beams[8], halos[8] = 35 vec4 = 140 floats
+// fog, sun, extra, lights[8], lightInfo[8], beams[8], halos[8], camA, camB = 37 vec4 = 148 floats
 // (kFogUniformFloats). Every float is written explicitly - no zero-init
 // reliance - so the pushed block never carries stale or unwritten lanes.
 #include "port/gfx.h"
 #include "render/fog_math.h"
+#include "render/fog_camera.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -56,5 +57,8 @@ inline void FogUniforms_Pack(float *out, const FogUniformParams &p,
         out[108 + i*4 + 2] = on ? L->haloRef : 0.0f;
         out[108 + i*4 + 3] = on ? L->beamEndRef : 0.0f;   // beam-end depth ref for the segment gate
     }
+    // World-anchored banks (render/fog_camera.h): camA = pos xz, forward xz; camB = right xz, 1/p11, strength.
+    out[140] = g_fogCamera.posX;   out[141] = g_fogCamera.posZ;   out[142] = g_fogCamera.fwdX;  out[143] = g_fogCamera.fwdZ;
+    out[144] = g_fogCamera.rightX; out[145] = g_fogCamera.rightZ; out[146] = g_fogCamera.invP11; out[147] = g_fogCamera.strength;
 }
 #endif

@@ -1,3 +1,4 @@
+#include "render/fog_camera.h"
 #include "render/dust_volume_math.h"
 #include "render/touch_overlay.h"
 // The renderer's front end: the gfx.h state machine, CPU copies of textures
@@ -1508,6 +1509,9 @@ void Gfx_HashFrame(const uint8_t *bgra, int width, int height)
 
 extern "C" void Gfx_SetSunScreenPosition(float x,float y,BOOL visible) {
  if(s_executor)s_executor->SetSunScreenPosition(x,y,visible);
+}
+extern "C" void Gfx_SetFogCamera(float posX,float posZ,float fwdX,float fwdZ,float rightX,float rightZ,float invP11,float strength) {
+ g_fogCamera=FogCamera{posX,posZ,fwdX,fwdZ,rightX,rightZ,invP11,strength};
 }
 extern "C" void Gfx_SetFogLights(const GfxFogLight *lights,int count) {
  if(s_executor)s_executor->SetFogLights(lights,count);

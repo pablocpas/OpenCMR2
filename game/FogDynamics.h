@@ -39,7 +39,7 @@ inline float FogDynamics_Mult(float progress01, float phase01, int spatial, int 
 // so a clearing stretch cannot reveal geometry the cull cut while it was foggy.
 inline float FogDynamics_MinMult(int spatial, int evolve) {
     float m = 1.f;
-    if (spatial) m *= 0.5f;
+    if (spatial) m *= 0.5f * 0.2f;   // route pockets (0.5) times the shader's world-bank floor (0.2, fog.frag fogBank)
     if (evolve != 100) {
         int e = evolve < 0 ? 0 : evolve > 200 ? 200 : evolve;
         m *= 1.f - std::fabs((e - 100) / 200.f);

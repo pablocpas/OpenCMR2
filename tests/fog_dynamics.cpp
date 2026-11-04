@@ -22,9 +22,9 @@ int main(){
     CHECK(FogDynamics_Mult(1.f, 0.99f, 1, 200) <= 2.f && FogDynamics_Mult(0.f, 0.99f, 1, 0) >= 0.05f);
     // Cull floor: the clearest reach of the curves, so clearing fog cannot pop culled geometry.
     CHECK(std::fabs(FogDynamics_MinMult(0, 100) - 1.f) < 1e-6f);
-    CHECK(std::fabs(FogDynamics_MinMult(1, 100) - 0.5f) < 1e-6f);
+    CHECK(std::fabs(FogDynamics_MinMult(1, 100) - 0.1f) < 1e-6f);
     CHECK(std::fabs(FogDynamics_MinMult(0, 200) - 0.5f) < 1e-6f && std::fabs(FogDynamics_MinMult(0, 0) - 0.5f) < 1e-6f);
-    CHECK(std::fabs(FogDynamics_MinMult(1, 200) - 0.25f) < 1e-6f);
+    CHECK(std::fabs(FogDynamics_MinMult(1, 200) - 0.05f) < 1e-6f);
     CHECK(FogDynamics_MinMult(1, 0) >= 0.05f);
     std::printf(fails ? "FAILED\n" : "fog dynamics ok\n");
     return fails ? 1 : 0;

@@ -13,7 +13,25 @@ layout(std140, set = 3, binding = 0) uniform FogUniforms {
     vec4 lightInfo[8]; // x depth-buffer value 1 world unit in front of the lamp (<= 0: no depth gate), yzw tint
     vec4 beams[8];     // xy aspect-corrected unit screen beam direction, z wedge length, w energy ratio q = lampZ/endZ (1 = no thinning)
     vec4 halos[8];     // xy glow anchor (a few units forward along the beam), z halo depth ref (<= 0: no gate), w unused
+    vec4 camA;         // camera world xz, camera forward xz (horizontal parts), for the world-anchored banks
+    vec4 camB;         // camera right xz, 1/projection x scale, bank strength 0..1 (0 = uniform fog)
 };
+// World-anchored fog banks (video.fog_spatial). Two octaves of value noise on the horizontal world position: broad banks about 70 units
+// across with smaller breaks inside them. The multiplier runs from 0.20 to 1.80 and averages about 1 (the chosen fog amount
+// keeps its overall look); mirrored by kFogBankMin in game/FogDynamics.h, which the fog draw cull keys off.
+float bankHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float bankNoise(vec2 p)
+{
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(bankHash(i), bankHash(i + vec2(1.0, 0.0)), f.x), mix(bankHash(i + vec2(0.0, 1.0)), bankHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fogBank(vec2 wp)
+{
+    float n = 0.65 * bankNoise(wp / 70.0) + 0.35 * bankNoise(wp / 27.0 + 17.3);
+    n = smoothstep(0.30, 0.70, n);
+    return 0.20 + 1.60 * n;   // kBankMin 0.20 .. 1.80
+}
 void main()
 {
     vec2 size = vec2(textureSize(scene, 0));
@@ -31,7 +49,14 @@ void main()
         float t = clamp((depth - 0.990) / 0.010, 0.0, 1.0);
         viewZ = 150.0 * t * t;
     }
-    float factor = 1.0 - exp(-fog.x * viewZ);
+    // World-anchored banks: rebuild the pixel's horizontal world position (view x / depth = ndc.x / p11) and vary the density there.
+    float bank = 1.0;
+    if (camB.w > 0.0 && fog.z > 0.0 && depth < 0.9999) {
+        float ndcX = (uv.x * 2.0 - 1.0) * camB.z;
+        vec2 wp = camA.xy + (camA.zw + camB.xy * ndcX) * viewZ;
+        bank = mix(1.0, fogBank(wp), clamp(camB.w, 0.0, 1.0));
+    }
+    float factor = 1.0 - exp(-fog.x * viewZ * bank);
     // Near-field clear distance (video.fog_clear): 0 at the camera, full curve beyond.
     if (extra.x > 0.0) {
         float ct = clamp(viewZ / extra.x, 0.0, 1.0);
