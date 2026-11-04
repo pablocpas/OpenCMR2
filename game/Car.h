@@ -79,6 +79,7 @@ struct Car {
             FixVector forward;       // 0x378
         };
         int bodyAxes[9];
+        FixVector bodyAxisVectors[3]; // same right/up/forward rows, without a byte cursor
     };
     union {
         struct {
@@ -148,10 +149,10 @@ struct Car {
     int baseDriveSplit;                // 0x7b8
     int gearRatio[8];                  // 0x7bc
     int gearSpeed[8];                 // 0x7dc  per-gear speed table (Car_SelectGearSpeedTable)
-    int field_0x7fc;                  // 0x7fc  set from the difficulty (0x43e530)
-    int field_0x800;                  // 0x800
-    int field_0x804;                  // 0x804
-    int field_0x808[4];               // 0x808
+    int steeringOutwardRate;          // 0x7fc  angle step steering away from centre (CarSetup::steering)
+    int steeringCentringRate;         // 0x800  angle step steering back towards centre
+    int steeringForceScale;           // 0x804  scales the steering accumulator inputs
+    int wheelTravelLoadBias[4];       // 0x808 mean-relative wheel travel, scaled/clamped for corner loads
     int steeringInput;                 // 0x818  ramps -1..1 with flag0x1d0[0]/[1] (0x494540)
     int steeringAccumulator;           // 0x81c
     int steeringReturnRate;            // 0x820  rate applied when steering returns towards zero
@@ -176,11 +177,11 @@ struct Car {
             int wheelSpinForBodyLean[4];       // 0x8a0  filtered wheel spin (body lean)
             int cornerMass;                   // 0x8b0  mass carried by each touching corner
             int tyreGrip;                     // 0x8b4  tyre grip, times the physics scale each step
-            int field_0x8b8[8];               // 0x8b8  per-wheel torque rebuilt every step (8 corners)
+            int cornerWeight[8];               // 0x8b8  per-corner load shares, rebuilt from suspension/lean
         };
         int surfaceCompressionWords[22]; // 0x880..0x8d7, original contiguous walk
     };
-    int field_0x8d8;                  // 0x8d8
+    int suspensionLoadScale;          // 0x8d8 mass / 8, converts height differences to load shares
     int cornerHeight[8];              // 0x8dc  ground height under each box corner
     int field_0x8fc[8];               // 0x8fc  per-corner height offset while cornerOnGround[4 + i]
     int groundRightDot;                // 0x91c  ground normal projected on the body right axis
@@ -197,17 +198,17 @@ struct Car {
     int field_0x96c;                  // 0x96c
     int field_0x970[2];               // 0x970
     int field_0x978[4];               // 0x978  per-wheel offset added to the part's value
-    int wheel0x988[4];                // 0x988
-    int field_0x998[4];               // 0x998  suspension height of each corner, front lean frame
-    int wheel0x9a8[4];                // 0x9a8  suspension height of each corner, body lean frame
+    int wheelRideHeight[4];          // 0x988 setting-derived body lift / spring-impact limit
+    int wheelLeanHeight[4];          // 0x998 lean-frame corner Y plus suspension damage offset
+    int bodyLeanHeight[4];           // 0x9a8 body-lean corner Y plus suspension damage offset
     int wheelLeanDamping;              // 0x9b8  damping of wheelLean
     int bodyLeanDamping;               // 0x9bc
-    int field_0x9c0;
+    int wheelTravelLoadScale;        // 0x9c0 converts mean-relative wheel travel to load bias
     int field_0x9c4;                  // 0x9c4
-    int field_0x9c8[4];               // 0x9c8
-    int wheel0x9d8[4];                // 0x9d8
-    int field_0x9e8[4];               // 0x9e8
-    int field_0x9f8[4];               // 0x9f8
+    int wheelSpringVelocity[4];      // 0x9c8 integrated restoring/damping force
+    int wheelSpringOffset[4];        // 0x9d8 integrated velocity; clamped below at -0x3333
+    int wheelSpringStiffness[4];     // 0x9e8 coefficient multiplying spring offset
+    int wheelSpringDamping[4];       // 0x9f8 coefficient multiplying spring velocity
     int field_0xa08;
     int cornerGripA[8];               // 0xa0c  grip limits of a corner without a wheel
     int cornerGripB[8];               // 0xa2c
@@ -428,7 +429,7 @@ void Car_UpdateBodyAxes(void);
 void Car_UpdateEngineSpeed(void);
 void Car_ApplyCornerFriction(int grip);
 void Car_BalanceWheelPairs(void);
-void Car_UpdateWheelTorques(void);
+void Car_UpdateWheelLoads(void);
 void Car_UpdateCorners(Car *pCar);
 void Car_ApplyCornerOffsets(void);
 void Car_UpdateBodyAxesNoDamping(void);

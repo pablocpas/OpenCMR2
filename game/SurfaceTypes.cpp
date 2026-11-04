@@ -205,7 +205,7 @@ void Car_UpdateSurfaceParams(Car *pCar, int blend)
 {
     int i = 7;
     short noise = 0;
-    int *pComp = &pCar->surfaceCompressionWords[(offsetof(Car, field_0x8b8) + sizeof(int) - offsetof(Car, surfaceCompressionWords)) / sizeof(int)];
+    int *pComp = &pCar->surfaceCompressionWords[(offsetof(Car, cornerWeight) + sizeof(int) - offsetof(Car, surfaceCompressionWords)) / sizeof(int)];
     short noiseNext = 0;
     short *pSurf = &pCar->wheelSurface[7];
     int *pOut = &pCar->surfaceOutputWords[(offsetof(Car, cornerGrip) + 7 * sizeof(CarCornerGrip) + offsetof(CarCornerGrip, gripB)) / sizeof(int)];
@@ -1380,8 +1380,8 @@ void Surface_ConfigureMenuInput(void)
     int rate;
 
     g_unk0x0058dc5c = -1;
-    CInput::SetInputRepeatTimingState(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
-    CInput::SetInputRepeatTimingParameters(g_unk0x0058dc58, g_unk0x0058dc58 + 1, g_unk0x0058dc58 + 2, g_unk0x0058dc58 + 3,
+    CInput::SetMenuSoundVolume(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
+    CInput::SetMenuSounds(g_unk0x0058dc58, g_unk0x0058dc58 + 1, g_unk0x0058dc58 + 2, g_unk0x0058dc58 + 3,
                          g_unk0x0058dc58 + 4);
     Menu_SetInputStateFlag(1);
 }

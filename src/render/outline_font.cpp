@@ -545,17 +545,27 @@ extern "C" void OutlineFont_Replace(const char *name, GfxTexture *texture, const
     std::vector<OutlineFontGlyph> list(glyphs, glyphs + count);
     Bitmap bm;
     GfxLockedRect r;
-    if (!Gfx_LockTexture(texture, 0, 0, &r))
+    if (!ReadBitmap(texture, bm))
         return;
-    Gfx_UnlockTexture(texture, 0, 0);
-    std::string key = std::string(name) + "|" + std::to_string(r.width) + "x" + std::to_string(r.height) + "|" +
-                      std::to_string(count);
-    auto it = cache.find(key);
-    if (it == cache.end()) {
-        if (!ReadBitmap(texture, bm))
-            return;
-        it = cache.emplace(key, Build(name, bm, list)).first;
+    // The stage fonts of the 640x480 and 1024x768 archives share names and
+    // sizes (hel_13pt, lcd_640) but not their glyphs: the key is what the
+    // field is built from, the texels and the cells.
+    uint64_t hash = 14695981039346656037ull;
+    auto mix = [&hash](const void *p, size_t n) {
+        for (size_t i = 0; i < n; i++)
+            hash = (hash ^ ((const uint8_t *)p)[i]) * 1099511628211ull;
+    };
+    for (const std::vector<float> *c : { &bm.r, &bm.g, &bm.b, &bm.a })
+        mix(c->data(), c->size() * sizeof(float));
+    for (const OutlineFontGlyph &g : list) {
+        const short cell[5] = { g.code, g.x, g.y, g.width, g.height };
+        mix(cell, sizeof(cell));
     }
+    std::string key = std::string(name) + "|" + std::to_string(bm.width) + "x" + std::to_string(bm.height) + "|" +
+                      std::to_string(hash);
+    auto it = cache.find(key);
+    if (it == cache.end())
+        it = cache.emplace(key, Build(name, bm, list)).first;
     const Built &built = it->second;
     int levels = 1;
     while ((std::max(built.width, built.height) >> levels) > 0 && levels < 16)

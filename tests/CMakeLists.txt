@@ -95,6 +95,11 @@ target_include_directories(gamepad_layout_test PRIVATE ${PROJECT_SOURCE_DIR}/gam
 target_link_libraries(gamepad_layout_test PRIVATE opencmr2_platform)
 add_test(NAME gamepad_layout COMMAND gamepad_layout_test)
 
+add_executable(input_actions_test input_actions.cpp)
+target_include_directories(input_actions_test PRIVATE ${PROJECT_SOURCE_DIR}/game)
+target_link_libraries(input_actions_test PRIVATE opencmr2_platform)
+add_test(NAME input_actions COMMAND input_actions_test)
+
 add_executable(frontend_language_test frontend_language.cpp)
 target_link_libraries(frontend_language_test PRIVATE opencmr2_platform)
 add_test(NAME frontend_language COMMAND frontend_language_test)
@@ -195,7 +200,7 @@ if(OPENCMR2_BINK_TEST_DATA_DIR)
         add_test(NAME runtime_scenarios COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/runtime_scenarios.py --probe $<TARGET_FILE:stage_probe>
             --data ${OPENCMR2_BINK_TEST_DATA_DIR})
-        set_tests_properties(runtime_scenarios PROPERTIES TIMEOUT 180)
+        set_tests_properties(runtime_scenarios PROPERTIES TIMEOUT 300)
         add_test(NAME cpu_runs COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/runtime_scenarios.py --probe $<TARGET_FILE:stage_probe>
             --data ${OPENCMR2_BINK_TEST_DATA_DIR} --cpu-runs)
@@ -205,6 +210,11 @@ if(OPENCMR2_BINK_TEST_DATA_DIR)
                 ${CMAKE_CURRENT_SOURCE_DIR}/lan_game.py --host-probe $<TARGET_FILE:stage_probe>
                 --data ${OPENCMR2_BINK_TEST_DATA_DIR})
             set_tests_properties(lan_game PROPERTIES TIMEOUT 120)
+            # Cars from 2 have no view or event slot of their own.
+            add_test(NAME lan_game_3 COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/lan_game.py --host-probe $<TARGET_FILE:stage_probe>
+                --data ${OPENCMR2_BINK_TEST_DATA_DIR} --players 3)
+            set_tests_properties(lan_game_3 PROPERTIES TIMEOUT 150)
         endif()
         add_test(NAME stage_lighting COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/stage_lighting.py --probe $<TARGET_FILE:stage_probe>

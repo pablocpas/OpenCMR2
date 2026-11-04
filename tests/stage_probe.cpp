@@ -330,7 +330,7 @@ struct Probe : Diagnostics::TimingObserver {
             Array("contact_triangles", c.cornerTriangle); Array("surface", c.wheelSurfaceType);
             Array("wheel_load", c.wheelLoad); Array("wheel_torque", c.wheelTorque);
             Array("wheel_slip", c.wheelSlip); Array("wheel_slip_lateral", c.wheelSlipLateral);
-            Array("suspension", c.wheel0x988); Array("suspension_body", c.wheel0x9a8);
+            Array("suspension", c.wheelRideHeight); Array("suspension_body", c.bodyLeanHeight);
             Array("corner_height", c.cornerHeight); Array("disabled_corners", c.cornerFlags);
             if (g_carPartSets) {
                 const CarPartSet &parts = g_carPartSets[int(c.index)];
@@ -481,6 +481,8 @@ int main(int argc, char **argv) {
     BYTE keys[256]{};
     Platform_SetTestClock(&clock);
     Platform_SetTestKeyboard(keys);
+    // Recorded and random inputs only: no controller connected to the machine.
+    Platform_SetTestNoControllers(true);
     Main_InitD3DX();
     CGame::RegisterNetworkResourceRelease();
     Input_ClearKeyPressQueue();
@@ -502,6 +504,8 @@ int main(int argc, char **argv) {
     int pressCursor = -1;
     const char *lanRole = getenv("OPENCMR2_PROBE_LAN_ROLE");
     const Uint64 lanOrigin = SDL_GetTicks();
+    // OPENCMR2_PROBE_LAN_SECONDS: wall time allowed (40; more under the sanitizers).
+    const Uint64 lanLimit = getenv("OPENCMR2_PROBE_LAN_SECONDS") ? 1000 * strtoull(getenv("OPENCMR2_PROBE_LAN_SECONDS"), nullptr, 10) : 40000;
     bool lanReady = false;
     for (unsigned frame = 0; frame < 200000 && probe.tick < ticks && !CGame::m_shouldExit; ++frame) {
         // Socket threads use wall time, even when the simulation clock is
@@ -509,7 +513,7 @@ int main(int argc, char **argv) {
         // discovery, lobby and race-start packets.
         if (lanRole) {
             SDL_Delay(10);
-            if (SDL_GetTicks() - lanOrigin > 40000) break;
+            if (SDL_GetTicks() - lanOrigin > lanLimit) break;
         }
         SDL_PumpEvents();
         // The dummy driver does not focus windows. This test dispatches frames
@@ -522,6 +526,10 @@ int main(int argc, char **argv) {
             if (!Gfx_SetVideoMode(probe.challengeWidth, probe.challengeHeight, FALSE)) return 1;
             g_pGraphics->resX = probe.challengeWidth;
             g_pGraphics->resY = probe.challengeHeight;
+            // As choosing the mode in the options does: the configuration
+            // picks the 640 or 1024 texture set.
+            CGameInfo::SetScreenWidth(probe.challengeWidth);
+            CGameInfo::SetScreenHeight(probe.challengeHeight);
             probe.challengeSizeSet = true;
         }
         // Create the fixture from a real garage session. A second probe run
@@ -610,13 +618,19 @@ int main(int argc, char **argv) {
             bool holdLobby = false;
             if (lanRole && menu == FrontendMenu_GetNetworkSessionSetup()) {
                 holdLobby = true;
-                if (strcmp(lanRole, "host") == 0)
+                if (strcmp(lanRole, "host") == 0) {
+                    // OPENCMR2_PROBE_LAN_GUESTS: the guests to wait for (1).
+                    const char *guests = getenv("OPENCMR2_PROBE_LAN_GUESTS");
+                    int ready = 0;
                     for (const NetPlayer &player : g_netPlayers)
-                        if ((player.flags & 0xc0) == 0xc0) {
-                            holdLobby = false;
-                            if (!lanReady) fprintf(stderr, "probe: LAN guest ready id=%d\n", player.id);
-                            lanReady = true;
-                        }
+                        if ((player.flags & 0xc0) == 0xc0)
+                            ready++;
+                    if (ready >= (guests ? atoi(guests) : 1)) {
+                        holdLobby = false;
+                        if (!lanReady) fprintf(stderr, "probe: LAN guest ready (%d)\n", ready);
+                        lanReady = true;
+                    }
+                }
             }
             // OPENCMR2_PROBE_RESULTS_PRESSES=N: in the results menu after the
             // finish, press Down N times (80 ms each, 160 ms apart) instead

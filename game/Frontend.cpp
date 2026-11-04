@@ -511,8 +511,8 @@ char **CFrontend::m_textStrings;
 int CFrontend::m_textFirstId;
 int CFrontend::m_textCount;
 char CFrontend::m_strInvalidTextString[20] = "INVALID TEXT STRING";
-BYTE CFrontend::m_unk0x0065aa70;
-BYTE CFrontend::m_unk0x0065aa71;
+BYTE CFrontend::m_textLanguage;
+BYTE CFrontend::m_textLanguageCount;
 
 // Looks up one of the loaded text strings; out-of-range ids fall back to the
 // "INVALID TEXT STRING" placeholder.
@@ -520,8 +520,8 @@ BYTE CFrontend::m_unk0x0065aa71;
 // FUNCTION: CMR2 0x004a3c30
 void Frontend_SelectTextLanguage(int language)
 {
-    if (language < CFrontend::m_unk0x0065aa71) {
-        CFrontend::m_unk0x0065aa70 = language;
+    if (language < CFrontend::m_textLanguageCount) {
+        CFrontend::m_textLanguage = language;
         CFrontend::m_textFirstId = CFrontend::m_textCount * language;
     }
 }
@@ -537,8 +537,8 @@ void CFrontend::BuildLocalizedTextStringTable(int languages, int count, BYTE **p
     int row;
     BYTE *p;
 
-    m_unk0x0065aa71 = (BYTE)languages;
-    m_unk0x0065aa70 = 0;
+    m_textLanguageCount = (BYTE)languages;
+    m_textLanguage = 0;
     m_textFirstId = 0;
     m_textCount = count;
     m_textStrings = (char **)CFileBuffer::AllocateLockedBuffer(languages * count * sizeof(char *));
@@ -708,7 +708,7 @@ void FrontendDraw_AnimatedMatrixBackground(short x0, short y0, char *pMap)
             g_frontendDrawRect[1] -= (FixMul(0x30000, wave) >> 16);
             *(unsigned int *)colour = g_matrixColours[*pCell];
             brightness = wave / 4 + 0xc000;
-            colour[0] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[0], CGraphics::m_65536)), brightness);
+            colour[0] = (FixMul((int)FTOI(__int64, X87S_MUL(colour[0], CGraphics::m_65536)), brightness) >> 16);
             colour[1] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[1], CGraphics::m_65536)), brightness);
             colour[2] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[2], CGraphics::m_65536)), brightness);
             Sprite_Queue((SpriteRect *)&CFrontend::m_pLgMatrixTexture->field_0x11c, (SpriteRect *)g_frontendDrawRect,
@@ -758,9 +758,9 @@ void CFrontend::FreeLocalizedTextStrings(void)
     if (m_textStrings != NULL) {
         CFileBuffer::FreeGenericFileBuffer(m_textStrings);
         m_textStrings = NULL;
-        m_unk0x0065aa70 = 0;
+        m_textLanguage = 0;
         m_textFirstId = 0;
-        m_unk0x0065aa71 = 0;
+        m_textLanguageCount = 0;
         m_textCount = 0;
     }
 }

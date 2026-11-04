@@ -141,6 +141,11 @@ if(NOT TARGET SDL3::SDL3)
     else()
         FetchContent_MakeAvailable(SDL3)
     endif()
+    # SDL's own warnings, not ours to fix: its EGL typedefs are declared again
+    # by the NDK's headers, and the Android sensor code uses a deprecated call.
+    if(TARGET SDL3-shared AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+        target_compile_options(SDL3-shared PRIVATE -Wno-typedef-redefinition -Wno-deprecated-declarations)
+    endif()
 endif()
 
 add_subdirectory(src)

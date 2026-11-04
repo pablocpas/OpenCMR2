@@ -35,25 +35,67 @@
 #include "Menu.h"
 #include <stddef.h>
 #include "LayoutChecks.h"
+#include "Input.h"
+#include "PcmWaveHeader.h"
+#include "StageTimeProfile.h"
+#include "CountryCarSetups.h"
+#include "RallyData.h"
+#include "SavedGame.h"
 #include "LightZone.h"
 
 // Preserve the original Win32 layouts used by array indexing, bulk copies
 // and packed callback tables. Keep these checks out of shared headers:
 // extra declarations there can alter MSVC6 code generation in unrelated TUs.
+CMR2_LAYOUT_CHECK(CarSetupSizeCheck, sizeof(CarSetup) == 7);
+CMR2_LAYOUT_CHECK(CarSetupPowerRatioCheck, offsetof(CarSetup, powerRatio) == 3);
+CMR2_LAYOUT_CHECK(CarSetupSteeringCheck, offsetof(CarSetup, steering) == 6);
+CMR2_LAYOUT_CHECK(CountryCarSetupBlockSizeCheck, sizeof(CountryCarSetupBlock) == 0x84);
+CMR2_LAYOUT_CHECK(CountryCarSetupBlockUnknownCheck, offsetof(CountryCarSetupBlock, unknown40) == 0x40);
+CMR2_LAYOUT_CHECK(CountryCarSetupBlockSpaceCheck, offsetof(CountryCarSetupBlock, space) == 0x44);
+CMR2_LAYOUT_CHECK(CountryCarSetupBlockWeatherCheck, offsetof(CountryCarSetupBlock, weatherNames) == 0x48);
+CMR2_LAYOUT_CHECK(CountryCarSetupBlockBlizzardCheck, offsetof(CountryCarSetupBlock, blizzard) == 0x78);
+CMR2_LAYOUT_CHECK(DriverGroupCarSetupsCheck, offsetof(RallyDriverGroupTable, playerCarSetups) == 0x520);
+CMR2_LAYOUT_CHECK(DriverGroupAfterCarSetupsCheck, offsetof(RallyDriverGroupTable, field_0x53c) == 0x53c);
+CMR2_LAYOUT_CHECK(StageDriverTimeTuningSizeCheck, sizeof(StageDriverTimeTuning) == 5);
+CMR2_LAYOUT_CHECK(StageTimeProfileSizeCheck, sizeof(StageTimeProfile) == 0x550);
+CMR2_LAYOUT_CHECK(StageTimeProfileBlend0OffsetCheck, offsetof(StageTimeProfile, blend0Times) == 0x50);
+CMR2_LAYOUT_CHECK(StageTimeProfileBlend1OffsetCheck, offsetof(StageTimeProfile, blend1Times) == 0x2d0);
+CMR2_LAYOUT_CHECK(PcmWaveHeaderSizeCheck, sizeof(PcmWaveHeader) == 0x2c);
+CMR2_LAYOUT_CHECK(PcmWaveIdOffsetCheck, offsetof(PcmWaveHeader, waveId) == 8);
+CMR2_LAYOUT_CHECK(PcmWaveChannelsOffsetCheck, offsetof(PcmWaveHeader, channels) == 0x16);
+CMR2_LAYOUT_CHECK(PcmWaveSampleRateOffsetCheck, offsetof(PcmWaveHeader, sampleRate) == 0x18);
+CMR2_LAYOUT_CHECK(PcmWaveBitsPerSampleOffsetCheck, offsetof(PcmWaveHeader, bitsPerSample) == 0x22);
+CMR2_LAYOUT_CHECK(PcmWaveDataSizeOffsetCheck, offsetof(PcmWaveHeader, dataSize) == 0x28);
+CMR2_LAYOUT_CHECK(ControllerDataSizeCheck, sizeof(ControllerData) == 0x2f0);
+CMR2_LAYOUT_CHECK(ControllerActionMasksOffsetCheck, offsetof(ControllerData, actionMasks) == 0x128);
+CMR2_LAYOUT_CHECK(ControllerActionMasksCountCheck, sizeof(((ControllerData *)0)->actionMasks) / sizeof(unsigned short) == 10);
+CMR2_LAYOUT_CHECK(ControllerSteerLeftMaskCheck, offsetof(ControllerData, steerLeftMask) == 0x128);
+CMR2_LAYOUT_CHECK(ControllerSteerRightMaskCheck, offsetof(ControllerData, steerRightMask) == 0x12a);
+CMR2_LAYOUT_CHECK(ControllerThrottleMaskCheck, offsetof(ControllerData, throttleMask) == 0x12c);
+CMR2_LAYOUT_CHECK(ControllerBrakeMaskCheck, offsetof(ControllerData, brakeMask) == 0x12e);
+CMR2_LAYOUT_CHECK(ControllerHandbrakeMaskCheck, offsetof(ControllerData, handbrakeMask) == 0x130);
+CMR2_LAYOUT_CHECK(ControllerShiftUpMaskCheck, offsetof(ControllerData, shiftUpMask) == 0x132);
+CMR2_LAYOUT_CHECK(ControllerShiftDownMaskCheck, offsetof(ControllerData, shiftDownMask) == 0x134);
+CMR2_LAYOUT_CHECK(ControllerCameraCycleMaskCheck, offsetof(ControllerData, cameraCycleMask) == 0x136);
+CMR2_LAYOUT_CHECK(ControllerDriverCycleMaskCheck, offsetof(ControllerData, driverCycleMask) == 0x138);
+CMR2_LAYOUT_CHECK(ControllerBackMaskCheck, offsetof(ControllerData, backMask) == 0x13a);
 CMR2_LAYOUT_CHECK(CarSizeCheck, sizeof(Car) == 0xc24);
 CMR2_LAYOUT_CHECK(ShadowPartSizeCheck, sizeof(ShadowPart) == 0x58);
 CMR2_LAYOUT_CHECK(ShadowPartLightCheck, offsetof(ShadowPart, light) == 0);
 CMR2_LAYOUT_CHECK(ShadowPartMeshCheck, offsetof(ShadowPart, pMesh) == 0x30);
 CMR2_LAYOUT_CHECK(ShadowPartNodeCheck, offsetof(ShadowPart, pNode) == 0x34);
-CMR2_LAYOUT_CHECK(ShadowPartVertexWorkCheck, offsetof(ShadowPart, pVertexWork) == 0x38);
-CMR2_LAYOUT_CHECK(ShadowPartVertexWork2Check, offsetof(ShadowPart, pVertexWork2) == 0x3c);
-CMR2_LAYOUT_CHECK(ShadowPartVertexFlagsCheck, offsetof(ShadowPart, pVertexFlags) == 0x40);
-CMR2_LAYOUT_CHECK(ShadowPartVertexWork3Check, offsetof(ShadowPart, pVertexWork3) == 0x44);
+CMR2_LAYOUT_CHECK(ShadowPartSourceNormalsCheck, offsetof(ShadowPart, pSourceNormals) == 0x38);
+CMR2_LAYOUT_CHECK(ShadowPartBiasedPositionsCheck, offsetof(ShadowPart, pBiasedPositions) == 0x3c);
+CMR2_LAYOUT_CHECK(ShadowPartLightDotProductsCheck, offsetof(ShadowPart, pLightDotProducts) == 0x40);
+CMR2_LAYOUT_CHECK(ShadowPartEmittedPositionsCheck, offsetof(ShadowPart, pEmittedPositions) == 0x44);
 CMR2_LAYOUT_CHECK(ShadowPartVerticesCheck, offsetof(ShadowPart, pVertices) == 0x48);
-CMR2_LAYOUT_CHECK(ShadowPartTriangleWorkCheck, offsetof(ShadowPart, pTriangleWork) == 0x4c);
+CMR2_LAYOUT_CHECK(ShadowPartFaceVerticesCheck, offsetof(ShadowPart, pFaceVertices) == 0x4c);
 CMR2_LAYOUT_CHECK(ShadowPartFaceCountCheck, offsetof(ShadowPart, faceCount) == 0x50);
 CMR2_LAYOUT_CHECK(ShadowPartVertexCountCheck, offsetof(ShadowPart, vertexCount) == 0x52);
 CMR2_LAYOUT_CHECK(ShadowPartDirtyCheck, offsetof(ShadowPart, verticesDirty) == 0x54);
+CMR2_LAYOUT_CHECK(ShadowPartSourceNormalSizeCheck, sizeof(*((ShadowPart *)0)->pSourceNormals) == 3 * sizeof(float));
+CMR2_LAYOUT_CHECK(ShadowPartBiasedPositionSizeCheck, sizeof(*((ShadowPart *)0)->pBiasedPositions) == 3 * sizeof(float));
+CMR2_LAYOUT_CHECK(ShadowPartEmittedPositionSizeCheck, sizeof(*((ShadowPart *)0)->pEmittedPositions) == 3 * sizeof(float));
 CMR2_LAYOUT_CHECK(ShadowCasterSizeCheck, sizeof(ShadowCaster) == 0x14);
 CMR2_LAYOUT_CHECK(ShadowCasterNodeCheck, offsetof(ShadowCaster, pNode) == 0);
 CMR2_LAYOUT_CHECK(ShadowCasterPartsCheck, offsetof(ShadowCaster, pParts) == 4);
@@ -266,6 +308,11 @@ CMR2_LAYOUT_CHECK(g_carInfoBuffersCapacityCheck, sizeof(g_carInfoBuffers) / size
 // Scene binding and matrix identities established by model load and reload.
 CMR2_LAYOUT_CHECK(CarBinding_physicsMatrixCheck, offsetof(Car, physicsMatrix) == 0x0);
 CMR2_LAYOUT_CHECK(CarBinding_bodyMatrixCheck, offsetof(Car, bodyMatrix) == 0x40);
+CMR2_LAYOUT_CHECK(CarBodyAxisVectorsCheck, offsetof(Car, bodyAxisVectors) == 0x360);
+CMR2_LAYOUT_CHECK(CarBodyAxisVectorsSizeCheck, sizeof(((Car *)0)->bodyAxisVectors) == 3 * sizeof(FixVector));
+CMR2_LAYOUT_CHECK(CarBodyRightRowCheck, offsetof(Car, right) == offsetof(Car, bodyAxisVectors));
+CMR2_LAYOUT_CHECK(CarBodyUpRowCheck, offsetof(Car, up) == offsetof(Car, bodyAxisVectors) + sizeof(FixVector));
+CMR2_LAYOUT_CHECK(CarBodyForwardRowCheck, offsetof(Car, forward) == offsetof(Car, bodyAxisVectors) + 2 * sizeof(FixVector));
 CMR2_LAYOUT_CHECK(CarBinding_pSceneRootCheck, offsetof(Car, pSceneRoot) == 0x71c);
 CMR2_LAYOUT_CHECK(CarBinding_pBodyNodeCheck, offsetof(Car, pBodyNode) == 0x720);
 CMR2_LAYOUT_CHECK(CarBinding_pAlternateBodyNodeCheck, offsetof(Car, pAlternateBodyNode) == 0x724);
@@ -845,6 +892,23 @@ CMR2_LAYOUT_CHECK(CarState_cornerPrev_Check, offsetof(Car, cornerPrev) == 0x300)
 CMR2_LAYOUT_CHECK(CarState_cornerPrev2_Check, offsetof(Car, cornerPrev2) == 0x330);
 CMR2_LAYOUT_CHECK(CarState_cornerAxis_Check, offsetof(Car, cornerAxis) == 0x4a4);
 CMR2_LAYOUT_CHECK(CarState_cornerNormal_Check, offsetof(Car, cornerNormal) == 0x504);
+CMR2_LAYOUT_CHECK(CarState_wheelLeanHeight_Check, offsetof(Car, wheelLeanHeight) == 0x998);
+CMR2_LAYOUT_CHECK(CarState_wheelLeanHeight_Count, sizeof(((Car *)0)->wheelLeanHeight) / sizeof(int) == 4);
+CMR2_LAYOUT_CHECK(CarState_wheelTravelLoadBias_Check, offsetof(Car, wheelTravelLoadBias) == 0x808);
+CMR2_LAYOUT_CHECK(CarState_wheelTravelLoadBias_Count, sizeof(((Car *)0)->wheelTravelLoadBias) / sizeof(int) == 4);
+CMR2_LAYOUT_CHECK(CarState_bodyLeanHeight_Check, offsetof(Car, bodyLeanHeight) == 0x9a8);
+CMR2_LAYOUT_CHECK(CarState_bodyLeanHeight_Count, sizeof(((Car *)0)->bodyLeanHeight) / sizeof(int) == 4);
+CMR2_LAYOUT_CHECK(CarState_wheelRideHeight_Check, offsetof(Car, wheelRideHeight) == 0x988);
+CMR2_LAYOUT_CHECK(CarState_wheelRideHeight_Count, sizeof(((Car *)0)->wheelRideHeight) / sizeof(int) == 4);
+CMR2_LAYOUT_CHECK(CarState_wheelTravelLoadScale_Check, offsetof(Car, wheelTravelLoadScale) == 0x9c0);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringVelocity_Check, offsetof(Car, wheelSpringVelocity) == 0x9c8);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringVelocity_Count, sizeof(((Car *)0)->wheelSpringVelocity) / sizeof(int) == 4);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringOffset_Check, offsetof(Car, wheelSpringOffset) == 0x9d8);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringOffset_Count, sizeof(((Car *)0)->wheelSpringOffset) / sizeof(int) == 4);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringStiffness_Check, offsetof(Car, wheelSpringStiffness) == 0x9e8);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringStiffness_Count, sizeof(((Car *)0)->wheelSpringStiffness) / sizeof(int) == 4);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringDamping_Check, offsetof(Car, wheelSpringDamping) == 0x9f8);
+CMR2_LAYOUT_CHECK(CarState_wheelSpringDamping_Count, sizeof(((Car *)0)->wheelSpringDamping) / sizeof(int) == 4);
 CMR2_LAYOUT_CHECK(CarState_steepTime_Check, offsetof(Car, steepTime) == 0xa9c);
 CMR2_LAYOUT_CHECK(CarState_cornerTriangle_Check, offsetof(Car, cornerTriangle) == 0xa9e);
 CMR2_LAYOUT_CHECK(CarState_tipAngle_Check, offsetof(Car, tipAngle) == 0xb18);
@@ -871,7 +935,7 @@ CMR2_LAYOUT_CHECK(CarSurfaceWheelLean_Check, offsetof(Car, wheelSpinForWheelLean
 CMR2_LAYOUT_CHECK(CarSurfaceBodyLean_Check, offsetof(Car, wheelSpinForBodyLean) == 0x8a0);
 CMR2_LAYOUT_CHECK(CarSurfaceCornerMass_Check, offsetof(Car, cornerMass) == 0x8b0);
 CMR2_LAYOUT_CHECK(CarSurfaceTyreGrip_Check, offsetof(Car, tyreGrip) == 0x8b4);
-CMR2_LAYOUT_CHECK(CarSurfaceNextInputs_Check, offsetof(Car, field_0x8b8) == 0x8b8);
+CMR2_LAYOUT_CHECK(CarSurfaceNextInputs_Check, offsetof(Car, cornerWeight) == 0x8b8);
 CMR2_LAYOUT_CHECK(CarSurfaceOutputWords_Check, offsetof(Car, surfaceOutputWords) == 0);
 CMR2_LAYOUT_CHECK(CarSurfaceOutputBytes_Check, offsetof(Car, surfaceOutputBytes) == 0);
 CMR2_LAYOUT_CHECK(CarSurfaceOutputWordsSize_Check, sizeof(((Car *)0)->surfaceOutputWords) == 0x1d0);
@@ -906,6 +970,10 @@ CMR2_LAYOUT_CHECK(CollisionBox_axisB_Check, offsetof(CollisionBox, axisB) == 0x1
 CMR2_LAYOUT_CHECK(CollisionBox_built_Check, offsetof(CollisionBox, built) == 0x28);
 CMR2_LAYOUT_CHECK(CollisionBox_hasSecondaryVertices_Check, offsetof(CollisionBox, hasSecondaryVertices) == 0x2c);
 CMR2_LAYOUT_CHECK(CollisionBox_points_Check, offsetof(CollisionBox, points) == 0x30);
+CMR2_LAYOUT_CHECK(CollisionBox_primaryPoints_Check, offsetof(CollisionBox, primaryPoints) == 0x30);
+CMR2_LAYOUT_CHECK(CollisionBox_secondaryPoints_Check, offsetof(CollisionBox, secondaryPoints) == 0x60);
+CMR2_LAYOUT_CHECK(CollisionBox_primaryPointsSize_Check, sizeof(((CollisionBox *)0)->primaryPoints) == 4 * sizeof(FixVector));
+CMR2_LAYOUT_CHECK(CollisionBox_secondaryPointsSize_Check, sizeof(((CollisionBox *)0)->secondaryPoints) == 4 * sizeof(FixVector));
 CMR2_LAYOUT_CHECK(CollisionBox_pArray_Check, offsetof(CollisionBox, pArray) == 0x90);
 CMR2_LAYOUT_CHECK(CollisionBox_pVertex_Check, offsetof(CollisionBox, pVertex) == 0x94);
 CMR2_LAYOUT_CHECK(CollisionBoxSizeCheck, sizeof(CollisionBox) == 0x98);

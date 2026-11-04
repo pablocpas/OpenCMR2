@@ -19,6 +19,10 @@
 
 #include <atomic>
 #include <filesystem>
+#include <mutex>
+#ifdef __ANDROID__
+#include <jni.h>
+#endif
 #include <map>
 #include <sstream>
 #include <set>
@@ -334,15 +338,6 @@ const char s_defaultSettings[] =
     "; menu_scale = 100\n"
     "; 1 = text drawn from outlines, sharp at any size; 0 = the original's bitmaps.\n"
     "; outline_fonts = 1\n"
-    "; 1 = original dotted menu flags with sharp circular edges when enlarged.\n"
-    "; 0 = magnify the original dot bitmap. Native-size dots keep their original pixels.\n"
-    "; vector_flags = 1\n"
-    "; 1 = trace the original co-driver arrows and menu icons for sharp enlarged edges.\n"
-    "; Native-size icons retain their original pixels.\n"
-    "; vector_icons = 1\n"
-    "; 1 = sharp arcade minimaps and the original dotted circuit-selection maps.\n"
-    "; Native-size maps retain their original pixels.\n"
-    "; vector_maps = 1\n"
     "; 1 = stretch the movies over the whole window, 0 = keep their proportions.\n"
     "; stretch_movies = 0\n"
     "; 1 = wait for the display's refresh, 0 = draw frames as soon as they are ready.\n"
@@ -378,6 +373,7 @@ const char s_defaultSettings[] =
     "; Milliseconds before a key held in the menus repeats, and between repeats.\n"
     "; key_repeat_delay = 750\n"
     "; key_repeat_interval = 100\n"
+    "; The bindings of keys and controllers are in controls.ini.\n"
     "\n"
     "[net]\n"
     "; Network play (see docs/NETWORK.md). UDP port games are hosted on.\n"
@@ -733,9 +729,8 @@ bool Platform_Init(int argc, char **argv)
     // matching a future .desktop file) and the game's audio streams.
     SDL_SetAppMetadata("OpenCMR2", NULL, "io.github.pablocpas.OpenCMR2");
 #ifdef __ANDROID__
-    // The game keeps text input on for its whole run, which on a phone would
-    // keep the on-screen keyboard open. Back is the game's Escape (GameActivity).
-    SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, "0");
+    // Back is the game's Escape (GameActivity). The on-screen keyboard opens
+    // only while a name is typed (Sys_RequestTextInput).
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #endif
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
@@ -942,6 +937,7 @@ extern "C" unsigned int Sys_GetUnixTime(void)
 
 void Platform_SetTestClock(const PlatformTestClock *clock) { s_testClock = clock; }
 void Platform_SetTestDialogs(const PlatformTestDialogs *dialogs) { s_testDialogs = dialogs; }
+void Platform_SetTestUserDir(const char *dir) { s_userDir = dir ? dir : ""; }
 
 extern "C" void Sys_Sleep(DWORD ms)
 {
@@ -957,16 +953,19 @@ extern "C" void Sys_Sleep(DWORD ms)
 namespace {
 
 // Windows-1252 code of a Unicode code point, or 0.
+// The characters of Windows-1252's 0x80 to 0x9f (0: none); the rest are
+// Latin-1's.
+const Uint16 kWindows1252High[32] = { 0x20ac, 0, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021,
+                                      0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017d, 0,
+                                      0, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
+                                      0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0, 0x017e, 0x0178 };
+
 int ToWindows1252(Uint32 cp)
 {
-    static const Uint16 high[32] = { 0x20ac, 0, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021,
-                                     0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017d, 0,
-                                     0, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
-                                     0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0, 0x017e, 0x0178 };
     if (cp < 0x80 || (cp >= 0xa0 && cp <= 0xff))
         return (int)cp;
     for (int i = 0; i < 32; i++)
-        if (high[i] == cp)
+        if (kWindows1252High[i] == cp)
             return 0x80 + i;
     return 0;
 }
@@ -1012,6 +1011,17 @@ bool Translate(const SDL_Event &e, SysEvent *out)
             out->type = SYS_EVENT_TOGGLE_FULLSCREEN;
             return !e.key.repeat;
         }
+        // Windows also gave these keys to the game as characters (WM_CHAR),
+        // which its text entries read: Backspace deletes, Enter sends the
+        // chat line and Escape leaves it.
+        if (s_window != NULL && SDL_TextInputActive(s_window)) {
+            if (e.key.scancode == SDL_SCANCODE_BACKSPACE)
+                s_pendingText.push_back(8);
+            else if (e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER)
+                s_pendingText.push_back(13);
+            else if (e.key.scancode == SDL_SCANCODE_ESCAPE)
+                s_pendingText.push_back(27);
+        }
         out->type = SYS_EVENT_KEY_DOWN;
         out->key = Keys_FromScancode(e.key.scancode);
         out->repeat = e.key.repeat;
@@ -1051,19 +1061,241 @@ bool TakePendingText(SysEvent *out)
     return true;
 }
 
+// Text input is on while there is a keyboard, or while the game edits text
+// (Sys_RequestTextInput). Without a keyboard, turning it on shows the
+// system's on-screen keyboard: the game kept it on for its whole run. Under
+// Steam (Steam Deck Game Mode, Big Picture) SDL shows Steam's on-screen
+// keyboard whenever text input starts, and gamescope always lists a
+// keyboard: there it is on only while the game edits text.
+Uint64 s_textInputUntil;
+bool s_entryOffered;        // the entry waits to be chosen (Sys_OfferTextInput)
+bool s_textGiven;           // a character went to the game in this round of polls
+
+#ifdef __ANDROID__
+// Android without a physical keyboard: the entry is edited in a text bar
+// over the game (TextEntry.kt), as typing into the game's own text one letter
+// at a time, with the keyboard over the touch controls, is awkward. The bar
+// opens as an entry starts and closes when it ends; closed, a chip reopens
+// it; an offered entry starts with the chip. The text accepted replaces the
+// entry's: Backspaces for its characters, then the new ones and Enter, typed
+// as the keyboard would, so the game's checks of length and characters still
+// apply. Enter sends a chat line; the name entries ignore it.
+bool s_entryActive;
+bool s_entryHardKeyboard;   // the entry is typed on a physical keyboard
+std::string s_entryLabel, s_entryText;  // as the game last gave them
+int s_entryMax;
+std::atomic<bool> s_textBarReopen;
+std::mutex s_textBarMutex;
+bool s_textBarDone, s_textBarAccepted;
+std::string s_textBarText;  // UTF-8
+
+bool AndroidCall(const char *name, const char *signature, ...)
+{
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jobject activity = (jobject)SDL_GetAndroidActivity();
+    if (env == NULL || activity == NULL)
+        return false;
+    jclass type = env->GetObjectClass(activity);
+    jmethodID method = env->GetMethodID(type, name, signature);
+    bool result = false;
+    if (method != NULL) {
+        va_list args;
+        va_start(args, signature);
+        if (signature[strlen(signature) - 1] == 'Z')
+            result = env->CallBooleanMethodV(activity, method, args);
+        else {
+            env->CallVoidMethodV(activity, method, args);
+            result = true;
+        }
+        va_end(args);
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        result = false;
+    }
+    env->DeleteLocalRef(type);
+    env->DeleteLocalRef(activity);
+    return result;
+}
+
+std::string Utf8FromWindows1252(const std::string &text)
+{
+    std::string utf8;
+    for (unsigned char c : text) {
+        Uint32 cp = c >= 0x80 && c < 0xa0 ? kWindows1252High[c - 0x80] : c;
+        char bytes[5] = {};
+        if (cp != 0)
+            utf8 += std::string(bytes, SDL_UCS4ToUTF8(cp, bytes) - bytes);
+    }
+    return utf8;
+}
+
+void OpenTextBar()
+{
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    if (env == NULL)
+        return;
+    jstring label = env->NewStringUTF(Utf8FromWindows1252(s_entryLabel).c_str());
+    jstring text = env->NewStringUTF(Utf8FromWindows1252(s_entryText).c_str());
+    if (label != NULL && text != NULL)
+        AndroidCall("openTextEntry", "(Ljava/lang/String;Ljava/lang/String;I)V", label, text, (jint)s_entryMax);
+    if (label != NULL)
+        env->DeleteLocalRef(label);
+    if (text != NULL)
+        env->DeleteLocalRef(text);
+}
+
+// The text bar's answer, on the game's thread.
+void TakeTextBarAnswer()
+{
+    std::lock_guard<std::mutex> lock(s_textBarMutex);
+    if (!s_textBarDone)
+        return;
+    s_textBarDone = false;
+    if (!s_textBarAccepted || !s_entryActive)
+        return;
+    s_pendingText.assign(s_entryText.size(), 8);
+    const char *text = s_textBarText.c_str();
+    Uint32 cp;
+    while ((cp = SDL_StepUTF8(&text, NULL)) != 0) {
+        int c = ToWindows1252(cp);
+        if (c != 0)
+            s_pendingText.push_back(c);
+    }
+    s_pendingText.push_back(13);
+}
+
+void OfferTextBar()
+{
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jstring label = env != NULL ? env->NewStringUTF(Utf8FromWindows1252(s_entryLabel).c_str()) : NULL;
+    if (label == NULL)
+        return;
+    AndroidCall("offerTextEntry", "(Ljava/lang/String;)V", label);
+    env->DeleteLocalRef(label);
+}
+#endif
+
+void UpdateTextInput()
+{
+    if (s_window == NULL)
+        return;
+#ifdef __ANDROID__
+    TakeTextBarAnswer();
+    if (s_entryActive && SDL_GetTicks() >= s_textInputUntil) {
+        s_entryActive = false;
+        if (!s_entryHardKeyboard)
+            AndroidCall("endTextEntry", "()V");
+    }
+    bool wanted = s_entryActive && s_entryHardKeyboard;
+#else
+    bool wanted = (SDL_HasKeyboard() && !SDL_HasScreenKeyboardSupport()) || SDL_GetTicks() < s_textInputUntil;
+#endif
+    if (wanted == SDL_TextInputActive(s_window))
+        return;
+    // Whether the system's on-screen keyboard may open, and why.
+    Sys_Log("input: text input %s; keyboard %s, on-screen keyboard %s, text entry %s", wanted ? "on" : "off",
+            SDL_HasKeyboard() ? "yes" : "no", SDL_HasScreenKeyboardSupport() ? "yes" : "no",
+            SDL_GetTicks() < s_textInputUntil ? "open" : "closed");
+    if (!wanted) {
+        SDL_StopTextInput(s_window);
+    } else if (s_entryOffered) {
+        // Typed into, but not opening Steam's keyboard (Steam+X does).
+        SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, "0");
+        SDL_StartTextInput(s_window);
+        SDL_ResetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);
+    } else {
+        SDL_StartTextInput(s_window);
+    }
+}
+
 } // namespace
+
+#ifdef __ANDROID__
+extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_TextEntry_nativeTextEntered(
+    JNIEnv *env, jclass, jstring text, jboolean accepted)
+{
+    const char *chars = env->GetStringUTFChars(text, NULL);
+    std::lock_guard<std::mutex> lock(s_textBarMutex);
+    s_textBarText = chars != NULL ? chars : "";
+    s_textBarAccepted = accepted && chars != NULL;
+    s_textBarDone = true;
+    if (chars != NULL)
+        env->ReleaseStringUTFChars(text, chars);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_TextEntry_nativeReopen(JNIEnv *, jclass)
+{
+    s_textBarReopen = true;
+}
+#endif
+
+namespace {
+
+void RequestTextInput(const char *label, const char *text, int maxLength, bool offered)
+{
+    bool starting = SDL_GetTicks() >= s_textInputUntil;
+    if (starting)
+        s_entryOffered = offered;
+#ifdef __ANDROID__
+    s_entryLabel = label != NULL ? label : "";
+    s_entryText = text != NULL ? text : "";
+    s_entryMax = maxLength;
+    if (starting) {
+        s_entryActive = true;
+        s_textBarReopen = false;
+        s_entryHardKeyboard = AndroidCall("hasHardwareKeyboard", "()Z");
+        Sys_Log("input: text entry%s", s_entryHardKeyboard ? "" : offered ? ", chip" : ", text bar");
+        if (!s_entryHardKeyboard && offered)
+            OfferTextBar();
+        else if (!s_entryHardKeyboard)
+            OpenTextBar();
+    } else if (s_textBarReopen.exchange(false) && !s_entryHardKeyboard) {
+        OpenTextBar();
+    }
+#else
+    (void)label;
+    (void)text;
+    (void)maxLength;
+    if (starting)
+        Sys_Log("input: text entry%s",
+                SDL_HasKeyboard() && !SDL_HasScreenKeyboardSupport() ? "" : ", on-screen keyboard");
+#endif
+    s_textInputUntil = SDL_GetTicks() + 250;
+    UpdateTextInput();
+}
+
+} // namespace
+
+extern "C" void Sys_RequestTextInput(const char *label, const char *text, int maxLength)
+{
+    RequestTextInput(label, text, maxLength, false);
+}
+
+extern "C" void Sys_OfferTextInput(const char *label, const char *text, int maxLength)
+{
+    RequestTextInput(label, text, maxLength, true);
+}
 
 extern "C" int Sys_PollEvent(SysEvent *event)
 {
     SDL_Event e;
-    if (TakePendingText(event))
+    UpdateTextInput();
+    // One character a round of polls, as the game takes one a frame from a
+    // queue of 30: a text box's answer would overflow it.
+    if (!s_textGiven && TakePendingText(event)) {
+        s_textGiven = true;
         return 1;
+    }
     while (SDL_PollEvent(&e)) {
         if (Translate(e, event))
             return 1;
-        if (TakePendingText(event))
+        if (!s_textGiven && TakePendingText(event)) {
+            s_textGiven = true;
             return 1;
+        }
     }
+    s_textGiven = false;
     return 0;
 }
 
@@ -1105,7 +1337,7 @@ extern "C" BOOL Sys_CreateWindow(const char *title, BOOL fullscreen)
         SDL_DestroySurface(icon);
     }
 #endif
-    SDL_StartTextInput(s_window);
+    UpdateTextInput();
     return TRUE;
 }
 
@@ -1362,6 +1594,42 @@ extern "C" void Sys_ListFiles(const char *directory, const char *pattern, SysLis
 
 // ---- settings ----------------------------------------------------------------------
 
+namespace {
+
+// The edition (install.sku), unless the data has no CountrySpecific folder
+// for it and has one for a single other edition: the text and speech of the
+// game are there. Copies of a Polish or American installation then start
+// without editing the settings, which Android does not let the player do.
+const char *InstalledSku()
+{
+    static const char *const skus[][2] = {
+        { "EUROPE", "Europe" }, { "AMERICA", "Usa" }, { "JAPAN", "Japan" }, { "POLAND", "Poland" } };
+    const char *configured = Platform_GetSetting("install.sku", "EUROPE");
+    if (s_dataDir.empty())
+        return configured;
+    auto present = [](const char *folder) {
+        std::string path = FindUnder(s_dataDir, { "CountrySpecific", folder });
+        SDL_PathInfo info{};
+        return !path.empty() && SDL_GetPathInfo(path.c_str(), &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+    };
+    const char *found = NULL;
+    for (const auto &sku : skus) {
+        if (SDL_strcasecmp(sku[0], configured) == 0 && present(sku[1]))
+            return configured;
+        if (present(sku[1]))
+            found = found == NULL ? sku[0] : "";
+    }
+    if (found == NULL || *found == 0)
+        return configured;
+    static bool logged;
+    if (!logged)
+        Sys_Log("install: no CountrySpecific folder for sku %s; the data is the %s edition", configured, found);
+    logged = true;
+    return found;
+}
+
+} // namespace
+
 extern "C" const char *Sys_GetInstallSetting(const char *name)
 {
     if (SDL_strcasecmp(name, "Game_HDPath") == 0 || SDL_strcasecmp(name, "Game_CDPath") == 0)
@@ -1371,7 +1639,7 @@ extern "C" const char *Sys_GetInstallSetting(const char *name)
     if (SDL_strcasecmp(name, "Language") == 0)
         return Platform_GetSetting("install.language", "English");
     if (SDL_strcasecmp(name, "Sku_Type") == 0)
-        return Platform_GetSetting("install.sku", "EUROPE");
+        return InstalledSku();
     return "";
 }
 

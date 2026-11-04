@@ -34,6 +34,10 @@ object ControllerProfiles {
     fun touchOnly(context: Context, value: Boolean) { prefs(context).edit { putBoolean("touch_only", value) } }
     fun showTouch(context: Context) = prefs(context).getBoolean("show_touch", false)
     fun showTouch(context: Context, value: Boolean) { prefs(context).edit { putBoolean("show_touch", value) } }
+    fun detailedTouchLayout(context: Context) = prefs(context).getBoolean("touch_layout_detailed", false)
+    fun detailedTouchLayout(context: Context, value: Boolean) {
+        prefs(context).edit { putBoolean("touch_layout_detailed", value) }
+    }
 
     // Touch layout, adjustable in ControllerActivity: plain numbers so another
     // platform's overlay can reuse the same model. Scale multiplies the pads;

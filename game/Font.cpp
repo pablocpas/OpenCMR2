@@ -215,8 +215,8 @@ int Font_GetTextWidth(BYTE index, BYTE *text)
                 } else {
                     glyph = pCharMap[ch];
                     if (glyph != -1) {
-                        pGlyph = &pGlyphs[glyph];
                         advance = charSpacing;
+                        pGlyph = &pGlyphs[glyph];
                         if (text[i + 1] != 0 && text[i + 1] != '\n' && text[i + 1] != '^' && pCharMap[text[i + 1]] != -1) {
                             pKern = pGlyph->pKern;
                             kernCount = pGlyph->kernCount;

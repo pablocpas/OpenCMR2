@@ -7,6 +7,7 @@
 #include "Sprite.h"
 #include "Game.h"
 #include "Sound.h"
+#include "PcmWaveHeader.h"
 #include "main.h"
 #include "InstallInfo.h"
 #include "GameInfo.h"
@@ -710,7 +711,6 @@ BOOL Sound_FindADPCMDriver(void);
 // Creates the DirectSound device and sets the format of the primary buffer
 // (16-bit PCM at sampleRate; mono when the speakers are mono). bits and
 // unused are ignored: the original always uses 16 bits.
-// match 76%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
 // FUNCTION: CMR2 0x004a1d60
 // PORT: opens the audio output (stereo; there is no speaker query).
 BOOL Sound_InitDevice(int sampleRate, int channels, int bits, int unused)
@@ -744,33 +744,33 @@ BOOL Sound_CopyBufferData(AudioBuffer *pBuffer, DWORD offset, void *pData, DWORD
 // FUNCTION: CMR2 0x004a1f50
 BOOL Sound_LoadWave(char *name, BYTE flags, GenericFile *pFile)
 {
-    BYTE *pWave;
+    PcmWaveHeader *pWave;
     BYTE inArchive;
     int channels, bits;
     DWORD rate;
     BYTE *pData;
     int slot;
 
-    pWave = (BYTE *)CGenericFileLoader::FindFile(pFile, name, &inArchive, NULL, 0);
+    pWave = (PcmWaveHeader *)CGenericFileLoader::FindFile(pFile, name, &inArchive, NULL, 0);
     if (pWave == NULL)
         return FALSE;
 
-    if (strncmp((char *)pWave + 8, g_strWave, 4) == 0) {
-        channels = *(WORD *)(pWave + 0x16);
-        rate = *(DWORD *)(pWave + 0x18);
-        bits = *(WORD *)(pWave + 0x22);
-        pData = pWave + 0x2c;
+    if (strncmp(pWave->waveId, g_strWave, 4) == 0) {
+        channels = pWave->channels;
+        rate = pWave->sampleRate;
+        bits = pWave->bitsPerSample;
+        pData = (BYTE *)(pWave + 1);
         if ((flags & 1) == 0 || !g_sound3DEnabled) {
             if (!Sound_CreatePcmSampleBuffer(g_unk0x005a2844, &g_soundBuffers[Sound_GetLoadedSampleCount()], rate, bits, channels, 0,
-                              *(DWORD *)(pWave + 0x28)))
+                              pWave->dataSize))
                 return FALSE;
-            Sound_CopyBufferData(g_soundBuffers[Sound_GetLoadedSampleCount()], 0, pData, *(DWORD *)(pWave + 0x28));
+            Sound_CopyBufferData(g_soundBuffers[Sound_GetLoadedSampleCount()], 0, pData, pWave->dataSize);
         } else {
             if (!Sound_CreatePcmSampleBuffer(g_unk0x005a2844, &g_soundBuffers[Sound_GetLoadedSampleCount()], rate, bits, channels, 1,
-                              *(DWORD *)(pWave + 0x28)))
+                              pWave->dataSize))
                 return FALSE;
             // PORT: no separate 3D interface.
-            if (!Sound_CopyBufferData(g_soundBuffers[Sound_GetLoadedSampleCount()], 0, pData, *(DWORD *)(pWave + 0x28)))
+            if (!Sound_CopyBufferData(g_soundBuffers[Sound_GetLoadedSampleCount()], 0, pData, pWave->dataSize))
                 return FALSE;
         }
     }

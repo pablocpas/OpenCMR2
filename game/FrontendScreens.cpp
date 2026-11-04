@@ -100,13 +100,13 @@ int g_unk0x0052528c = -1;
 // GLOBAL: CMR2 0x00525330
 char g_nameChars0x00525330[68] = "abcdefghijklmnopqrstuvwxyz. ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 // GLOBAL: CMR2 0x00818cd8
-char *g_unk0x00818cd8;
+char *g_pJoinPasswordText;
 // GLOBAL: CMR2 0x00818ce0
 int g_unk0x00818ce0;
 // GLOBAL: CMR2 0x00818ce8
 int g_unk0x00818ce8;
 // GLOBAL: CMR2 0x00818d00
-int g_unk0x00818d00;
+int g_lobbyLastCursor;
 // Filtered stage/route ids, one int per entry (up to 0x16).
 // GLOBAL: CMR2 0x00818d18
 int g_filteredRouteIds[0x16];
@@ -121,11 +121,11 @@ int g_setupSelectedRouteIds[4];
 // GLOBAL: CMR2 0x00818ebc
 char g_sessionName[20];
 // GLOBAL: CMR2 0x00818ed0
-BYTE g_unk0x00818ed0;
+BYTE g_lobbyChatSelected;
 // GLOBAL: CMR2 0x00818d04
 BYTE g_unk0x00818d04;
 // GLOBAL: CMR2 0x00818da8
-char g_unk0x00818da8[256];
+char g_joinPassword[256];
 // GLOBAL: CMR2 0x00818ed4
 int g_unk0x00818ed4[8];
 // GLOBAL: CMR2 0x00818ef4
@@ -163,7 +163,7 @@ Menu *g_pMenu0x00818ac0;
 // GLOBAL: CMR2 0x00818ac4
 BYTE g_unk0x00818ac4;
 // GLOBAL: CMR2 0x00818f14
-BYTE g_unk0x00818f14[0xe0];
+BYTE g_lobbyChatLine[0xe0];
 // GLOBAL: CMR2 0x00819030
 Menu *g_pProfileRenameMenu;
 // GLOBAL: CMR2 0x00819050
@@ -1102,9 +1102,10 @@ void FrontendMenu_DrawQuitConfirmation(Menu *pMenu)
     FrontendDraw_Carousel(FrontendMenu_GetMain(), 0, NULL);
 }
 
-// Which background matrix map each entry of the main menu shows.
+// The flag (a g_matrixMaps index) each entry of the language menu shows:
+// English, French, Spanish, Italian, German.
 // GLOBAL: CMR2 0x00524008
-int g_matrixMapIndex[5] = { 10, 2, 9, 6, 8 };
+int g_languageFlagMaps[5] = { 10, 2, 9, 6, 8 };
 // 18x12 cell maps (colour indices into g_matrixColours) of the background.
 // GLOBAL: CMR2 0x0052401c
 char g_matrixMaps[11][0xd8] = {
@@ -1321,7 +1322,7 @@ void FrontendMenu_DrawLanguage(Menu *pMenu)
     FrontendDraw_ScrollerRow(FrontendScroller_GetLanguageScroller(), 1);
     cellW = (int)(g_pGraphics->resX * 18) / 640;
     FrontendDraw_AnimatedMatrixBackground((cellW - (int)(g_pGraphics->resX * 11) / 640) / 2 - cellW * 18 / 2 + (int)g_pGraphics->resX / 2,
-                 (int)(g_pGraphics->resY * 100) / 480, g_matrixMaps[g_matrixMapIndex[pMenu->cursor]]);
+                 (int)(g_pGraphics->resY * 100) / 480, g_matrixMaps[g_languageFlagMaps[pMenu->cursor]]);
 }
 
 // FUNCTION: CMR2 0x004e3230
@@ -1444,7 +1445,7 @@ extern char g_strLabelSpacedText[];
 extern char g_strTextCursor[];
 
 // FUNCTION: CMR2 0x004e9820
-void FrontendMenu_DrawNetworkNameEntry(Menu *pMenu)
+void FrontendMenu_DrawJoinPasswordEntry(Menu *pMenu)
 {
     char *text[3];
 
@@ -1455,7 +1456,7 @@ void FrontendMenu_DrawNetworkNameEntry(Menu *pMenu)
     FrontendDraw_Breadcrumb(PATH_X(), PATH_Y(), text, 3);
     Font_DrawText(1, CFrontend::GetTextString(0x1e8), (int)g_pGraphics->resX / 2, (int)g_pGraphics->resY / 4,
                   (int *)g_colourWhite0x00524968, 0x12);
-    sprintf(CFrontend::m_stringDest, g_strLabelSpacedText, CFrontend::GetTextString(0x1c3), g_unk0x00818da8);
+    sprintf(CFrontend::m_stringDest, g_strLabelSpacedText, CFrontend::GetTextString(0x1c3), g_joinPassword);
     if ((int)CMain::GetFrameDelta() % 20 > 9)
         strcat(CFrontend::m_stringDest, g_strTextCursor);
     Font_DrawText(1, CFrontend::m_stringDest, (int)(g_pGraphics->resX * 260) / 640, (int)g_pGraphics->resY / 2,
@@ -1547,7 +1548,7 @@ void FrontendMenu_BuildNetworkCarSetup(void);
 void FrontendMenu_BuildNetworkRallySetup(void);
 void FrontendMenu_BuildNetworkStageSetup(void);
 void FrontendMenu_BuildNetworkExtendedStageSetup(void);
-void FrontendMenu_BuildNetworkNameEntry(void);
+void FrontendMenu_BuildJoinPasswordEntry(void);
 void FrontendMenu_BuildNetworkLeaderboard(void);
 void FrontendMenu_BuildNetworkMessage(void);
 void FrontendMenu_BuildArcade(void);
@@ -1692,7 +1693,7 @@ void FrontendMenu_BuildPagesAndSelectInitial(BYTE param1, BYTE back)
         GameInfo_SetSoundOptionBit22(1);
     Menu_QueueDefaultAction();
     Menu_SetInputStateFlag(0);
-    CInput::SetInputRepeatTimingParameters(-1, -1, -1, -1, -1);
+    CInput::SetMenuSounds(-1, -1, -1, -1, -1);
     FrontendMenu_BuildMain();
     g_unk0x00818ac4 = 0;
     FrontendMenu_BuildNetworkWaitingRoom();
@@ -1747,13 +1748,14 @@ void FrontendMenu_BuildPagesAndSelectInitial(BYTE param1, BYTE back)
     FrontendMenu_BuildNetworkStageSetup();
     FrontendMenu_BuildNetworkExtendedStageSetup();
     FrontendMenu_BuildNetworkMessage();
-    FrontendMenu_BuildNetworkNameEntry();
+    FrontendMenu_BuildJoinPasswordEntry();
     FrontendMenu_BuildNetworkLeaderboard();
     FrontendMenu_BuildOptions();
     FrontendMenu_BuildGameOptions();
     FrontendMenu_BuildGraphicsOptions();
     FrontendMenu_BuildScreenOptions();     // PORT
     FrontendMenu_BuildWhatsNew();        // PORT
+    FrontendMenu_BuildInputControls();     // PORT
     FrontendMenu_BuildRenderDeviceOptions();
     FrontendMenu_BuildAdvancedGraphicsOptions();
     FrontendMenu_BuildDisplayDevice();
@@ -1876,9 +1878,9 @@ void FrontendMenu_UpdateAndSwitchActive(void)
     Sound_UpdateMusicStreaming();
     if (g_pMenu0x00818abc != FrontendMenu_GetDeviceBindings() && g_pMenu0x00818abc != FrontendMenu_GetDeviceCalibration())
         Input_MergeAssignedJoystickButtons(g_frontendOverlayMode, pDevice);
-    input = pDevice->field_0x8;
+    input = pDevice->pressed;
     if (g_frontendOverlayMode == 1)
-        input |= CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(0))->field_0x8 & 0x20;
+        input |= CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(0))->pressed & 0x20;
     pNext = (Menu *)Menu_Update(g_pMenu0x00818abc, input);
     if (pNext != NULL) {
         g_menuEnterTime = CFrontend::GetFrontendTimestamp();
@@ -2297,7 +2299,7 @@ void FrontendMenu_UpdateNetworkSessionBrowser(Menu *pMenu)
                     g_selectedNetworkSession = 0;
                     Network_CopyEnumeratedSessionGUID(0, &g_unk0x00818cf0);
                     g_unk0x00819024 = 1;
-                } else if ((pDevice->field_0x8 & 0x20) != 0) {
+                } else if ((pDevice->pressed & 0x20) != 0) {
                     g_unk0x00819014 = 0;
                     g_selectedNetworkSession = -1;
                     g_unk0x00819024 = 0;
@@ -2305,11 +2307,11 @@ void FrontendMenu_UpdateNetworkSessionBrowser(Menu *pMenu)
                     g_unk0x00818ef4 = 0;
                 } else {
                     Menu_SetFlags(pMenu, 0, 0, 1, 0);
-                    if ((pDevice->field_0x8 & 4) != 0 && g_selectedNetworkSession > 0) {
+                    if ((pDevice->pressed & 4) != 0 && g_selectedNetworkSession > 0) {
                         g_selectedNetworkSession--;
                         Network_CopyEnumeratedSessionGUID((BYTE)g_selectedNetworkSession, &g_unk0x00818cf0);
                         g_unk0x00819024 = 1;
-                    } else if ((pDevice->field_0x8 & 8) != 0 && g_selectedNetworkSession < g_unk0x00819018 - 1) {
+                    } else if ((pDevice->pressed & 8) != 0 && g_selectedNetworkSession < g_unk0x00819018 - 1) {
                         g_selectedNetworkSession++;
                         Network_CopyEnumeratedSessionGUID((BYTE)g_selectedNetworkSession, &g_unk0x00818cf0);
                         g_unk0x00819024 = 1;
@@ -2356,7 +2358,7 @@ void FrontendMenu_EnterNetworkSessionBrowser(Menu *pMenu, char param)
     g_unk0x0052528c = -1;
     g_selectedNetworkSession = -1;
     Input_ClearCharacterQueue();
-    sprintf(g_unk0x00818da8, "%s", CMain::m_logFileBlankLine);
+    sprintf(g_joinPassword, "%s", CMain::m_logFileBlankLine);
     g_unk0x0081901c = 0;
     g_unk0x00819020 = 0;
     pMenu->items[0].id = 0x1ff;
@@ -2383,7 +2385,7 @@ void FrontendNetwork_JoinSelectedSession(Menu *pMenu, int param)
             if (Network_IsSessionFlag10Set((BYTE)g_selectedNetworkSession) == 0) {
                 // The original reuses the menu parameter slot for the
                 // invalid-password flag of the join call (its value is unused).
-                if (Network_JoinEnumeratedSession((BYTE)g_selectedNetworkSession, g_unk0x00818da8, (BYTE *)&pMenu) != 0) {
+                if (Network_JoinEnumeratedSession((BYTE)g_selectedNetworkSession, g_joinPassword, (BYTE *)&pMenu) != 0) {
                     GameInfo_SetConfiguredGameMode((BYTE)Session_GetUserValue(0));
                     GameInfo_SetSessionField398C(Session_GetUserValue(2));
                     Network_GetLocalPlayerID();
@@ -2400,7 +2402,7 @@ void FrontendNetwork_JoinSelectedSession(Menu *pMenu, int param)
                 }
             }
             if (Network_IsSessionFlag10Set((BYTE)g_selectedNetworkSession) != 0) {
-                Menu_SetNextAction(FrontendMenu_GetNetworkNameEntry());
+                Menu_SetNextAction(FrontendMenu_GetJoinPasswordEntry());
                 return;
             }
             Network_CloseSession();
@@ -2563,13 +2565,13 @@ void FrontendMenu_EnterNetworkSessionSetup(Menu *pMenu, int unused)
     int index;
     int *pEntry;
 
-    g_unk0x00818ed0 = 1;
+    g_lobbyChatSelected = 1;
     g_unk0x00818ce8 = -1;
     g_unk0x00818ce0 = -1;
     FrontendMenu_SetInputState(0);
     Menu_SetFlags(pMenu, 1, 1, 1, 1);
     pMenu->cursor = 0;
-    g_unk0x00818d00 = 0;
+    g_lobbyLastCursor = 0;
     index = 0;
     pEntry = g_filteredRouteIds;
     for (i = 0; i < 0x16; i++) {
@@ -2663,9 +2665,9 @@ void FrontendMenu_LeaveNetworkSessionSetup(Menu *pMenu, char param)
 }
 
 // FUNCTION: CMR2 0x004edb50
-BYTE *FrontendNetwork_GetSessionState(void)
+BYTE *FrontendNetwork_GetLobbyChatLine(void)
 {
-    return g_unk0x00818f14;
+    return g_lobbyChatLine;
 }
 
 // Update callback of the session browser menu: drains the network queue.
@@ -3095,22 +3097,23 @@ void FrontendNetwork_ApplyChampionshipRally(Menu *pMenu, int param)
 }
 
 // FUNCTION: CMR2 0x004eed50
-void FrontendMenu_EnterNetworkNameEntry(Menu *pMenu, int param)
+void FrontendMenu_EnterJoinPasswordEntry(Menu *pMenu, int param)
 {
     Menu_SetFlags(pMenu, 0, 0, 1, 1);
     Input_ClearCharacterQueue();
-    sprintf(g_unk0x00818da8, "%s", CMain::m_logFileBlankLine);
+    sprintf(g_joinPassword, "%s", CMain::m_logFileBlankLine);
 }
 
 // Name entry: appends the typed character or deletes the last one.
 // FUNCTION: CMR2 0x004eed80
-void FrontendMenu_UpdateNetworkNameEntry(Menu *pMenu)
+void FrontendMenu_UpdateJoinPasswordEntry(Menu *pMenu)
 {
     int key;
     int len;
 
-    g_unk0x00818cd8 = g_unk0x00818da8;
-    strcpy(CFrontend::m_stringDest, g_unk0x00818da8);
+    g_pJoinPasswordText = g_joinPassword;
+    strcpy(CFrontend::m_stringDest, g_joinPassword);
+    Sys_RequestTextInput(CFrontend::GetTextString(0x1e7), g_joinPassword, 19);   // PORT
     if (!Input_PopQueuedCharacter(&key))
         return;
     if (key != 8) {
@@ -3124,7 +3127,7 @@ void FrontendMenu_UpdateNetworkNameEntry(Menu *pMenu)
         CFrontend::m_stringDest[strlen(CFrontend::m_stringDest) - 1] = 0;
         Menu_PlaySoundId(2);
     }
-    strcpy(g_unk0x00818cd8, CFrontend::m_stringDest);
+    strcpy(g_pJoinPasswordText, CFrontend::m_stringDest);
 }
 
 void NetworkChat_ClearLog(void);
@@ -3143,7 +3146,7 @@ void FrontendNetwork_JoinNamedSession(Menu *pMenu, int param)
     NetPlayers_ResetAllTables();
     NetworkChat_ClearLog();
     g_unk0x00818ef4 = 0;
-    if (Network_JoinEnumeratedSession((BYTE)g_selectedNetworkSession, g_unk0x00818da8, &invalidPassword) != 0) {
+    if (Network_JoinEnumeratedSession((BYTE)g_selectedNetworkSession, g_joinPassword, &invalidPassword) != 0) {
         GameInfo_SetConfiguredGameMode((BYTE)Session_GetUserValue(0));
         GameInfo_SetSessionField398C(Session_GetUserValue(2));
         Network_GetLocalPlayerID();
@@ -3160,7 +3163,7 @@ void FrontendNetwork_JoinNamedSession(Menu *pMenu, int param)
         return;
     }
     if (invalidPassword != 0) {
-        Menu_SetNextAction(FrontendMenu_GetNetworkNameEntry());
+        Menu_SetNextAction(FrontendMenu_GetJoinPasswordEntry());
         return;
     }
     Network_CloseSession();
@@ -3310,9 +3313,9 @@ void FrontendMenu_UpdateSingleRallySelection(Menu *pMenu)
     if (g_unk0x0082aa40 > 0) {
         if (g_savedGameListSelection == -1)
             g_savedGameListSelection = 0;
-        else if ((pDevice->field_0x8 & 4) && g_savedGameListSelection > 0)
+        else if ((pDevice->pressed & 4) && g_savedGameListSelection > 0)
             g_savedGameListSelection--;
-        else if ((pDevice->field_0x8 & 8) && g_savedGameListSelection < g_unk0x0082aa40 - 1)
+        else if ((pDevice->pressed & 8) && g_savedGameListSelection < g_unk0x0082aa40 - 1)
             g_savedGameListSelection++;
     } else {
         g_savedGameListSelection = -1;
@@ -4476,7 +4479,7 @@ void FrontendMenu_LeaveSoundOptions(Menu *pMenu, char param)
         CGameInfo::SetMasterSoundVolume(g_unk0x0081903c);
         CGameInfo::SetEffectsSoundVolume(g_unk0x00819860);
         CGameInfo::SetCoDriverSoundVolume(g_unk0x00819754);
-        CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+        CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
         CSound::NoOpSoundDeviceCallback();
         return;
     }
@@ -4920,8 +4923,8 @@ BYTE FrontendAudio_LoadSounds(void)
 void FrontendAudio_ConfigureMenuSounds(void)
 {
     g_unk0x0081988c = -1;
-    CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
-    CInput::SetInputRepeatTimingParameters(g_menuSoundBase, g_menuSoundBase + 1, g_menuSoundBase + 2, g_menuSoundBase + 3,
+    CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+    CInput::SetMenuSounds(g_menuSoundBase, g_menuSoundBase + 1, g_menuSoundBase + 2, g_menuSoundBase + 3,
                          g_menuSoundBase + 4);
     Menu_SetInputStateFlag(1);
 }
@@ -5060,14 +5063,14 @@ void FrontendAnimation_EvaluatePathSpline(int *pPoints, int t, int *pOut)
     seg = ((t << 4) >> 16) + 1;
     u = (((seg << 16) - 0x10000) / 16 - t + 0x1000) << 4;
     u2 = FixMul(u, u);
-    u3 = FixMul(u2, u);
+    u3 = FixMul(u, u2);
+    h00 = u3 * 2 + 0x10000 - u2 * 3;
     h01 = u2 * 3 - u3 * 2;
     h10 = u3 - u2 * 2 + u;
-    h00 = u3 * 2 + 0x10000 - u2 * 3;
     h11 = u3 - u2;
     p = &pPoints[seg * 2];
-    tanB = (p[4] - p[0]) * (0x10000 - g_menuPathTension) / 2;
     tanA = (p[2] - p[-2]) * (0x10000 - g_menuPathTension) / 2;
+    tanB = (p[4] - p[0]) * (0x10000 - g_menuPathTension) / 2;
     x = p[2] * h00 + (FixMul(h11, tanA) + p[0] * h01);
     x += FixMul(h10, tanB);
     tanA = (p[3] - p[-1]) * (0x10000 - g_menuPathTension) / 2;
@@ -8248,7 +8251,7 @@ char *Profile_BuildSavePath(char *pName);
 void *Profile_ReadLocalFile(char *param1, int param2);
 BYTE *RallyData_GetDriverCategoryProfile(int index);
 RallyCarDamageState *RallyData_GetDriverGroupRecord(int index);
-BYTE *RallyData_GetDriverSkillRecord(int index);
+CarSetup *RallyData_GetPlayerCarSetup(int index);
 BYTE *RallyData_GetDriverEntryRecord(int index);
 BYTE RallyData_SetCategoryAwardBit(int index, int bit);
 BYTE *RallyData_GetDriverSelectionFlagRecord(int index);
@@ -8289,7 +8292,7 @@ unsigned int FrontendProfile_ApplyDriverProfileBlock(const SavedGameImage *pBloc
         profile.setup.value4 = image.playerSetup[i].value4;
         profile.identifier = image.playerIdentifiers[i];
         memcpy(RallyData_GetDriverGroupRecord(i), &image.playerCars[i], sizeof(image.playerCars[i]));
-        memcpy(RallyData_GetDriverSkillRecord(i), &image.playerControllers[i], sizeof(image.playerControllers[i]));
+        memcpy(RallyData_GetPlayerCarSetup(i), &image.playerCarSetups[i], sizeof(image.playerCarSetups[i]));
         if ((profile.identifier.flags & 0x200000) == 0) {
             BYTE *buffer = (BYTE *)Profile_ReadLocalFile(Profile_BuildSavePath((char *)&profile.identifier), 0);
             if (buffer != NULL && CGenericFileLoader::m_fileSize == sizeof(DriverProfile)) {
@@ -8511,13 +8514,13 @@ char g_strValidLetters[68] = "abcdefghijklmnopqrstuvwxyz. ABCDEFGHIJKLMNOPQRSTUV
 // GLOBAL: CMR2 0x005252d4
 char g_strValidChars[92] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ., !\"%&*()-=_+`/?\\:;[]{}'~";
 // GLOBAL: CMR2 0x00818cdc
-char *g_unk0x00818cdc;
+char *g_pSessionDetailsText;
 // GLOBAL: CMR2 0x00818d08
 int g_unk0x00818d08[4];
 // GLOBAL: CMR2 0x00818d84
 char g_unk0x00818d84[0x24];
 // GLOBAL: CMR2 0x00819028
-int g_unk0x00819028;
+int g_lobbyChatLineLength;
 
 extern char g_keypad2[];
 extern char g_keypad3[];
@@ -8611,7 +8614,7 @@ void FrontendMenu_UpdateNetworkCarSetup(Menu *pMenu)
 
     pFlags = CGameInfo::GetGameInfoField9CAddress();
     max = Menu_GetItem(pMenu, 0)->max;
-    if (max != (BYTE)g_setupRouteIndex) {
+    if (max != g_setupRouteIndex) {
         Menu_GetItem(pMenu, 2)->max = 0;
         g_setupRouteIndex = max;
     }
@@ -8628,7 +8631,7 @@ void FrontendMenu_UpdateNetworkCarSetup(Menu *pMenu)
         count = 10;
     }
     i = 0;
-    if (count != 0) {
+    if (count > 0) {
         pDest = g_unk0x00818d84;
         do {
             i++;
@@ -8638,14 +8641,14 @@ void FrontendMenu_UpdateNetworkCarSetup(Menu *pMenu)
     }
     sprintf(&g_unk0x00818d84[i * 3], "%s", g_strFlagSS);
     if (!(CGameInfo::IsRecordFlagSet(0xd) == 0)) {
-        count = ((max & 1) != 0) + 10;
+        count = (max % 2 != 0) + 10;
     } else {
-        if ((max & 1) != 0) {
-            mask = 1 << (((char)((max + 1) / 2) - 1) & 0x1f);
+        if (max % 2 != 0) {
+            mask = 1 << ((max + 1) / 2 - 1);
             bits = (BYTE)mask;
             if ((pFlags[1] & mask & 0x1f) != 0 ||
-                (bits & (BYTE)(pFlags[1] >> 5) & 0x1f) != 0 ||
-                (bits & (BYTE)(pFlags[1] >> 10) & 0x1f) != 0)
+                ((BYTE)(pFlags[1] >> 5 & 0x1f) & bits) != 0 ||
+                ((BYTE)(pFlags[1] >> 10 & 0x1f) & bits) != 0)
                 count++;
         }
     }
@@ -8807,12 +8810,12 @@ void FrontendMenu_UpdateNetworkSessionSetup(Menu *pMenu)
     DeviceInfo *pDevice;
 
     b = 1;
-    if (g_unk0x00818ed0 != 0) {
+    if (g_lobbyChatSelected != 0) {
         pDevice = CInput::GetAvailableDeviceRecord(0);
-        if (!((pDevice->field_0x8 & 8) == 0)) {
+        if (!((pDevice->pressed & 8) == 0)) {
             pMenu->cursor = 1;
         } else {
-            if ((pDevice->field_0x8 & 4) != 0)
+            if ((pDevice->pressed & 4) != 0)
                 pMenu->cursor = pMenu->itemCount - 1;
         }
     }
@@ -8826,56 +8829,58 @@ void FrontendMenu_UpdateNetworkSessionSetup(Menu *pMenu)
         FrontendNetwork_SendPlayerDescription();
         g_unk0x00818ce0 = Menu_GetItem(pMenu, 2)->max;
     }
-    if (g_unk0x00818d00 != pMenu->cursor) {
+    if (g_lobbyLastCursor != pMenu->cursor) {
         if (pMenu->items[pMenu->cursor].value != 0) {
-            if (pMenu->items[g_unk0x00818d00].value == 0) {
+            if (pMenu->items[g_lobbyLastCursor].value == 0) {
                 FrontendMenu_SetInputState(0);
                 Menu_SetFlags(pMenu, 1, 1, 1, 1);
             }
-            g_unk0x00818ed0 = 0;
+            g_lobbyChatSelected = 0;
         } else {
             Input_ClearCharacterQueue();
-            g_unk0x00818f14[0] = 0;
-            g_unk0x00819028 = 0;
-            g_unk0x00818ed0 = 1;
+            g_lobbyChatLine[0] = 0;
+            g_lobbyChatLineLength = 0;
+            g_lobbyChatSelected = 1;
             FrontendMenu_SetInputState(1);
             Menu_SetFlags(pMenu, 0, 0, 0, 0);
         }
-        g_unk0x00818d00 = pMenu->cursor;
+        g_lobbyLastCursor = pMenu->cursor;
     }
     Network_RebuildSessionPlayerList();
-    if (g_unk0x00818ed0 != 0 && Input_PopQueuedCharacter(&key)) {
+    if (g_lobbyChatSelected != 0)
+        Sys_OfferTextInput(CFrontend::GetTextString(0x1c6), (char *)g_lobbyChatLine, 0xff);   // PORT
+    if (g_lobbyChatSelected != 0 && Input_PopQueuedCharacter(&key)) {
         switch (key) {
         default:
             pc = strchr(g_strValidChars, (char)key);
             if (pc != NULL) {
-                i = Font_GetTextWidth(1, g_unk0x00818f14);
+                i = Font_GetTextWidth(1, g_lobbyChatLine);
                 int maxWidth = (int)(((g_pGraphics->resX < 0x400) - 1 & 0xc6) + 0x14a);
-                if (g_unk0x00819028 < 0xff && i < maxWidth) {
-                    g_unk0x00818f14[g_unk0x00819028] = key;
-                    g_unk0x00818f14[g_unk0x00819028 + 1] = 0;
-                    g_unk0x00819028++;
+                if (g_lobbyChatLineLength < 0xff && i < maxWidth) {
+                    g_lobbyChatLine[g_lobbyChatLineLength] = key;
+                    g_lobbyChatLine[g_lobbyChatLineLength + 1] = 0;
+                    g_lobbyChatLineLength++;
                 }
             }
             break;
         case 0x1b:
-            g_unk0x00818ed0 = 0;
+            g_lobbyChatSelected = 0;
             FrontendMenu_SetInputState(0);
             Menu_SetFlags(pMenu, 1, 1, 1, 1);
             pMenu->cursor = 1;
             break;
         case 0xd:
-            if (g_unk0x00818f14[0] != 0) {
-                NetworkChat_SendLine((char *)g_unk0x00818f14);
-                g_unk0x00819028 = 0;
-                g_unk0x00818f14[0] = 0;
+            if (g_lobbyChatLine[0] != 0) {
+                NetworkChat_SendLine((char *)g_lobbyChatLine);
+                g_lobbyChatLineLength = 0;
+                g_lobbyChatLine[0] = 0;
             }
             break;
         case 8:
-            len = strlen((char *)g_unk0x00818f14);
+            len = strlen((char *)g_lobbyChatLine);
             if (0 < (int)len) {
-                g_unk0x00818f14[len - 1] = 0;
-                g_unk0x00819028--;
+                g_lobbyChatLine[len - 1] = 0;
+                g_lobbyChatLineLength--;
             }
             break;
         }
@@ -8939,22 +8944,23 @@ void FrontendMenu_UpdateNetworkSessionDetails(Menu *pMenu)
         Menu_GetItem(pMenu, 3)->min = 5;
     else
         Menu_GetItem(pMenu, 3)->min = 7;
-    if (Menu_GetItem(pMenu, 3)->min <= Menu_GetItem(pMenu, 3)->max)
+    if (Menu_GetItem(pMenu, 3)->max >= Menu_GetItem(pMenu, 3)->min)
         Menu_GetItem(pMenu, 3)->max = Menu_GetItem(pMenu, 3)->min - 1;
     value = pMenu->items[pMenu->cursor].value;
-    if (value == 0)
-        g_unk0x00818cdc = (char *)g_sessionName;
-    else if (value == 4)
-        g_unk0x00818cdc = (char *)g_sessionPassword;
     if (value == 0 || value == 4) {
-        strcpy(CFrontend::m_stringDest, g_unk0x00818cdc);
+        if (pMenu->items[pMenu->cursor].value == 0)
+            g_pSessionDetailsText = (char *)g_sessionName;
+        else
+            g_pSessionDetailsText = (char *)g_sessionPassword;
+        strcpy(CFrontend::m_stringDest, g_pSessionDetailsText);
+        Sys_RequestTextInput(CFrontend::GetTextString(value == 0 ? 0x1bf : 0x1c3), g_pSessionDetailsText, 0x13);   // PORT
         if (Input_PopQueuedCharacter(&key) != 0) {
             if (key != 8) {
                 i = Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);
+                n = ((g_pGraphics->resX < 0x400) - 1 & 0x54) + 0x8c;
                 len = strlen(CFrontend::m_stringDest);
-                if ((int)(len - 1) < 0x13 &&
-                    i < (int)(((g_pGraphics->resX < 0x400) - 1 & 0x54) + 0x8c)) {
-                    pc = strchr(g_strValidLetters, key);
+                if ((int)len < 0x13 && i < n) {
+                    pc = strchr(g_strValidLetters, (char)key);
                     if (pc != NULL) {
                         CFrontend::m_stringDest[len] = (char)key;
                         CFrontend::m_stringDest[len + 1] = 0;
@@ -8970,7 +8976,7 @@ void FrontendMenu_UpdateNetworkSessionDetails(Menu *pMenu)
                 }
             }
         }
-        strcpy(g_unk0x00818cdc, CFrontend::m_stringDest);
+        strcpy(g_pSessionDetailsText, CFrontend::m_stringDest);
     }
     FrontendNetwork_DrainMessageQueue();
 }
@@ -12261,7 +12267,7 @@ void FrontendMenu_DrawNetworkSessionSetup(Menu *pMenu)
     else
         texts[3] = CFrontend::GetTextString(0x1c5);
     FrontendDraw_Breadcrumb(PATH_X(), PATH_Y(), texts, 4);
-    if (g_unk0x00818ed0 != 0) {
+    if (g_lobbyChatSelected != 0) {
         colour[3] = 0x20;
         pChatColour = g_colourWhite0x00524968;
     } else {
@@ -12312,13 +12318,13 @@ void FrontendMenu_DrawNetworkSessionSetup(Menu *pMenu)
         Font_DrawText(1, NetworkChat_GetLine(j), (g_pGraphics->resX * 35) / 640,
                       ((count + 3) * g_pGraphics->resY * 20) / 480, (int *)pChatColour, 9);
     }
-    if (g_unk0x00818ed0 != 0) {
+    if (g_lobbyChatSelected != 0) {
         if ((unsigned int)CFrontend::GetFrontendTimestamp() % 20 > 9)
             sprintf(CFrontend::m_stringDest, g_str0x00519fb8,
-                    (char *)FrontendNetwork_GetSessionState());
+                    (char *)FrontendNetwork_GetLobbyChatLine());
         else
             sprintf(CFrontend::m_stringDest, CRegKey::m_regKeyPathFormatValue,
-                    (char *)FrontendNetwork_GetSessionState());
+                    (char *)FrontendNetwork_GetLobbyChatLine());
         Font_DrawText(1, CFrontend::m_stringDest, (g_pGraphics->resX * 35) / 640,
                       ((count + 4) * g_pGraphics->resY * 20) / 480, (int *)g_colourWhite0x00524968, 9);
     }
@@ -12469,7 +12475,7 @@ static const char *const g_screenOptionsText[6][SCREEN_TEXT_COUNT] = {
 // or German, or Polish for that edition (its only language).
 static char *ScreenOptions_Text(int text)
 {
-    int language = CGameInfo::GetGameRegion() == 3 ? 5 : CFrontend::m_unk0x0065aa70;
+    int language = CGameInfo::GetGameRegion() == 3 ? 5 : CFrontend::m_textLanguage;
     if (language > 5)
         language = 0;
     return (char *)g_screenOptionsText[language][text];
@@ -12734,4 +12740,366 @@ Menu* FrontendMenu_GetAtmosphereAmounts(Menu*parent){
  Menu_AddItemType1(&atmosphereAmounts,0,0x67,ApplyAtmosphere,0xe);
  Menu_SetCallbacks(&atmosphereAmounts,EnterAtmosphere,NULL,(MenuCallback)FrontendMenu_DrawAdvancedGraphicsOptions,NULL);
  Menu_ValidateCursor(&atmosphereAmounts,0);return &atmosphereAmounts;
+}
+// PORT: the controls pages, in place of the original's (Options >
+// Controllers). The first chooses the bindings to edit, player 1's keys,
+// player 2's, the gamepads' or a connected joystick's or wheel's (src/input,
+// controls.ini), and sets their deadzone, steering curve and rumble; the
+// second binds each driving action to the next key,
+// button or axis given. OK saves controls.ini; Back drops the changes.
+
+Menu g_controlsMenu;
+Menu g_controlsBindingsMenu;
+
+enum ControlsItem {
+    CONTROLS_ITEM_DEVICE,
+    CONTROLS_ITEM_BINDINGS,
+    CONTROLS_ITEM_DEADZONE,
+    CONTROLS_ITEM_CURVE,
+    CONTROLS_ITEM_RUMBLE,
+    CONTROLS_ITEM_DEFAULT,
+    CONTROLS_ITEM_OK = 0xe
+};
+
+enum ControlsText {
+    CONTROLS_TEXT_DEVICE,
+    CONTROLS_TEXT_KEYBOARD,
+    CONTROLS_TEXT_KEYBOARD2,
+    CONTROLS_TEXT_GAMEPAD,
+    CONTROLS_TEXT_DEADZONE,
+    CONTROLS_TEXT_CURVE,
+    CONTROLS_TEXT_RUMBLE,
+    CONTROLS_TEXT_PRESS_KEY,
+    CONTROLS_TEXT_PRESS_INPUT,
+    CONTROLS_TEXT_TOUCH,
+    CONTROLS_TEXT_TOUCH_NOTE,
+    CONTROLS_TEXT_COUNT
+};
+
+// In the game's character set (Windows-1252; 0xb1 is Polish l with a stroke).
+static const char *const g_controlsText[6][CONTROLS_TEXT_COUNT] = {
+    { "Device", "Keyboard", "Keyboard (Player 2)", "Gamepad", "Deadzone", "Steering Curve", "Vibration",
+      "Press a key", "Press a button or move an axis (Escape cancels)",
+      "Touch Controls", "Set up in the app's Controls screen" },
+    { "P\xe9riph\xe9rique", "Clavier", "Clavier (joueur 2)", "Manette", "Zone morte", "Courbe de direction",
+      "Vibrations", "Appuyez sur une touche",
+      "Appuyez sur un bouton ou bougez un axe (\xc9" "chap annule)", "Commandes tactiles",
+      "R\xe9glages dans l'\xe9" "cran Commandes de l'appli" },
+    { "Dispositivo", "Teclado", "Teclado (jugador 2)", "Mando", "Zona muerta", "Curva de direcci\xf3n", "Vibraci\xf3n",
+      "Pulsa una tecla", "Pulsa un bot\xf3n o mueve un eje (Esc cancela)", "Controles t\xe1" "ctiles",
+      "Se configuran en la pantalla Controles de la app" },
+    { "Dispositivo", "Tastiera", "Tastiera (giocatore 2)", "Gamepad", "Zona morta", "Curva dello sterzo",
+      "Vibrazione", "Premi un tasto", "Premi un pulsante o muovi un asse (Esc annulla)", "Comandi touch",
+      "Si impostano nella schermata Controlli dell'app" },
+    { "Ger\xe4t", "Tastatur", "Tastatur (Spieler 2)", "Gamepad", "Totzone", "Lenkkurve", "Vibration",
+      "Taste dr\xfc" "cken", "Knopf dr\xfc" "cken oder Achse bewegen (Esc bricht ab)",
+      "Touch-Steuerung", "Einstellung im Steuerung-Bildschirm der App" },
+    { "Urzadzenie", "Klawiatura", "Klawiatura (gracz 2)", "Pad", "Martwa strefa", "Krzywa skretu", "Wibracje",
+      "Nacisnij klawisz", "Nacisnij przycisk lub porusz osia (Esc anuluje)", "Sterowanie dotykowe",
+      "Ustawienia na ekranie Sterowanie aplikacji" },
+};
+
+// The settings offered: deadzone 0..20%, curve and rumble 0..100% by tens.
+#define CONTROLS_DEADZONE_COUNT 21
+#define CONTROLS_PERCENT_COUNT 11
+
+static char *Controls_Text(int text)
+{
+    int language = CGameInfo::GetGameRegion() == 3 ? 5 : CFrontend::m_textLanguage;
+    if (language > 5)
+        language = 0;
+    return (char *)g_controlsText[language][text];
+}
+
+static int g_controlsProfile;           // the bindings shown
+static int g_controlsShownProfile = -1;
+static BOOL g_controlsSaved;
+static BOOL g_controlsCapturing;
+
+static char *Controls_ProfileName(int profile)
+{
+    switch (Input_GetProfileKind(profile)) {
+    case INPUT_PROFILE_TOUCH: return Controls_Text(CONTROLS_TEXT_TOUCH);
+    case INPUT_PROFILE_KEYBOARD: return Controls_Text(CONTROLS_TEXT_KEYBOARD);
+    case INPUT_PROFILE_KEYBOARD2: return Controls_Text(CONTROLS_TEXT_KEYBOARD2);
+    case INPUT_PROFILE_GAMEPAD: return Controls_Text(CONTROLS_TEXT_GAMEPAD);
+    default: return (char *)Input_GetProfileName(profile);
+    }
+}
+
+// The rows of the profile shown, and which of its settings apply: none for
+// keys, rumble only for gamepads.
+static void Controls_LoadRows(Menu *pMenu)
+{
+    static const BYTE settings[3] = { CONTROLS_ITEM_DEADZONE, CONTROLS_ITEM_CURVE, CONTROLS_ITEM_RUMBLE };
+    MenuItem *pItem;
+    int kind;
+    int i;
+
+    kind = Input_GetProfileKind(g_controlsProfile);
+    i = Input_GetSetting(g_controlsProfile, INPUT_SETTING_DEADZONE);
+    Menu_GetItem(pMenu, CONTROLS_ITEM_DEADZONE)->max = (BYTE)(i < CONTROLS_DEADZONE_COUNT - 1 ? i : CONTROLS_DEADZONE_COUNT - 1);
+    Menu_GetItem(pMenu, CONTROLS_ITEM_CURVE)->max = (BYTE)((Input_GetSetting(g_controlsProfile, INPUT_SETTING_CURVE) + 5) / 10);
+    Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max = (BYTE)((Input_GetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE) + 5) / 10);
+    for (i = 0; i < 3; i++) {
+        pItem = Menu_GetItem(pMenu, settings[i]);
+        pItem->enabled = pItem->visible = kind != INPUT_PROFILE_KEYBOARD && kind != INPUT_PROFILE_KEYBOARD2 &&
+                                          kind != INPUT_PROFILE_TOUCH &&
+                                          (settings[i] != CONTROLS_ITEM_RUMBLE || kind == INPUT_PROFILE_GAMEPAD);
+    }
+    // The touch controls are set up in the launcher: their buttons show the
+    // actions they press, so they are not bound here.
+    pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_BINDINGS);
+    pItem->enabled = pItem->visible = kind != INPUT_PROFILE_TOUCH;
+    pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_DEFAULT);
+    pItem->enabled = pItem->visible = kind != INPUT_PROFILE_TOUCH;
+    if (!Menu_GetItem(pMenu, pMenu->items[pMenu->cursor].value)->visible)
+        Menu_ValidateCursor(pMenu, 0);
+    g_controlsShownProfile = g_controlsProfile;
+}
+
+static void Controls_StoreRows(Menu *pMenu)
+{
+    Input_SetSetting(g_controlsProfile, INPUT_SETTING_DEADZONE, Menu_GetItem(pMenu, CONTROLS_ITEM_DEADZONE)->max);
+    Input_SetSetting(g_controlsProfile, INPUT_SETTING_CURVE, Menu_GetItem(pMenu, CONTROLS_ITEM_CURVE)->max * 10);
+    Input_SetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE, Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max * 10);
+}
+
+// Coming from the options (param 0) starts the changes afresh, on the
+// bindings of the device used last; coming back from the bindings page keeps
+// them.
+void FrontendMenu_EnterControls(Menu *pMenu, int param)
+{
+    MenuItem *pDevice;
+
+    if (param == 0) {
+        g_controlsSaved = FALSE;
+        if (Input_GetLastUsedProfile() >= 0)
+            g_controlsProfile = Input_GetLastUsedProfile();
+    }
+    pDevice = Menu_GetItem(pMenu, CONTROLS_ITEM_DEVICE);
+    pDevice->min = (BYTE)Input_GetProfileCount();
+    if (g_controlsProfile >= pDevice->min)
+        g_controlsProfile = 0;
+    pDevice->max = (BYTE)g_controlsProfile;
+    Controls_LoadRows(pMenu);
+}
+
+// Follows the device chosen and the controllers connected meanwhile.
+void FrontendMenu_UpdateControls(Menu *pMenu)
+{
+    MenuItem *pDevice;
+
+    pDevice = Menu_GetItem(pMenu, CONTROLS_ITEM_DEVICE);
+    pDevice->min = (BYTE)Input_GetProfileCount();
+    if (pDevice->max >= pDevice->min)
+        pDevice->max = 0;
+    if (pDevice->max != g_controlsShownProfile) {
+        g_controlsProfile = pDevice->max;
+        Controls_LoadRows(pMenu);
+    } else {
+        Controls_StoreRows(pMenu);
+    }
+}
+
+void FrontendMenu_RestoreControlsDefaults(Menu *pMenu, MenuItem *pItem)
+{
+    Input_RestoreDefaults(g_controlsProfile);
+    Controls_LoadRows(pMenu);
+}
+
+void FrontendMenu_ApplyControls(Menu *pMenu, MenuItem *pItem)
+{
+    Controls_StoreRows(pMenu);
+    g_controlsSaved = TRUE;
+}
+
+// Leaving for the options (v 1): OK saved the changes, Back drops them.
+void FrontendMenu_LeaveControls(Menu *pMenu, char v)
+{
+    if (v == 0)
+        return;
+    if (g_controlsSaved)
+        Input_SaveBindings();
+    else
+        Input_ReloadBindings();
+    CInput::RefreshControllerConfigurations();
+}
+
+void FrontendMenu_BeginControlsCapture(Menu *pMenu, MenuItem *pItem)
+{
+    Input_BeginCapture(g_controlsProfile, pItem->value);
+    g_controlsCapturing = TRUE;
+    Menu_SetFlags(pMenu, 0, 0, 0, 0);
+}
+
+void FrontendMenu_UpdateControlsBindings(Menu *pMenu)
+{
+    if (!g_controlsCapturing)
+        return;
+    Menu_SetFlags(pMenu, 0, 0, 0, 0);
+    if (Input_UpdateCapture() == 0)
+        return;
+    g_controlsCapturing = FALSE;
+    Menu_SetFlags(pMenu, 1, 1, 1, 1);
+}
+
+// Both pages as the screen options are drawn: a label, then the value.
+static void Controls_Draw(Menu *pMenu, int rowHeight, BOOL carousel)
+{
+    short rect[4];
+    MenuItem *pItem;
+    BYTE *pColour;
+    BYTE *pSelColour;
+    BYTE *pUnselColour;
+    BYTE *pLineColour;
+    BYTE *pLineShadow;
+    char binding[128];
+    int valueX;
+    int textY;
+    int step;
+    int x;
+    int y;
+    int row;
+    int i;
+    int j;
+
+    step = (int)(g_pGraphics->resY * rowHeight) / 480;
+    rect[0] = (int)(g_pGraphics->resX * 100) / 640;
+    rect[2] = CFrontend::m_pAr640ATexture->width;
+    rect[3] = CFrontend::m_pAr640ATexture->height;
+    row = 0;
+    for (i = 0; i < pMenu->itemCount; i++)
+        row += pMenu->items[i].visible ? 1 : 0;
+    y = ((int)(g_pGraphics->resY * 8) / 480 + (int)(g_pGraphics->resY * 38) / 480 +
+         (int)(g_pGraphics->resY * 384) / 480) / 2 - (step * row) / 2;
+    // The bindings start under the title, as the original's did, and their
+    // inputs line up after the longest action.
+    valueX = 0;
+    if (pMenu == &g_controlsBindingsMenu) {
+        y = (int)(g_pGraphics->resY * 65) / 480;
+        for (i = 0; i <= INPUT_PAUSE; i++) {
+            j = Font_GetTextWidth(1, (BYTE *)CFrontend::GetTextString(0x6b + i));
+            valueX = j > valueX ? j : valueX;
+        }
+        valueX += (int)(g_pGraphics->resX * 122) / 640 + (int)(g_pGraphics->resX * 24) / 640;
+    }
+    FrontendDraw_PlayTime();
+    FrontendDraw_MenuPath(pMenu, PATH_X(), PATH_Y(), 1, 2, NULL, -1);
+    pLineColour = pMenu->cursor == 0 ? g_colourWhite0x00524968 : g_colourText0x0052496c;
+    pLineShadow = pMenu->cursor == 0 ? g_colourShadowWhite0x00524974 : g_colourShadowText0x00524978;
+    g_frontendDrawRect[0] = (int)(g_pGraphics->resX * 99) / 640;
+    g_frontendDrawRect[1] = y;
+    g_frontendDrawRect[2] = (int)(g_pGraphics->resX * 282) / 640;
+    g_frontendDrawRect[3] = 1;
+    Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineShadow, 1);
+    g_frontendDrawRect[1]++;
+    Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineColour, 1);
+    row = 0;
+    pItem = pMenu->items;
+    for (i = 0; i < pMenu->itemCount; i++, pItem++) {
+        if (!pItem->visible)
+            continue;
+        rect[1] = y + (int)(g_pGraphics->resY * 2) / 480 + step / 2 + (step * row - CFrontend::m_pAr640ATexture->height / 2);
+        if (pMenu->cursor == i) {
+            pColour = pSelColour = g_colourWhite0x00524968;
+            pUnselColour = g_colourText0x0052496c;
+            Sprite_Queue((SpriteRect *)&CFrontend::m_pAr640ATexture->field_0x11c, (SpriteRect *)rect,
+                         CFrontend::m_pAr640ATexture, 1, 0, 0, NULL, pColour, 8);
+        } else {
+            pColour = pUnselColour = g_colourText0x0052496c;
+            pSelColour = g_colourWhite0x00524968;
+            Sprite_Queue((SpriteRect *)&CFrontend::m_pAr640DTexture->field_0x11c, (SpriteRect *)rect,
+                         CFrontend::m_pAr640DTexture, 1, 0, 0, NULL, pColour, 8);
+        }
+        x = (int)(g_pGraphics->resX * 122) / 640;
+        textY = step * 2 / 3 + g_frontendDrawRect[1];
+        if (pMenu == &g_controlsBindingsMenu && pItem->value <= INPUT_PAUSE) {
+            if (g_controlsCapturing && pMenu->cursor == i)
+                strcpy(binding, "...");
+            else
+                Input_GetBindingText(g_controlsProfile, pItem->value, binding, sizeof(binding));
+            Font_DrawText(1, CFrontend::GetTextString(pItem->id), x, textY, (int *)pColour, 0x11);
+            Font_DrawText(1, binding, valueX, textY, (int *)pColour, 0x11);
+        } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_DEVICE) {
+            sprintf(CFrontend::m_stringDest, "%s  < %s >", Controls_Text(CONTROLS_TEXT_DEVICE),
+                    Controls_ProfileName(pItem->max));
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else if (pMenu == &g_controlsMenu && pItem->value >= CONTROLS_ITEM_DEADZONE &&
+                   pItem->value <= CONTROLS_ITEM_RUMBLE) {
+            sprintf(CFrontend::m_stringDest, "%s  < %d%% >",
+                    Controls_Text(pItem->value == CONTROLS_ITEM_DEADZONE ? CONTROLS_TEXT_DEADZONE
+                                  : pItem->value == CONTROLS_ITEM_CURVE ? CONTROLS_TEXT_CURVE : CONTROLS_TEXT_RUMBLE),
+                    pItem->value == CONTROLS_ITEM_DEADZONE ? pItem->max : pItem->max * 10);
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else if (pItem->type == 2) {
+            sprintf(CFrontend::m_stringDest, g_strEllipsisFormat, CFrontend::GetTextString(pItem->id));
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else {
+            Font_DrawText(1, CFrontend::GetTextString(pItem->id), x, textY, (int *)pColour, 0x11);
+        }
+        if (pMenu->cursor == i + 1 || pMenu->cursor == i) {
+            pLineColour = g_colourWhite0x00524968;
+            pLineShadow = g_colourShadowWhite0x00524974;
+        } else {
+            pLineColour = g_colourText0x0052496c;
+            pLineShadow = g_colourShadowText0x00524978;
+        }
+        row++;
+        g_frontendDrawRect[1] = step * row + y;
+        Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineShadow, 1);
+        g_frontendDrawRect[1]++;
+        Sprite_FillRect(&g_pGraphics->field309_0x150, g_frontendDrawRect, pLineColour, 1);
+    }
+    if (pMenu == &g_controlsMenu && Input_GetProfileKind(g_controlsProfile) == INPUT_PROFILE_TOUCH)
+        Font_DrawText(1, Controls_Text(CONTROLS_TEXT_TOUCH_NOTE), (int)(g_pGraphics->resX * 122) / 640,
+                      step * row + y + step, (int *)g_colourText0x0052496c, 0x11);
+    if (g_controlsCapturing && pMenu == &g_controlsBindingsMenu) {
+        int kind = Input_GetProfileKind(g_controlsProfile);
+        Font_DrawText(1, Controls_Text(kind == INPUT_PROFILE_KEYBOARD || kind == INPUT_PROFILE_KEYBOARD2
+                                       ? CONTROLS_TEXT_PRESS_KEY : CONTROLS_TEXT_PRESS_INPUT),
+                      (int)(g_pGraphics->resX * 122) / 640, step * row + y + step, (int *)g_colourWhite0x00524968, 0x11);
+    }
+    if (carousel)
+        FrontendDraw_Carousel(FrontendMenu_GetMain(), 0, NULL);
+}
+
+void FrontendMenu_DrawControls(Menu *pMenu)
+{
+    Controls_Draw(pMenu, 36, TRUE);
+}
+
+void FrontendMenu_DrawControlsBindings(Menu *pMenu)
+{
+    Controls_Draw(pMenu, 30, FALSE);
+}
+
+void FrontendMenu_BuildInputControls(void)
+{
+    int i;
+
+    Menu_Init(&g_controlsMenu, NULL, 0x18, 0, FrontendMenu_GetOptions(), NULL, 1, 0, 1);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, 1, 0, 0, 0, 0, CONTROLS_ITEM_DEVICE);
+    Menu_AddItemType2(&g_controlsMenu, 0, 0x65, &g_controlsBindingsMenu, 0, CONTROLS_ITEM_BINDINGS);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_DEADZONE_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_DEADZONE);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_CURVE);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_RUMBLE);
+    Menu_AddItemType4(&g_controlsMenu, 0, 0x1fe, (MenuItemAction)FrontendMenu_RestoreControlsDefaults, CONTROLS_ITEM_DEFAULT);
+    Menu_AddItemType1(&g_controlsMenu, 0, 0x67, (MenuItemAction)FrontendMenu_ApplyControls, CONTROLS_ITEM_OK);
+    Menu_SetCallbacks(&g_controlsMenu, FrontendMenu_EnterControls, (MenuCallback)FrontendMenu_UpdateControls,
+                      (MenuCallback)FrontendMenu_DrawControls, (MenuCallback)FrontendMenu_LeaveControls);
+    Menu_ValidateCursor(&g_controlsMenu, 0);
+
+    Menu_Init(&g_controlsBindingsMenu, NULL, 0x65, 0, &g_controlsMenu, NULL, 1, 0, 1);
+    for (i = 0; i <= INPUT_PAUSE; i++)
+        Menu_AddItemType4(&g_controlsBindingsMenu, 0, 0x6b + i, (MenuItemAction)FrontendMenu_BeginControlsCapture, i);
+    Menu_AddItemType1(&g_controlsBindingsMenu, 0, 0x67, NULL, CONTROLS_ITEM_OK);
+    Menu_SetCallbacks(&g_controlsBindingsMenu, NULL, (MenuCallback)FrontendMenu_UpdateControlsBindings,
+                      (MenuCallback)FrontendMenu_DrawControlsBindings, NULL);
+    Menu_ValidateCursor(&g_controlsBindingsMenu, 0);
+}
+
+Menu *FrontendMenu_GetInputControls(void)
+{
+    return &g_controlsMenu;
 }

@@ -65,7 +65,7 @@ int CGameInfo::m_unk0x0081a754;
 
 char CGameInfo::m_stringCMR[4] = "cmr";
 char CGameInfo::m_stringGameInfoRCF[32] = "%s\\Configuration\\GameInfo.rcf";
-unsigned int CGameInfo::m_unk0x0059f8d0;
+unsigned int CGameInfo::m_fixedMenuKeys;
 unsigned int CGameInfo::m_unk0x00520870 = 1;
 void* CGameInfo::m_unk0x0081777c = NULL;
 BOOL CGameInfo::m_unk0x00817678 = FALSE;
@@ -690,7 +690,7 @@ BOOL OptionMovie_PlayFrame(BYTE skipOnSpace)
     CInput::UpdateAllAvailableDevices();
     pDevice = CInput::GetAvailableDeviceRecord(0);
     Input_MergeAssignedJoystickButtons(0, pDevice);
-    if (pDevice->field_0x8 & 0x10)
+    if (pDevice->pressed & 0x10)
         return FALSE;
     if (skipOnSpace & 1) {
         if (Input_IsKeyDown(INPUT_KEY_SPACE))
@@ -794,8 +794,8 @@ void CGameInfo::InitProfileRecordDefaults(GameInfo0xa4 *pInfo)
     } while (--group);
     pFlags = &pInfo->secondLoop[0].flags;
     track = 0xcb;
-    pFinalTime = &pInfo->rallyStageRecordTimes[10].value;
     pFinalSplits = pInfo->rallyStageRecordSplits[10];
+    pFinalTime = &pInfo->rallyStageRecordTimes[10].value;
     do {
         group = 3;
         do {
@@ -961,13 +961,13 @@ void CGameInfo::ApplyStageOptionUnlockFlags(void) {
 // FUNCTION: CMR2 0x0049eaf0
 DWORD CGameInfo::SetupInputs(int unused) {
     if (CInput::DInputCreate()) {
-        CInput::m_unk0x0059f8cc.field_0x0 = 0;
-        CInput::m_unk0x0059f8cc.field_0x1 = 2;
-        CInput::m_unk0x0059f8cc.field_0x2 = 0;
+        CInput::m_deviceCounts.nextDevice = 0;
+        CInput::m_deviceCounts.keyboardCount = 2;
+        CInput::m_deviceCounts.joystickCount = 0;
         
         for (int i = 0; i < 8; i++) {
-            CInput::m_availableDevices[i].field_0x0 = -1;
-            CInput::m_availableDevices[i].field_0x18 = -1;
+            CInput::m_availableDevices[i].type = -1;
+            CInput::m_availableDevices[i].joystickIndex = -1;
         }
         
         CInput::SetupKeyboard();
@@ -975,7 +975,7 @@ DWORD CGameInfo::SetupInputs(int unused) {
         CInput::GetAttachedJoysticks();
     }
 
-    return CInput::m_unk0x0059f8cc.field_0x0 & 0xFF;
+    return CInput::m_deviceCounts.nextDevice & 0xFF;
 }
 
 // match 76%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
@@ -1225,11 +1225,11 @@ void CGameInfo::SetFrontendSessionFlag(BYTE param1) {
 // FUNCTION: CMR2 0x0049ea90
 void CGameInfo::SetInputAndGamePaused(unsigned int param1) {
     SetInputPausedFlag(param1);
-    m_unk0x0059f8d0 = param1;
+    m_fixedMenuKeys = param1;
 }
 
 // FUNCTION: CMR2 0x0049e930
-unsigned int CGameInfo::IsInputAndGamePaused(void) { return m_unk0x0059f8d0; }
+unsigned int CGameInfo::IsInputAndGamePaused(void) { return m_fixedMenuKeys; }
 
 void CGameInfo::SetInputPausedFlag(unsigned int param1) {
     m_unk0x00520870 = param1;
@@ -1325,8 +1325,10 @@ int g_unk0x0082b1bc;
 Menu g_advancedOptionsMenu;
 // GLOBAL: CMR2 0x0082ba28
 Menu g_optionStatusMenu;
+// The option screens' car setups: rows 0..3 are each player's edited setup,
+// rows 4..7 the setups they had when the screen was entered.
 // GLOBAL: CMR2 0x0082bee8
-BYTE g_unk0x0082bee8[8][7];
+CarSetup g_optionCarSetups[8];
 // GLOBAL: CMR2 0x0082bf20
 BYTE g_optionColumnDirty[16][7];
 #include "OptionPreviewGeometry.h"
@@ -1815,7 +1817,7 @@ BYTE OptionMenu_GetColumnDirtyFlag(int i, int j)
 // Option menu builders and loaders that live in the cascade scaffold.
 void OptionMenu_RefreshStageSetup(void);
 void OptionMenu_LoadRallyRecords(void);
-void OptionMenu_InitDefaultRecordTables(void);
+void OptionMenu_LoadCarSetups(void);
 void OptionMenu_InitBackground(void);
 BYTE OptionMenu_LoadSounds(void);
 void OptionMenu_ConfigureSoundHandles(void);
@@ -1840,11 +1842,11 @@ void OptionMenu_EnterStartState(CallbackStateMachine *p1, BYTE state)
     if (CGameInfo::GetGameModeOptionBit19() != 0)
         NetPlayers_SendCarClass(1);
     Menu_SetInputStateFlag(0);
-    CInput::SetInputRepeatTimingParameters(0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
+    CInput::SetMenuSounds(0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
     g_optionPlayerSlotOffset = CGameInfo::GetConfiguredPlayerCount() & 0xff;
     OptionMenu_RefreshStageSetup();
     OptionMenu_LoadRallyRecords();
-    OptionMenu_InitDefaultRecordTables();
+    OptionMenu_LoadCarSetups();
     OptionMenu_InitBackground();
     SavedGames_LoadRecords();
     CGame::RegisterCallback(SavedGames_ReleaseRecords, NULL);
@@ -2239,7 +2241,7 @@ void OptionMenu_UpdateActivePage(void)
     Input_TranslatePedalsToMenuKeys();
     pDevice = CInput::GetAvailableDeviceRecord(input);
     Input_MergeAssignedJoystickButtons(input, pDevice);
-    pNextMenu = (Menu *)Menu_Update(g_pMenu0x00831778, pDevice->field_0x8);
+    pNextMenu = (Menu *)Menu_Update(g_pMenu0x00831778, pDevice->pressed);
     if (pNextMenu != NULL)
         g_pMenu0x0083177c = pNextMenu;
 }
@@ -3023,7 +3025,7 @@ void FrontendMenu_UpdateSoundOptions(Menu *pMenu)
     CGameInfo::SetMasterSoundVolume(pMenu->items[0].max * 10);
     CGameInfo::SetEffectsSoundVolume(pMenu->items[1].max * 10);
     CGameInfo::SetCoDriverSoundVolume(pMenu->items[2].max * 10);
-    CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+    CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
     CSound::NoOpSoundDeviceCallback();
 }
 
@@ -3688,33 +3690,33 @@ Menu *OptionMenu_GetValueSliderMenu(void)
     return &g_valueSliderMenu;
 }
 
-BYTE *RallyData_GetDriverSkillRecord(int index);
+CarSetup *RallyData_GetPlayerCarSetup(int index);
 
 // Copies the seven option bytes of every rally data record into rows 4..7 of
 // the default table, mirrors them into rows 0..3 and clears the option flags.
 // match 70%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
 // FUNCTION: CMR2 0x00502570
-void OptionMenu_InitDefaultRecordTables(void)
+void OptionMenu_LoadCarSetups(void)
 {
     int i;
 
     for (i = 0; i < 4; i++) {
-        BYTE *p = RallyData_GetDriverSkillRecord(i);
+        CarSetup *p = RallyData_GetPlayerCarSetup(i);
 
-        g_unk0x0082bee8[i + 4][4] = p[4];
-        g_unk0x0082bee8[i + 4][5] = p[5];
-        g_unk0x0082bee8[i + 4][1] = p[1];
-        g_unk0x0082bee8[i + 4][6] = p[6];
-        g_unk0x0082bee8[i + 4][3] = p[3];
-        g_unk0x0082bee8[i + 4][2] = p[2];
-        g_unk0x0082bee8[i + 4][0] = p[0];
-        g_unk0x0082bee8[i][4] = (char)g_unk0x0082bee8[i + 4][4];
-        g_unk0x0082bee8[i][5] = (char)g_unk0x0082bee8[i + 4][5];
-        g_unk0x0082bee8[i][1] = (char)g_unk0x0082bee8[i + 4][1];
-        g_unk0x0082bee8[i][6] = (char)g_unk0x0082bee8[i + 4][6];
-        g_unk0x0082bee8[i][3] = (char)g_unk0x0082bee8[i + 4][3];
-        g_unk0x0082bee8[i][2] = (char)g_unk0x0082bee8[i + 4][2];
-        g_unk0x0082bee8[i][0] = (char)g_unk0x0082bee8[i + 4][0];
+        g_optionCarSetups[i + 4].brakeBias = p->brakeBias;
+        g_optionCarSetups[i + 4].brakePower = p->brakePower;
+        g_optionCarSetups[i + 4].gearbox = p->gearbox;
+        g_optionCarSetups[i + 4].steering = p->steering;
+        g_optionCarSetups[i + 4].powerRatio = p->powerRatio;
+        g_optionCarSetups[i + 4].suspension = p->suspension;
+        g_optionCarSetups[i + 4].tyres = p->tyres;
+        g_optionCarSetups[i].brakeBias = g_optionCarSetups[i + 4].brakeBias;
+        g_optionCarSetups[i].brakePower = g_optionCarSetups[i + 4].brakePower;
+        g_optionCarSetups[i].gearbox = g_optionCarSetups[i + 4].gearbox;
+        g_optionCarSetups[i].steering = g_optionCarSetups[i + 4].steering;
+        g_optionCarSetups[i].powerRatio = g_optionCarSetups[i + 4].powerRatio;
+        g_optionCarSetups[i].suspension = g_optionCarSetups[i + 4].suspension;
+        g_optionCarSetups[i].tyres = g_optionCarSetups[i + 4].tyres;
         memset(&g_optionColumnDirty[i][0], 0, 7);
     }
 }
@@ -3940,15 +3942,15 @@ int InRaceMenu_IsBackPressed(unsigned short slot)
 {
     DeviceInfo *pDev = CInput::GetAvailableDeviceRecord(Input_GetControllerSlotMapping(slot));
 
-    if (pDev->field_0x0 == 1 || pDev->field_0x0 == 2) {
-        if ((pDev->field_0x8 & 0x400) != 0)
+    if (pDev->type == 1 || pDev->type == 2) {
+        if ((pDev->pressed & 0x400) != 0)
             return 1;
     } else {
-        if ((pDev->field_0x8 & (unsigned short)CInput::GetButtonMapping(slot, 9)) != 0) {
+        if ((pDev->pressed & (unsigned short)CInput::GetButtonMapping(slot, 9)) != 0) {
             g_unk0x0052a0b8 = CInput::GetButtonMapping(slot, 9);
             return 1;
         }
-        if ((CInput::GetAvailableDeviceRecord(0)->field_0x8 & 0x400) != 0)
+        if ((CInput::GetAvailableDeviceRecord(0)->pressed & 0x400) != 0)
             return 1;
     }
     return 0;
@@ -3988,7 +3990,7 @@ void InRaceMenu_ApplySoundVolumes(Menu *pMenu)
     CGameInfo::SetEffectsSoundVolume(pMenu->items[Menu_FindItem(pMenu, 1)].max * 10);
     if (Race_IsFlag24Clear())
         CGameInfo::SetCoDriverSoundVolume(pMenu->items[Menu_FindItem(pMenu, 2)].max * 10);
-    CInput::SetInputRepeatTimingState(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
+    CInput::SetMenuSoundVolume(((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
 }
 
 // Values the in-race option menus started with (restored on cancel).
@@ -4109,7 +4111,7 @@ void View_SetCameraType(int, int, BYTE, int);
 BYTE StageUI_GetRaceEndEventCount(void);
 int RallyData_GetDriverCarSelection(BYTE);
 int RallyData_IsChampionshipFinalStage(void);
-void RallyData_CopyCountryPlayerDefaults(void);
+void RallyData_ApplyCountryCarSetups(void);
 void RallyData_ClearDriverGroupRecords(void);
 int View_IsModeAvailable(BYTE, int);
 extern BYTE g_unk0x00537fd4;
@@ -4169,7 +4171,7 @@ void InRaceMenu_AdvanceCascade(CallbackStateMachine *param1, int param2)
             return;
         }
         if ((BYTE)RallyData_IsChampionshipFinalStage() != 0) {
-            RallyData_CopyCountryPlayerDefaults();
+            RallyData_ApplyCountryCarSetups();
             RallyData_ClearDriverGroupRecords();
             CGame::PromoteCallbackEntryByRule(param1, param2, 1, 2);
             return;
@@ -4322,7 +4324,7 @@ void InRaceMenu_LeaveSoundOptions(Menu *pMenu, char cancel)
         if (Race_IsFlag24Clear())
             CGameInfo::SetCoDriverSoundVolume(pMenu->items[Menu_FindItem(pMenu, 2)].max * 10);
     }
-    CInput::SetInputRepeatTimingState((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
+    CInput::SetMenuSoundVolume((int)(CGameInfo::GetEffectsSoundVolume() << 16) / 100 / 4);
     NetRace_InitializeRaceSoundVolumes();
 }
 
@@ -4565,7 +4567,7 @@ updateMenus:
     Input_TranslatePedalsToMenuKeys();
     pDev = CInput::GetAvailableDeviceRecord(g_unk0x0052af58[0]);
     Input_MergeAssignedJoystickButtons(*(unsigned int *)&g_unk0x0052af58[0] & 0xff, pDev);
-    if ((pDev->field_0x8 & (unsigned short)g_unk0x0052a0b8) != 0) {
+    if ((pDev->pressed & (unsigned short)g_unk0x0052a0b8) != 0) {
         g_unk0x0052a0b8 = 0;
         if (g_pMenu0x0052af44 != NULL)
             Menu_CallCallback3(g_pMenu0x0052af44);
@@ -4573,7 +4575,7 @@ updateMenus:
     } else {
         if (g_pMenu0x0052af44 != NULL)
             Menu_SetFlags(g_pMenu0x0052af44, 1, 1, 1, 1);
-        pNext = Menu_Update(g_pMenu0x0052af44, pDev->field_0x8);
+        pNext = Menu_Update(g_pMenu0x0052af44, pDev->pressed);
         if (pNext != NULL)
             g_pMenu0x0052af48 = pNext;
     }
@@ -4925,8 +4927,6 @@ void InRaceMenu_DrawMenuRows(Menu *pMenu)
     int y;
     char *string1;
     char *string2;
-    int *pColour;
-    Texture *texture;
 
     rect[0] = 0;
     rect[1] = 0;
@@ -4953,18 +4953,16 @@ void InRaceMenu_DrawMenuRows(Menu *pMenu)
                           &g_inRaceMenuSelectedColour, 0x11);
             Font_DrawText(0, string2, (int)(g_pGraphics->resX * 0x86) / 0x280,
                           (int)(g_pGraphics->resY * 0xf) / 0x1e0 + y, &g_inRaceMenuSelectedColour, 0x11);
-            pColour = &g_inRaceMenuSelectedColour;
-            texture = g_inRaceMenuUpArrowTexture;
+            Sprite_Queue((SpriteRect *)&g_inRaceMenuUpArrowTexture->field_0x11c, (SpriteRect *)rect,
+                         g_inRaceMenuUpArrowTexture, 2, 0, NULL, NULL, (BYTE *)&g_inRaceMenuSelectedColour, 8);
         } else {
             Font_DrawText(1, string1, (int)(g_pGraphics->resX * 0x86) / 0x280, y,
                           &g_inRaceMenuUnselectedColour, 0x11);
             Font_DrawText(0, string2, (int)(g_pGraphics->resX * 0x86) / 0x280,
                           (int)(g_pGraphics->resY * 0xf) / 0x1e0 + y, &g_inRaceMenuUnselectedColour, 0x11);
-            pColour = &g_inRaceMenuUnselectedColour;
-            texture = g_inRaceMenuDownArrowTexture;
+            Sprite_Queue((SpriteRect *)&g_inRaceMenuDownArrowTexture->field_0x11c, (SpriteRect *)rect,
+                         g_inRaceMenuDownArrowTexture, 2, 0, NULL, NULL, (BYTE *)&g_inRaceMenuUnselectedColour, 8);
         }
-        Sprite_Queue((SpriteRect *)&texture->field_0x11c, (SpriteRect *)rect, texture,
-                     2, 0, NULL, NULL, (BYTE *)pColour, 8);
         y = y + (int)(g_pGraphics->resY * 0x36) / 0x1e0;
     }
     Font_SetBlendMode(2);
@@ -5293,7 +5291,7 @@ void InRaceMenu_BuildPlayerOptions(void)
 // GLOBAL: CMR2 0x00527004
 char g_strNeedReinitWeather[] = "Need to re-initialise weather, damage and car setup\n";
 
-void RallyData_CopyCountryPlayerDefaults(void);
+void RallyData_ApplyCountryCarSetups(void);
 BYTE RallyData_GetSelectionStateByte(void);
 void RallyData_SetSelectionStateByte(char param1);
 void RallyData_ClearDriverGroupRecords(void);
@@ -5315,7 +5313,7 @@ void OptionMenu_RefreshStageSetup(void)
             CGameInfo::GetConfiguredGameMode() != 9 && CGameInfo::GetConfiguredGameMode() != 0xa &&
             CGameInfo::GetConfiguredGameMode() != 0xb && CGameInfo::GetConfiguredGameMode() != 0xc)
             RallyData_PickOpponentLineups();
-        RallyData_CopyCountryPlayerDefaults();
+        RallyData_ApplyCountryCarSetups();
         RallyData_ClearDriverGroupRecords();
         RallyData_SetSelectionStateByte((char)b);
     }
@@ -5498,16 +5496,16 @@ void OptionMenu_DrawBoxEdges(short *pRect, BYTE *pColour)
 // Returns the byte at column type of the 7-byte option record index,
 // sign extended; 0 for an unknown column.
 // FUNCTION: CMR2 0x00502c60
-int OptionMenu_GetRawWorkingValue(int index, int type)
+int OptionMenu_GetEntryCarSetupValue(int index, int type)
 {
     switch (type) {
-    case 0: return (char)g_unk0x0082bee8[index + 4][0];
-    case 1: return (char)g_unk0x0082bee8[index + 4][1];
-    case 6: return (char)g_unk0x0082bee8[index + 4][6];
-    case 2: return (char)g_unk0x0082bee8[index + 4][2];
-    case 3: return (char)g_unk0x0082bee8[index + 4][3];
-    case 4: return (char)g_unk0x0082bee8[index + 4][4];
-    case 5: return (char)g_unk0x0082bee8[index + 4][5];
+    case 0: return g_optionCarSetups[index + 4].tyres;
+    case 1: return g_optionCarSetups[index + 4].gearbox;
+    case 6: return g_optionCarSetups[index + 4].steering;
+    case 2: return g_optionCarSetups[index + 4].suspension;
+    case 3: return g_optionCarSetups[index + 4].powerRatio;
+    case 4: return g_optionCarSetups[index + 4].brakeBias;
+    case 5: return g_optionCarSetups[index + 4].brakePower;
     }
     return 0;
 }
@@ -5537,16 +5535,16 @@ void OptionMenu_EaseRecordBar(int index, short *pBar, int direction, int unused)
 // Returns the byte at column type of the 7-byte option record index; the
 // signed columns are divided by 10.
 // FUNCTION: CMR2 0x005028a0
-BYTE OptionMenu_GetScaledWorkingValue(int index, int type)
+BYTE OptionMenu_GetCarSetupChoice(int index, int type)
 {
     switch (type) {
-    case 0: return (BYTE)g_unk0x0082bee8[index][0];
-    case 1: return (BYTE)g_unk0x0082bee8[index][1];
-    case 6: return (char)g_unk0x0082bee8[index][6] / 10;
-    case 2: return (char)g_unk0x0082bee8[index][2] / 10;
-    case 3: return (char)g_unk0x0082bee8[index][3] / 10;
-    case 4: return (char)g_unk0x0082bee8[index][4] / 10;
-    case 5: return (char)g_unk0x0082bee8[index][5] / 10;
+    case 0: return (BYTE)g_optionCarSetups[index].tyres;
+    case 1: return (BYTE)g_optionCarSetups[index].gearbox;
+    case 6: return g_optionCarSetups[index].steering / 10;
+    case 2: return g_optionCarSetups[index].suspension / 10;
+    case 3: return g_optionCarSetups[index].powerRatio / 10;
+    case 4: return g_optionCarSetups[index].brakeBias / 10;
+    case 5: return g_optionCarSetups[index].brakePower / 10;
     }
     return 0;
 }
@@ -5811,16 +5809,16 @@ int OptionMenu_IsSlotValueAboveBase(int index, int type)
 
 // Whether the option slot value equals its default, per column.
 // FUNCTION: CMR2 0x00502b10
-BYTE OptionMenu_IsValueDefault(int index, int type)
+BYTE OptionMenu_IsCarSetupValueUnchanged(int index, int type)
 {
     switch (type) {
-    case 0: return (char)g_unk0x0082bee8[index + 4][0] == (char)g_unk0x0082bee8[index][0];
-    case 1: return (char)g_unk0x0082bee8[index + 4][1] == (char)g_unk0x0082bee8[index][1];
-    case 6: return (char)g_unk0x0082bee8[index + 4][6] == (char)g_unk0x0082bee8[index][6];
-    case 2: return (char)g_unk0x0082bee8[index + 4][2] == (char)g_unk0x0082bee8[index][2];
-    case 3: return (char)g_unk0x0082bee8[index + 4][3] == (char)g_unk0x0082bee8[index][3];
-    case 4: return (char)g_unk0x0082bee8[index + 4][4] == (char)g_unk0x0082bee8[index][4];
-    case 5: return (char)g_unk0x0082bee8[index + 4][5] == (char)g_unk0x0082bee8[index][5];
+    case 0: return g_optionCarSetups[index + 4].tyres == g_optionCarSetups[index].tyres;
+    case 1: return g_optionCarSetups[index + 4].gearbox == g_optionCarSetups[index].gearbox;
+    case 6: return g_optionCarSetups[index + 4].steering == g_optionCarSetups[index].steering;
+    case 2: return g_optionCarSetups[index + 4].suspension == g_optionCarSetups[index].suspension;
+    case 3: return g_optionCarSetups[index + 4].powerRatio == g_optionCarSetups[index].powerRatio;
+    case 4: return g_optionCarSetups[index + 4].brakeBias == g_optionCarSetups[index].brakeBias;
+    case 5: return g_optionCarSetups[index + 4].brakePower == g_optionCarSetups[index].brakePower;
     }
     return 0;
 }
@@ -5926,8 +5924,8 @@ void OptionMenu_ConfigureSoundHandles(void)
 {
     g_unk0x0083188c = -1;
     // option menu volume: the stored 0..0x7f setting scaled to 16.16 and quartered
-    CInput::SetInputRepeatTimingState((((int)CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
-    CInput::SetInputRepeatTimingParameters(g_unk0x00831888, g_unk0x00831888 + 1, g_unk0x00831888 + 2,
+    CInput::SetMenuSoundVolume((((int)CGameInfo::GetEffectsSoundVolume() << 16) / 100) / 4);
+    CInput::SetMenuSounds(g_unk0x00831888, g_unk0x00831888 + 1, g_unk0x00831888 + 2,
                          g_unk0x00831888 + 3, g_unk0x00831888 + 4);
     Menu_SetInputStateFlag(1);
 }
@@ -6249,7 +6247,7 @@ void OptionMenu_FillValueSlider(void)
         OptionMenu_GetValueSliderMenu()->items[0].min = 0xb;
         break;
     }
-    OptionMenu_GetValueSliderMenu()->items[0].max = (BYTE)OptionMenu_GetScaledWorkingValue(CGameInfo::GetActiveOptionSlot(), value);
+    OptionMenu_GetValueSliderMenu()->items[0].max = (BYTE)OptionMenu_GetCarSetupChoice(CGameInfo::GetActiveOptionSlot(), value);
 }
 
 // Frees the option menu sound buffer and stops the streaming sound.
@@ -6486,7 +6484,7 @@ int g_unk0x0082b0a4;
 // GLOBAL: CMR2 0x0082a938
 BYTE g_unk0x0082a938;
 
-BYTE *RallyData_GetDriverSkillRecord(int index);
+CarSetup *RallyData_GetPlayerCarSetup(int index);
 
 // GLOBAL: CMR2 0x00529670
 char g_strFontGeneralHel15pt[17] = "general\\hel_15pt";
@@ -6549,7 +6547,7 @@ void Graphics_PresentFrameAndResetCounters(void);
 // 50 frames, then draws the option menu scene.
 // Option menu states 0x5010a0/0x501130/0x5012e0/0x5015d0 (cascade seed batch 1, verified 94-97%).
 void OptionMenu_CommitRallyRecords(void);
-void OptionMenu_CopyDefaultValues(void);
+void OptionMenu_StoreCarSetups(void);
 /* ===== cascade: menu states (drafts, iterated against the scaffold) ===== */
 void OptionMenu_SetBackgroundViewport(void);
 void Graphics_PresentFrameAndResetCounters(void);
@@ -6569,7 +6567,7 @@ void OptionMenu_LeaveAndCommitState(CallbackStateMachine *p1, BYTE state)
     OptionMenu_SetBackgroundViewport();
     Graphics_PresentFrameAndResetCounters();
     OptionMenu_CommitRallyRecords();
-    OptionMenu_CopyDefaultValues();
+    OptionMenu_StoreCarSetups();
     CGame::UnwindCallbacks(g_unk0x0082af88);
     CGraphics::EvictManagedTextureResources();
     CGraphics::FreeTextureBuffers();
@@ -6715,19 +6713,19 @@ void OptionMenu_CommitRallyRecords(void)
 
 // Copies the default option values from the global table into each record.
 // FUNCTION: CMR2 0x005029b0
-void OptionMenu_CopyDefaultValues(void)
+void OptionMenu_StoreCarSetups(void)
 {
     int i;
-    BYTE *pDst;
+    CarSetup *pDst;
     for (i = 0; i < 4; i++) {
-        pDst = RallyData_GetDriverSkillRecord(i);
-        pDst[4] = g_unk0x0082bee8[i][4];
-        pDst[5] = g_unk0x0082bee8[i][5];
-        pDst[1] = g_unk0x0082bee8[i][1];
-        pDst[6] = g_unk0x0082bee8[i][6];
-        pDst[3] = g_unk0x0082bee8[i][3];
-        pDst[2] = g_unk0x0082bee8[i][2];
-        pDst[0] = g_unk0x0082bee8[i][0];
+        pDst = RallyData_GetPlayerCarSetup(i);
+        pDst->brakeBias = g_optionCarSetups[i].brakeBias;
+        pDst->brakePower = g_optionCarSetups[i].brakePower;
+        pDst->gearbox = g_optionCarSetups[i].gearbox;
+        pDst->steering = g_optionCarSetups[i].steering;
+        pDst->powerRatio = g_optionCarSetups[i].powerRatio;
+        pDst->suspension = g_optionCarSetups[i].suspension;
+        pDst->tyres = g_optionCarSetups[i].tyres;
     }
 }
 
@@ -6775,27 +6773,27 @@ void OptionPreview_SetMeshOpacity(int index)
 /* ===== integrated from casc/s6 ===== */
 // Textures of the option menu (symbols, banners and car parts).
 // GLOBAL: CMR2 0x00831360
-Texture *g_unk0x00831360;
+Texture *g_symbolDanRedTexture;
 // GLOBAL: CMR2 0x00831364
-Texture *g_unk0x00831364;
+Texture *g_symbolDanOrangeTexture;
 // GLOBAL: CMR2 0x00831368
-Texture *g_unk0x00831368;
+Texture *g_symbolDanYellowTexture;
 // GLOBAL: CMR2 0x00831668
-Texture *g_unk0x00831668;
+Texture *g_countryBannerTexture;
 // GLOBAL: CMR2 0x0083166c
-Texture *g_unk0x0083166c;
+Texture *g_arrow640ATexture;
 // GLOBAL: CMR2 0x00831670
-Texture *g_unk0x00831670;
+Texture *g_arrow640DTexture;
 // GLOBAL: CMR2 0x008313ac
-Texture *g_unk0x008313ac;
+Texture *g_symbolTickTexture;
 // GLOBAL: CMR2 0x00831648
-Texture *g_unk0x00831648;
+Texture *g_symbolCrossTexture;
 // GLOBAL: CMR2 0x008313b0
-Texture *g_unk0x008313b0;
+Texture *g_symbolBoxTexture;
 // GLOBAL: CMR2 0x00831674
-Texture *g_unk0x00831674;
+Texture *g_symbolCircleTexture;
 // GLOBAL: CMR2 0x0083137c
-Texture *g_unk0x0083137c[12];
+Texture *g_carPartTextures[12];
 // Country banner codes, in banner order (the last one is CFrontend::m_strUK).
 // Names of the car part textures.
 // GLOBAL: CMR2 0x00529590
@@ -6859,29 +6857,29 @@ void OptionMenu_LoadPartTextures(void)
     int i;
 
     sprintf(CFrontend::m_stringDest, g_str0x0052956c, CInstallInfo::GetSetupRepDir(), 0x280);
-    g_unk0x00831360 = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_symbolDanRedTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x00529548, CInstallInfo::GetSetupRepDir(), 0x280);
-    g_unk0x00831364 = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_symbolDanOrangeTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x00529524, CInstallInfo::GetSetupRepDir(), 0x280);
-    g_unk0x00831368 = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_symbolDanYellowTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x00529508, CInstallInfo::GetSetupRepDir(),
             pBanners[RallyDataCountryIndex() & 0xff]);
-    g_unk0x00831668 = CTexture::FindLoadTexture(OptionMenu_GetStageArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_countryBannerTexture = CTexture::FindLoadTexture(OptionMenu_GetStageArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x005294f0, CInstallInfo::GetFrontendDir());
-    g_unk0x0083166c = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_arrow640ATexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x005294d8, CInstallInfo::GetFrontendDir());
-    g_unk0x00831670 = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_arrow640DTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x005294b8, CInstallInfo::GetSetupRepDir(), 0x280);
-    g_unk0x008313ac = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_symbolTickTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x00529494, CInstallInfo::GetSetupRepDir(), 0x280);
-    g_unk0x00831648 = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_symbolCrossTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x00529474, CInstallInfo::GetSetupRepDir(), 0x280);
-    g_unk0x008313b0 = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_symbolBoxTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     sprintf(CFrontend::m_stringDest, g_str0x00529450, CInstallInfo::GetSetupRepDir(), 0x280);
-    g_unk0x00831674 = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
+    g_symbolCircleTexture = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest, 0, 0, 0, 0);
     for (i = 0; i < 12; i++) {
         sprintf(CFrontend::m_stringDest, g_str0x00529434, CInstallInfo::GetSetupRepDir(), 0x280, pParts[i]);
-        g_unk0x0083137c[i] = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest,
+        g_carPartTextures[i] = CTexture::FindLoadTexture(OptionMenu_GetCommonArchive(), CFrontend::m_stringDest,
                                                             0, 0, 0, 0);
     }
 }
@@ -7025,7 +7023,7 @@ void OptionPreview_AnimatePreviewNodeTransforms(int index)
             FixMatrix_SetUp(&mirror.up, &pList->pEntry->wheelNodes[i]->current);
             FixMatrix_SetForward(&mirror.forward, &pList->pEntry->wheelNodes[i]->current);
         }
-        if ((OptionPreview_UsesWheelVariantSix(pList->pEntry->modelClass, (char)OptionMenu_GetScaledWorkingValue(index, 0)) != 0 && CGameInfo::GetPreviewMode() == 2) ||
+        if ((OptionPreview_UsesWheelVariantSix(pList->pEntry->modelClass, (char)OptionMenu_GetCarSetupChoice(index, 0)) != 0 && CGameInfo::GetPreviewMode() == 2) ||
             CGameInfo::GetConfiguredPlayerCount() > 1) {
             FixMatrix_GetForward(&v, &pList->pEntry->wheelNodes[i]->current);
             FixVecScale(&v, &v, 0x9999);
@@ -7079,7 +7077,7 @@ void OptionPreview_BuildCornerHeightTransform(int index)
         t = (unsigned char)OptionMenu_GetValueSliderMenu()->items[0].max << 16;
         t = FixMul(t, 0x1999);
     } else {
-        t = (int)(char)OptionMenu_GetScaledWorkingValue(index, 2) << 16;
+        t = (int)(char)OptionMenu_GetCarSetupChoice(index, 2) << 16;
         t = FixMul(t, 0x1999);
     }
     t = FixMul(0x10000 - t, 0x1999);
@@ -7210,7 +7208,7 @@ BYTE *g_previewOriginalNodeTypes[16];
 int *RallyData_GetDriverPrimaryPairRecord(int index);
 int *RallyData_GetDriverSettingPair(int index);
 int *RallyData_GetDriverSecondaryPairRecord(int index);
-BYTE OptionMenu_GetScaledWorkingValue(int index, int type);
+BYTE OptionMenu_GetCarSetupChoice(int index, int type);
 extern char g_strWheelVariantL[4];
 extern char g_strWheelVariantN[4];
 extern double g_fixedDegreesToAngle12;
@@ -7234,9 +7232,8 @@ void OptionPreview_FillTextureSetIndices(void)
     // The original reads [index * 0x50 + 0x82c6c0]: byte 0x48 of the previous
     // 0x50-byte entry of the table at 0x82c6c8 (index is 1-based).
     count = g_optionPreviewPanels[g_optionPreviewPanelCount - 1].count;
-    // PORT: 0x82c710 is the first panel's stage byte, not a separate global.
-    // Keeping a copy left it at zero and extended later days' forecasts
-    // with stale entries, drawing weather symbols across the service park.
+    // 0x82c710 is byte 0x48 of the first panel, not independent storage.
+    // It advances with the service day's first stage.
     slot = g_optionPreviewPanels[0].count;
     g_unk0x0082ca18 = count - slot + 2;
     pEntry = RallyData_GetDriverSecondaryPairRecord(slot);
@@ -7277,9 +7274,9 @@ void OptionPreview_UpdateWheelMeshVariants(int param1)
 
     off = param1 * sizeof(OptionPreviewSceneRecord);
     if (CGameInfo::GetPreviewMode() == 0) {
-        if (g_previewWheelVariant[param1] != (int)(char)OptionMenu_GetScaledWorkingValue(param1, 0)) {
+        if (g_previewWheelVariant[param1] != (int)(char)OptionMenu_GetCarSetupChoice(param1, 0)) {
             int *pVal = &g_previewWheelVariant[param1];
-            *pVal = (int)(char)OptionMenu_GetScaledWorkingValue(param1, 0);
+            *pVal = (int)(char)OptionMenu_GetCarSetupChoice(param1, 0);
             if (OptionPreview_UsesWheelVariantSix(PREVIEW_SCENE_AT_OFFSET(off)->modelClass, *pVal) != 0) {
                 for (i = 0; i < 4; i++) {
                     if (PREVIEW_SCENE_AT_OFFSET(off)->sixWheelMeshes[i] != 0)
@@ -7301,8 +7298,8 @@ void OptionPreview_UpdateWheelMeshVariants(int param1)
             return;
         }
     } else {
-        if (g_previewWheelVariant[param1] != (int)(char)OptionMenu_GetScaledWorkingValue(param1, 0)) {
-            g_previewWheelVariant[param1] = (int)(char)OptionMenu_GetScaledWorkingValue(param1, 0);
+        if (g_previewWheelVariant[param1] != (int)(char)OptionMenu_GetCarSetupChoice(param1, 0)) {
+            g_previewWheelVariant[param1] = (int)(char)OptionMenu_GetCarSetupChoice(param1, 0);
             for (w = 0; w < 4; w++) {
                 pMesh = (Mesh *)PREVIEW_SCENE_AT_OFFSET(off)->wheelNodes[0]->pObject;
                 for (k = 0; k < pMesh->triangleCount; k++) {
@@ -8102,31 +8099,31 @@ void OptionMenu_ToggleValueAnimation(int param_1, int param_2)
 // Stores one option value of a slot into the working table and, the first time
 // the slot is touched, adds the option's weight to its interpolation distance.
 // FUNCTION: CMR2 0x00502670
-void OptionMenu_SetWorkingValue(int param_1, int param_2, char param_3)
+void OptionMenu_SetCarSetupChoice(int param_1, int param_2, char param_3)
 {
     int distance;
 
     switch (param_2) {
     case 0:
-        g_unk0x0082bee8[param_1][0] = param_3;
+        g_optionCarSetups[param_1].tyres = param_3;
         break;
     case 1:
-        g_unk0x0082bee8[param_1][1] = param_3;
+        g_optionCarSetups[param_1].gearbox = param_3;
         break;
     case 6:
-        g_unk0x0082bee8[param_1][6] = param_3 * 10;
+        g_optionCarSetups[param_1].steering = param_3 * 10;
         break;
     case 2:
-        g_unk0x0082bee8[param_1][2] = param_3 * 10;
+        g_optionCarSetups[param_1].suspension = param_3 * 10;
         break;
     case 3:
-        g_unk0x0082bee8[param_1][3] = param_3 * 10;
+        g_optionCarSetups[param_1].powerRatio = param_3 * 10;
         break;
     case 4:
-        g_unk0x0082bee8[param_1][4] = param_3 * 10;
+        g_optionCarSetups[param_1].brakeBias = param_3 * 10;
         break;
     case 5:
-        g_unk0x0082bee8[param_1][5] = param_3 * 10;
+        g_optionCarSetups[param_1].brakePower = param_3 * 10;
         break;
     }
     if (g_optionColumnDirty[param_1][param_2] == 0) {
@@ -8139,31 +8136,31 @@ void OptionMenu_SetWorkingValue(int param_1, int param_2, char param_3)
 // Restores one option value of a slot from the default table and subtracts the
 // option's weight from its interpolation distance.
 // FUNCTION: CMR2 0x00502790
-void OptionMenu_RestoreDefaultValue(int param_1, int param_2)
+void OptionMenu_RevertCarSetupValue(int param_1, int param_2)
 {
     int distance;
 
     switch (param_2) {
     case 0:
-        g_unk0x0082bee8[param_1][0] = (char)g_unk0x0082bee8[param_1 + 4][0];
+        g_optionCarSetups[param_1].tyres = g_optionCarSetups[param_1 + 4].tyres;
         break;
     case 1:
-        g_unk0x0082bee8[param_1][1] = (char)g_unk0x0082bee8[param_1 + 4][1];
+        g_optionCarSetups[param_1].gearbox = g_optionCarSetups[param_1 + 4].gearbox;
         break;
     case 6:
-        g_unk0x0082bee8[param_1][6] = (char)g_unk0x0082bee8[param_1 + 4][6];
+        g_optionCarSetups[param_1].steering = g_optionCarSetups[param_1 + 4].steering;
         break;
     case 2:
-        g_unk0x0082bee8[param_1][2] = (char)g_unk0x0082bee8[param_1 + 4][2];
+        g_optionCarSetups[param_1].suspension = g_optionCarSetups[param_1 + 4].suspension;
         break;
     case 3:
-        g_unk0x0082bee8[param_1][3] = (char)g_unk0x0082bee8[param_1 + 4][3];
+        g_optionCarSetups[param_1].powerRatio = g_optionCarSetups[param_1 + 4].powerRatio;
         break;
     case 4:
-        g_unk0x0082bee8[param_1][4] = (char)g_unk0x0082bee8[param_1 + 4][4];
+        g_optionCarSetups[param_1].brakeBias = g_optionCarSetups[param_1 + 4].brakeBias;
         break;
     case 5:
-        g_unk0x0082bee8[param_1][5] = (char)g_unk0x0082bee8[param_1 + 4][5];
+        g_optionCarSetups[param_1].brakePower = g_optionCarSetups[param_1 + 4].brakePower;
         break;
     }
     OptionMenu_SetSlotSelector(param_1, OptionMenu_GetSlotSelector(param_1) + g_optionColumnBaseWeights[param_2]);
@@ -8173,23 +8170,23 @@ void OptionMenu_RestoreDefaultValue(int param_1, int param_2)
 // Tells whether a slot option still holds the given value (options 2..6 store
 // the value multiplied by ten).
 // FUNCTION: CMR2 0x00502a00
-BYTE OptionMenu_DoesValueMatch(int param_1, int param_2, int param_3)
+BYTE OptionMenu_IsEntryCarSetupChoice(int param_1, int param_2, int param_3)
 {
     switch (param_2) {
     case 0:
-        return (char)g_unk0x0082bee8[param_1 + 4][0] == param_3;
+        return g_optionCarSetups[param_1 + 4].tyres == param_3;
     case 1:
-        return (char)g_unk0x0082bee8[param_1 + 4][1] == param_3;
+        return g_optionCarSetups[param_1 + 4].gearbox == param_3;
     case 6:
-        return (char)g_unk0x0082bee8[param_1 + 4][6] == param_3 * 10;
+        return g_optionCarSetups[param_1 + 4].steering == param_3 * 10;
     case 2:
-        return (char)g_unk0x0082bee8[param_1 + 4][2] == param_3 * 10;
+        return g_optionCarSetups[param_1 + 4].suspension == param_3 * 10;
     case 3:
-        return (char)g_unk0x0082bee8[param_1 + 4][3] == param_3 * 10;
+        return g_optionCarSetups[param_1 + 4].powerRatio == param_3 * 10;
     case 4:
-        return (char)g_unk0x0082bee8[param_1 + 4][4] == param_3 * 10;
+        return g_optionCarSetups[param_1 + 4].brakeBias == param_3 * 10;
     case 5:
-        return (char)g_unk0x0082bee8[param_1 + 4][5] == param_3 * 10;
+        return g_optionCarSetups[param_1 + 4].brakePower == param_3 * 10;
     }
     return 0;
 }
@@ -8365,16 +8362,16 @@ void OptionMenu_ApplyFirstModeItem(Menu *pMenu, int param)
     int option = pMenu->items[0].max;
 
     if (OptionMenu_GetColumnDirtyFlag(CGameInfo::GetActiveOptionSlot(), value) &&
-        OptionMenu_DoesValueMatch(CGameInfo::GetActiveOptionSlot(), value, option)) {
-        OptionMenu_RestoreDefaultValue(CGameInfo::GetActiveOptionSlot(), value);
+        OptionMenu_IsEntryCarSetupChoice(CGameInfo::GetActiveOptionSlot(), value, option)) {
+        OptionMenu_RevertCarSetupValue(CGameInfo::GetActiveOptionSlot(), value);
         Menu_SetNextAction(pMenu->pParent);
         return;
     }
-    if (!OptionMenu_DoesValueMatch(CGameInfo::GetActiveOptionSlot(), value, option)) {
+    if (!OptionMenu_IsEntryCarSetupChoice(CGameInfo::GetActiveOptionSlot(), value, option)) {
         if (OptionMenu_GetSlotSelector(CGameInfo::GetActiveOptionSlot()) - OptionMenu_GetColumnBaseWeight(value) < 0 &&
             !OptionMenu_GetColumnDirtyFlag(CGameInfo::GetActiveOptionSlot(), value))
             return;
-        OptionMenu_SetWorkingValue(CGameInfo::GetActiveOptionSlot(), value, option);
+        OptionMenu_SetCarSetupChoice(CGameInfo::GetActiveOptionSlot(), value, option);
     }
     Menu_SetNextAction(pMenu->pParent);
 }
@@ -8464,14 +8461,14 @@ void OptionMenu_DrawClampedStageTime(void)
                      (int)g_pGraphics->resY * 0x96 / 0x1e0,
                      &g_unk0x0052737c, &g_optionTextBrightColours[1], 0x11);
     width = Font_GetTextWidth(3, (BYTE *)CFrontend::m_stringDest);
-    x = g_optionLayoutXScale * (int)g_pGraphics->resX;
+    x = g_optionLayoutXScale * (int)g_pGraphics->resX / 0x280 + width;
     sprintf(CFrontend::m_stringDest, "%s", g_str0x005295f0);
     if (CGameInfo::IsOptionMenuTimeoutPulseOn() != 0)
-        OptionMenu_DrawTransitionTextShortCoords(4, 0, 0, CFrontend::m_stringDest, x / 0x280 + width,
+        OptionMenu_DrawTransitionTextShortCoords(4, 0, 0, CFrontend::m_stringDest, x,
                      (int)g_pGraphics->resY * 0x90 / 0x1e0,
                      &g_unk0x00527378, &g_unk0x00527378, 0x11);
     else
-        OptionMenu_DrawTransitionTextShortCoords(4, 0, 0, CFrontend::m_stringDest, x / 0x280 + width,
+        OptionMenu_DrawTransitionTextShortCoords(4, 0, 0, CFrontend::m_stringDest, x,
                      (int)g_pGraphics->resY * 0x90 / 0x1e0,
                      &g_unk0x0052737c, &g_optionTextBrightColours[1], 0x11);
 }
@@ -8627,7 +8624,7 @@ void OptionMenu_ConfirmHighlightedItem(Menu *pMenu)
         if (CGameInfo::IsConfiguredMultiplayer() == 0)
             slot = 1;
     }
-    if ((CInput::GetAvailableDeviceRecord(slot)->field_0x8 & 0x20) == 0)
+    if ((CInput::GetAvailableDeviceRecord(slot)->pressed & 0x20) == 0)
         return;
     if (pMenu->cursor == Menu_FindItem(pMenu, 0)) {
         OptionMenu_ToggleValueAnimation(0, 1);
@@ -8643,15 +8640,15 @@ void OptionMenu_ConfirmHighlightedItem(Menu *pMenu)
         value = pMenu->items[index].max;
         value = OptionMenu_GetColumnUnitId(value);
         if (OptionMenu_GetColumnDirtyFlag(CGameInfo::GetActiveOptionSlot(), value))
-            OptionMenu_RestoreDefaultValue(CGameInfo::GetActiveOptionSlot(), value);
+            OptionMenu_RevertCarSetupValue(CGameInfo::GetActiveOptionSlot(), value);
     }
 }
 
 #include "Sprite.h"
 
-extern Texture *g_unk0x0082ca20[9];
-extern int g_unk0x0082c6bc;
-extern int g_championshipFlagCountries[6];
+extern Texture *g_weatherSymbolTextures[9];
+extern int g_weatherChoiceCount;
+extern int g_weatherChoices[6];
 extern BYTE g_splitTimeGradients[8];
 extern int g_unk0x005270fc;
 extern int g_unk0x00527100;
@@ -8659,18 +8656,17 @@ extern int g_unk0x005270b8[11];
 void OptionMenu_DrawTransitionTextShortCoords(int index, int font1, int font2, char *text, short x, short y, int *pColour1,
                   int *pColour2, unsigned int flags);
 
-// Vertical offsets subtracted from the flag row when the screen is either too
-// narrow for 1024x768 or the row is scrolled (per country).
+// Vertical offsets of each weather symbol: the first table below 1024x768 (or
+// without 1024 textures), the second otherwise.
 // GLOBAL: CMR2 0x00527254
-BYTE g_flagRowYOffsets[9] = { 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d };
+BYTE g_weatherSymbolYOffsetsLow[9] = { 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d, 0x1d };
 // GLOBAL: CMR2 0x00527260
-BYTE g_unk0x00527260[9] = { 0x3a, 0x3a, 0x3b, 0x39, 0x39, 0x39, 0x3a, 0x3b, 0x3c };
+BYTE g_weatherSymbolYOffsetsHigh[9] = { 0x3a, 0x3a, 0x3b, 0x39, 0x39, 0x39, 0x3a, 0x3b, 0x3c };
 
-// Draws the country flag row of the championship screen: a row of buttons
-// whose width depends on the language and the selected country, holding the
-// country name and clipped to the screen.
+// Draws the weather choices: a column of the g_weatherChoices symbols with
+// their names, centred on an x that depends on the language and the country.
 // FUNCTION: CMR2 0x005057e0
-void OptionMenu_DrawCountryFlags(void)
+void OptionMenu_DrawWeatherChoices(void)
 {
     SpriteRect dest;
     Texture *pTexture;
@@ -8687,24 +8683,24 @@ void OptionMenu_DrawCountryFlags(void)
     else
         width = 0x136;
     width = width * (int)g_pGraphics->resX / 0x280;
-    pTexture = g_unk0x0082ca20[0];
+    pTexture = g_weatherSymbolTextures[0];
     dest.x = (short)width - pTexture->width / 2;
     dest.w = pTexture->width;
     dest.h = pTexture->height;
-    for (i = 0; i < g_unk0x0082c6bc; i++) {
+    for (i = 0; i < g_weatherChoiceCount; i++) {
         int num = 0xea0000;
-        int scale = FixDiv(num, g_unk0x0082c6bc * 0x10000 - 0x10000);
+        int scale = FixDiv(num, g_weatherChoiceCount * 0x10000 - 0x10000);
         int rowY = (FixMul(i << 16, scale) >> 16) + 0x93;
-        OptionMenu_DrawTransitionTextShortCoords(3, 1, 1, CFrontend::GetTextString(g_championshipFlagCountries[i] + 0x9d), width,
+        OptionMenu_DrawTransitionTextShortCoords(3, 1, 1, CFrontend::GetTextString(g_weatherChoices[i] + 0x9d), width,
                      (int)g_pGraphics->resY * rowY / 0x1e0, &g_unk0x005270fc,
                      &g_unk0x00527100, 0x22);
         dest.y = (short)((int)g_pGraphics->resY * (rowY - 0x12) / 0x1e0);
         if (CGameInfo::GetScreenWidth() < 0x400 || !CFrontend::IsTextureWidthSupported(0x400) ||
             !CFrontend::IsTextureHeightSupported(0x400))
-            dest.y = dest.y - g_flagRowYOffsets[g_championshipFlagCountries[i]];
+            dest.y = dest.y - g_weatherSymbolYOffsetsLow[g_weatherChoices[i]];
         else
-            dest.y = dest.y - g_unk0x00527260[g_championshipFlagCountries[i]];
-        pTexture = g_unk0x0082ca20[g_championshipFlagCountries[i]];
+            dest.y = dest.y - g_weatherSymbolYOffsetsHigh[g_weatherChoices[i]];
+        pTexture = g_weatherSymbolTextures[g_weatherChoices[i]];
         Sprite_Queue((SpriteRect *)&pTexture->field_0x11c, &dest, pTexture, 3, 0, NULL, NULL,
                      g_splitTimeGradients, 8);
     }
@@ -8790,8 +8786,8 @@ void InRaceMenu_DrawLabelAndValueRows(Menu *pMenu)
             Font_DrawText(1, str1, x, y, pColour, 0x11);
             if (twoLines)
                 Font_DrawText(0, str2, x, (int)(g_pGraphics->resY * 0xf) / 0x1e0 + y, pColour, 0x11);
-            pA = sub;
             pB = sub + 1;
+            pA = sub;
             for (j = 0; j < (int)(BYTE)pItem->min; j++) {
                 text = *pB;
                 if (single == 0)
@@ -8976,8 +8972,8 @@ void InRaceMenu_DrawCarSetupChoices(Menu *pMenu)
                 if (pItem->min != 0) {
                     do {
                         width = Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);
-                        pSubColour = pItem->max == j ? &g_inRaceMenuSelectedColour : &g_inRaceMenuUnselectedColour;
                         x = (int)(g_pGraphics->resX * 10) / 0x280 + x + width;
+                        pSubColour = pItem->max == j ? &g_inRaceMenuSelectedColour : &g_inRaceMenuUnselectedColour;
                         Font_DrawText(1, CFrontend::GetTextString(j + 0x9c), x, MENU_ITEM_Y(i),
                                       pSubColour, 0x11);
                         strcpy(CFrontend::m_stringDest, CFrontend::GetTextString(j + 0x9c));
@@ -8993,8 +8989,8 @@ void InRaceMenu_DrawCarSetupChoices(Menu *pMenu)
                 if (pItem->min == 2) {
                     do {
                         width = Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest);
-                        pSubColour = pItem->max == j ? &g_inRaceMenuSelectedColour : &g_inRaceMenuUnselectedColour;
                         x = (int)(g_pGraphics->resX * 10) / 0x280 + x + width;
+                        pSubColour = pItem->max == j ? &g_inRaceMenuSelectedColour : &g_inRaceMenuUnselectedColour;
                         Font_DrawText(1, CFrontend::GetTextString(j + 0x9c), x, MENU_ITEM_Y(i),
                                       pSubColour, 0x11);
                         strcpy(CFrontend::m_stringDest, CFrontend::GetTextString(j + 0x9c));
@@ -9108,9 +9104,9 @@ void OptionMenu_DrawSeparators(int param1)
 
     g_controlsLine[2] = 1;
     g_unk0x0082ace8.pad[3] = 1;
-    if (g_unk0x00831674 != 0) {
-        rect[2] = g_unk0x00831674->width;
-        rect[3] = g_unk0x00831674->height;
+    if (g_symbolCircleTexture != 0) {
+        rect[2] = g_symbolCircleTexture->width;
+        rect[3] = g_symbolCircleTexture->height;
     }
     for (i = 0; i < 4; i++) {
         // The layout records hold 16.16 pairs: the integer part is the slot.
@@ -9133,7 +9129,7 @@ void OptionMenu_DrawSeparators(int param1)
         } else if (g_controlsLine[0] > maxX) {
             maxX = g_controlsLine[0];
         }
-        if (g_unk0x00831674 != 0) {
+        if (g_symbolCircleTexture != 0) {
             if (CGameInfo::GetScreenWidth() >= 0x400 && CFrontend::IsTextureWidthSupported(0x400) &&
                 CFrontend::IsTextureHeightSupported(0x400)) {
                 rect[0] = g_controlsLine[0] - 6;
@@ -9143,12 +9139,12 @@ void OptionMenu_DrawSeparators(int param1)
                 rect[1] = g_controlsLine[1] - 3;
             }
             if (i % 2 == 0) {
-                Sprite_Queue((SpriteRect *)&g_unk0x00831674->field_0x11c, (SpriteRect *)rect,
-                             g_unk0x00831674, 4, 0, NULL, NULL,
+                Sprite_Queue((SpriteRect *)&g_symbolCircleTexture->field_0x11c, (SpriteRect *)rect,
+                             g_symbolCircleTexture, 4, 0, NULL, NULL,
                              (BYTE *)&g_optionWhite, 8);
             } else {
-                Sprite_Queue((SpriteRect *)&g_unk0x00831674->field_0x11c, (SpriteRect *)rect,
-                             g_unk0x00831674, 1, 0, NULL, NULL,
+                Sprite_Queue((SpriteRect *)&g_symbolCircleTexture->field_0x11c, (SpriteRect *)rect,
+                             g_symbolCircleTexture, 1, 0, NULL, NULL,
                              (BYTE *)&g_optionWhite, 8);
             }
         }
@@ -9405,7 +9401,7 @@ void OptionMenu_DrawGameInfoLayout(Menu *pMenu, int param_2)
                                  g_gameInfoDrawRect[1];
         OptionMenu_DrawBoxEdges(g_gameInfoDrawRect, (BYTE *)&g_unk0x0052737c);
     }
-    count = OptionMenu_GetRawWorkingValue(CGameInfo::GetActiveOptionSlot(), index);
+    count = OptionMenu_GetEntryCarSetupValue(CGameInfo::GetActiveOptionSlot(), index);
     switch (index) {
     case 0:
         if (count == 6)
@@ -9742,7 +9738,7 @@ void OptionMenu_DrawValueSelectionRows(Menu *pMenu)
     else
         Sprite_FillRect(&g_pGraphics->field309_0x150, g_gameInfoDrawRect, (BYTE *)&g_optionTextColours[2], 1);
     for (i = 0; i < pMenu->itemCount; i++) {
-        if (g_unk0x0083166c != 0) {
+        if (g_arrow640ATexture != 0) {
             if (CGameInfo::GetScreenWidth() < 0x400 || !CFrontend::IsTextureWidthSupported(0x400) ||
                 !CFrontend::IsTextureHeightSupported(0x400))
                 destRect[1] = (short)((int)g_pGraphics->resY * 0x18 / 0x1e0 / 2) +
@@ -9758,17 +9754,17 @@ void OptionMenu_DrawValueSelectionRows(Menu *pMenu)
                          (int)g_pGraphics->resX * 0x14 / 0x280 + x0,
                          (short)((int)g_pGraphics->resY * 0x12 / 0x1e0) + g_gameInfoDrawRect[1],
                          &colour, g_optionTextColours, 0x11);
-            if (g_unk0x0083166c != 0)
-                Sprite_Queue((SpriteRect *)&g_unk0x0083166c->field_0x11c, (SpriteRect *)destRect,
-                             g_unk0x0083166c, 1, 0, 0, 0, (BYTE *)&colour, 8);
+            if (g_arrow640ATexture != 0)
+                Sprite_Queue((SpriteRect *)&g_arrow640ATexture->field_0x11c, (SpriteRect *)destRect,
+                             g_arrow640ATexture, 1, 0, 0, 0, (BYTE *)&colour, 8);
         } else {
             OptionMenu_DrawTransitionTextShortCoords(3, 0, 0, CFrontend::m_stringDest,
                          (int)g_pGraphics->resX * 0x14 / 0x280 + x0,
                          (short)((int)g_pGraphics->resY * 0x12 / 0x1e0 + g_gameInfoDrawRect[1]),
                          g_optionTextColours, g_optionTextBrightColours, 0x11);
-            if (g_unk0x00831670 != 0)
-                Sprite_Queue((SpriteRect *)&g_unk0x00831670->field_0x11c, (SpriteRect *)destRect,
-                             g_unk0x00831670, 1, 0, 0, 0, (BYTE *)g_optionTextColours, 8);
+            if (g_arrow640DTexture != 0)
+                Sprite_Queue((SpriteRect *)&g_arrow640DTexture->field_0x11c, (SpriteRect *)destRect,
+                             g_arrow640DTexture, 1, 0, 0, 0, (BYTE *)g_optionTextColours, 8);
         }
         g_gameInfoDrawRect[1] =
             (short)((int)g_pGraphics->resY * 0x18 / 0x1e0 * (i + 1) + yBase);
@@ -9909,10 +9905,10 @@ void OptionMenu_DrawResultsRallyInfo(int param_1)
     x = x - Font_GetTextWidth(1, (BYTE *)CFrontend::m_stringDest) / 2;
     Font_DrawText(1, CFrontend::m_stringDest, x, y, g_optionTextColours, 0x11);
     if (param_1 != 0) {
-        tex = g_unk0x0083137c[OptionMenu_GetColumnWeight(
+        tex = g_carPartTextures[OptionMenu_GetColumnWeight(
             OptionMenu_GetControlSetupMenu()->items[Menu_FindItem(OptionMenu_GetControlSetupMenu(), 2)].max)];
     } else {
-        tex = g_unk0x0083137c[OptionMenu_GetColumnLabelId(
+        tex = g_carPartTextures[OptionMenu_GetColumnLabelId(
             OptionMenu_GetControlSetupMenu()->items[Menu_FindItem(OptionMenu_GetControlSetupMenu(), 1)].max)];
     }
     if (tex != NULL) {
@@ -10053,7 +10049,7 @@ void OptionMenu_DrawSlotStripPanel(Menu *pMenu)
     OptionMenu_DrawAnimatedScreenRows((short)CGameInfo::GetPreviewLayoutMode(),
                  OptionMenu_GetControlSetupMenu()->items[Menu_FindItem(OptionMenu_GetControlSetupMenu(), 0)].max,
                  0, g_optionLayoutXScale, 0x124, 0);
-    if (g_unk0x00831668 != 0) {
+    if (g_countryBannerTexture != 0) {
         g_gameInfoDrawRect[0] = (short)(g_optionLayoutXScale * (int)g_pGraphics->resX / 0x280);
         g_gameInfoDrawRect[1] = (short)((int)g_pGraphics->resY * 0x6f / 0x1e0);
         g_gameInfoDrawRect[2] = (short)((int)g_pGraphics->resX * 0xa1 / 0x280);
@@ -10062,7 +10058,7 @@ void OptionMenu_DrawSlotStripPanel(Menu *pMenu)
         local.y = 0;
         local.x = 0;
         OptionMenu_AnimateLayoutRectangleEdge(2, g_gameInfoDrawRect);
-        Sprite_Queue(&local, (SpriteRect *)g_gameInfoDrawRect, g_unk0x00831668,
+        Sprite_Queue(&local, (SpriteRect *)g_gameInfoDrawRect, g_countryBannerTexture,
                      1, 0, NULL, NULL, g_colour0x005273a8, 8);
     }
     OptionMenu_SelectAndAnimateSlot(OptionMenu_GetControlSetupMenu()->items[Menu_FindItem(OptionMenu_GetControlSetupMenu(), 0)].max,
@@ -10085,7 +10081,8 @@ int RallyData_GetIndexedStageScoreScale(int row, int column, int variant);
 
 // Space width of the menu font (0x00516870, inside the rally text table below);
 // the original has no separate symbol for it, so it is a view into the table.
-extern BYTE g_unk0x0051682c[132];
+#include "CountryCarSetups.h"
+extern CountryCarSetupBlock g_countryCarSetupBlock;
 
 // Run of spaces that separates the two columns of the class table.
 // GLOBAL: CMR2 0x005297bc
@@ -10178,7 +10175,7 @@ void OptionMenu_DrawResultsOptions(int param_1)
                           x, (int)g_pGraphics->resY * 0x2c / 0x1e0, g_optionTextColours, 0x11);
         x += Font_GetTextWidth(0, (BYTE *)CFrontend::GetTextString(
                                       OptionMenu_GetControlSetupMenu()->items[i].id));
-        x += Font_GetTextWidth(0, (BYTE *)((char *)&g_unk0x0051682c[0x44]));
+        x += Font_GetTextWidth(0, (BYTE *)g_countryCarSetupBlock.space);
         g_gameInfoDrawRect[0] = (short)x;
         if (i != (signed char)OptionMenu_GetControlSetupMenu()->itemCount - 1) {
             if (a == i || b == i + 1)
@@ -10187,7 +10184,7 @@ void OptionMenu_DrawResultsOptions(int param_1)
                 Sprite_FillRect(&g_pGraphics->field309_0x150, g_gameInfoDrawRect,
                                 (BYTE *)(g_optionTextColours + 2), 3);
         }
-        x += 2 + Font_GetTextWidth(0, (BYTE *)((char *)&g_unk0x0051682c[0x44]));
+        x += 2 + Font_GetTextWidth(0, (BYTE *)g_countryCarSetupBlock.space);
         i++;
     }
     x = g_optionLayoutXScale * (int)g_pGraphics->resX / 0x280;
@@ -10196,10 +10193,10 @@ void OptionMenu_DrawResultsOptions(int param_1)
     Font_DrawText(0, CFrontend::m_stringDest, x, (int)g_pGraphics->resY * 0x2c / 0x1e0,
                   g_optionTextColours, 0x11);
     x += Font_GetTextWidth(0, (BYTE *)CFrontend::m_stringDest);
-    x += Font_GetTextWidth(0, (BYTE *)((char *)&g_unk0x0051682c[0x44]));
+    x += Font_GetTextWidth(0, (BYTE *)g_countryCarSetupBlock.space);
     g_gameInfoDrawRect[0] = (short)x;
     Sprite_FillRect(&g_pGraphics->field309_0x150, g_gameInfoDrawRect, (BYTE *)(g_optionTextColours + 2), 3);
-    x += 2 + Font_GetTextWidth(0, (BYTE *)((char *)&g_unk0x0051682c[0x44]));
+    x += 2 + Font_GetTextWidth(0, (BYTE *)g_countryCarSetupBlock.space);
     Font_DrawText(0, (char *)RallyData_GetRecord((BYTE)CGameInfo::GetActiveOptionSlot()), x,
                   (int)g_pGraphics->resY * 0x2c / 0x1e0, g_optionTextColours, 0x11);
     if (CGameInfo::GetGameModeOptionBit19() == 0)
@@ -10291,10 +10288,10 @@ void OptionMenu_DrawStageSummaryPanel(int param_1, int param_2)
         OptionMenu_DrawTransitionTextShortCoords(3, 0, 0, CFrontend::m_stringDest, x, (int)g_pGraphics->resY * 0xbe / 0x1e0,
                      g_unk0x005297ac, g_unk0x005297ac + 2, 0x11);
         right = Font_GetTextWidth(0, (BYTE *)CFrontend::m_stringDest) + x;
-        right += Font_GetTextWidth(0, (BYTE *)((char *)&g_unk0x0051682c[0x44]));
+        right += Font_GetTextWidth(0, (BYTE *)g_countryCarSetupBlock.space);
         bar[0] = (short)right;
         Sprite_FillRect(&g_pGraphics->field309_0x150, bar, (BYTE *)(g_unk0x005297ac + 3), 3);
-        right += 2 + Font_GetTextWidth(0, (BYTE *)((char *)&g_unk0x0051682c[0x44]));
+        right += 2 + Font_GetTextWidth(0, (BYTE *)g_countryCarSetupBlock.space);
         if (param_2 == 10)
             sprintf(CFrontend::m_stringDest, CFrontend::GetTextString(0x13c),
                     RallyData_GetDriverGridRow(RallyDataCountryIndex(), CGameInfo::GetConfiguredDifficulty()) & 0xff,
@@ -10367,7 +10364,7 @@ int g_highlightRowColour = -2142286001;
 // x/y/w/h of the background bar of the row being drawn.
 // Name of the current rally/weather of the rally screen rows.
 // GLOBAL: CMR2 0x0082aa44
-char g_unk0x0082aa44[0x100];
+char g_saveGameName[0x100];
 // Row of the highlighted weather entry: "%s: %s_".
 // GLOBAL: CMR2 0x005295f8
 char g_str0x005295f8[] = "%s: %s_";
@@ -10383,7 +10380,7 @@ extern BYTE RallyData_GetDriverAutomaticGearbox(BYTE param1);
 extern BYTE *RallyData_GetDriverEntryRecord(int index);
 extern int RallyTiming_GetStageTieBreak(int index);
 extern BYTE *RallyData_GetDriverCategoryProfile(int index);
-extern BYTE *RallyData_GetDriverSkillRecord(int index);
+extern CarSetup *RallyData_GetPlayerCarSetup(int index);
 extern int *RallyData_GetDriverSettingPair(int index);
 extern int *RallyData_GetDriverPrimaryPairRecord(int index);
 extern BYTE *RallyData_GetDriverSelectionFlagRecord(int index);
@@ -10452,7 +10449,7 @@ BYTE SavedGames_WriteSessionImage(int index, const char *name)
         image.playerSetup[i].reserved = 0;
         image.playerIdentifiers[i] = profile->identifier;
         memcpy(&image.playerCars[i], RallyData_GetDriverGroupRecord(i), sizeof(image.playerCars[i]));
-        memcpy(&image.playerControllers[i], RallyData_GetDriverSkillRecord(i), sizeof(image.playerControllers[i]));
+        memcpy(&image.playerCarSetups[i], RallyData_GetPlayerCarSetup(i), sizeof(image.playerCarSetups[i]));
     }
     }
 
@@ -10511,8 +10508,8 @@ void OptionMenu_LoadGameItem(Menu *pMenu, MenuItem *pItem)
         return;
     }
     if (pMenu->items[4].max == 1) {
-        if (SavedGames_WriteSessionImage(-1, g_unk0x0082aa44) != 0) {
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+        if (SavedGames_WriteSessionImage(-1, g_saveGameName) != 0) {
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
             strcpy(g_optionStatusLine, CFrontend::GetTextString(0x143));
             Menu_SetNextAction(OptionMenu_GetStatusMenu());
             SavedGames_LoadRecords();
@@ -10763,12 +10760,12 @@ void OptionMenu_UpdateLoadGameAndNameEntry(Menu *pMenu)
         if (g_unk0x0082aa40 > 0) {
             if (g_savedGameListSelection == -1) {
                 g_savedGameListSelection = 0;
-            } else if ((pDevice->field_0x8 & 0x20) != 0) {
+            } else if ((pDevice->pressed & 0x20) != 0) {
                 g_unk0x0082ab44 = 0;
                 g_unk0x0082ac60 = 1;
-            } else if ((pDevice->field_0x8 & 4) != 0 && g_savedGameListSelection > 0) {
+            } else if ((pDevice->pressed & 4) != 0 && g_savedGameListSelection > 0) {
                 g_savedGameListSelection--;
-            } else if ((pDevice->field_0x8 & 8) != 0 && g_savedGameListSelection < g_unk0x0082aa40 - 1) {
+            } else if ((pDevice->pressed & 8) != 0 && g_savedGameListSelection < g_unk0x0082aa40 - 1) {
                 g_savedGameListSelection++;
             }
         } else {
@@ -10805,26 +10802,27 @@ void OptionMenu_UpdateLoadGameAndNameEntry(Menu *pMenu)
     index = Menu_FindItem(pMenu, 4);
     if (pMenu->items[index].max == 1) {
         Menu_SetFlags(pMenu, 0, 0, 1, 0);
+        Sys_RequestTextInput(CFrontend::GetTextString(0x7f), g_saveGameName, 0x1e);   // PORT
         pDevice = CInput::GetAvailableDeviceRecord(0);
-        if (pDevice->field_0x8 == 0) {
+        if (pDevice->pressed == 0) {
             g_nameEditorOpened = 1;
         } else if (g_nameEditorOpened == 0) {
             goto editor;
         }
-        if ((pDevice->field_0x8 & 4) != 0) {
+        if ((pDevice->pressed & 4) != 0) {
             index = Menu_FindItem(pMenu, 4);
             pMenu->items[index].max = 0;
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
-        } else if ((pDevice->field_0x8 & 1) != 0) {
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
+        } else if ((pDevice->pressed & 1) != 0) {
             pMenu->cursor--;
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
-        } else if ((pDevice->field_0x8 & 2) != 0) {
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
+        } else if ((pDevice->pressed & 2) != 0) {
             pMenu->cursor++;
-            strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+            strcpy(g_saveGameName, CMain::m_logFileBlankLine);
         }
     editor:
-        g_nameEditorBuffer = g_unk0x0082aa44;
-        strcpy(CFrontend::m_stringDest, g_unk0x0082aa44);
+        g_nameEditorBuffer = g_saveGameName;
+        strcpy(CFrontend::m_stringDest, g_saveGameName);
         if (Input_PopQueuedCharacter(&value)) {
             if (value != 8) {
                 length = strlen(CFrontend::m_stringDest);
@@ -10845,7 +10843,7 @@ void OptionMenu_UpdateLoadGameAndNameEntry(Menu *pMenu)
         }
     } else {
         Input_ClearCharacterQueue();
-        strcpy(g_unk0x0082aa44, CMain::m_logFileBlankLine);
+        strcpy(g_saveGameName, CMain::m_logFileBlankLine);
         g_nameEditorOpened = 0;
         Menu_SetFlags(pMenu, 1, 1, 1, 1);
     }

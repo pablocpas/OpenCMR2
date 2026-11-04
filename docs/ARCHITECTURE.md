@@ -73,10 +73,9 @@ COM disappear: the game asks for what it needs and the backend provides it.
 
 The display modes offered to the game are the original 4:3 ones up to
 1024x768 and the display's own aspect ratio from 540 lines up to the desktop
-resolution. A new configuration starts at the display's aspect ratio at 720
-lines (540 on Android): the game draws its menus and text in pixels for
-640x480, so they shrink as the resolution grows, and higher modes are there
-for a sharper 3D picture. The in-race HUD is laid out on a 4:3 screen of
+resolution. A new configuration starts at the display's own resolution: the
+menus, the HUD and the text are scaled to the screen's height, so they keep
+their size at any mode. The in-race HUD is laid out on a 4:3 screen of
 640x480, or 1024x768 with the high-resolution textures, and each of its
 elements is placed on the real screen (`Hud_BeginView`): scaled with its
 height and kept at the edge or the middle it belongs to, within 16:9 by
@@ -94,8 +93,8 @@ size is restored before the next race frame.
 Textures: the game decodes TGA/DDS itself and writes pixels through
 `Gfx_LockTexture`, using the pixel format the backend reports. Co-driver
 arrows and the menu arrows/checkmarks/crosses/boxes/circles can receive a
-replacement traced from those original pixels (`vector_sprite.cpp`,
-`video.vector_icons`). Potrace extracts their contours, with separate fields
+replacement traced from those original pixels (`vector_sprite.cpp`).
+Potrace extracts their contours, with separate fields
 for opacity and the boundary between its two original colours (including
 the blue/white selection arrows in race menus). Original cell rectangles and
 colours are retained. The renderer also binds the untouched source texture,
@@ -103,8 +102,7 @@ which native-size and smaller draws sample directly. Enlarged draws use the
 traced fields. The distance transform is shared with the outlined fonts.
 
 Arcade HUD maps (`cha01` through `cha08`, 128x128) and their car markers
-(`chalblob`) use the same contour path, controlled separately by
-`video.vector_maps`. The selection maps retain their original 36x36 DMD cell
+(`chalblob`) use the same contour path. The selection maps retain their original 36x36 DMD cell
 grids and palette: only the shared `SmMatrix` point is replaced. Enlarged
 points are circles fitted to the original coverage's centre and area;
 native-size and smaller draws still read the source bitmap. Map coordinates,
@@ -127,21 +125,54 @@ ACM).
 
 ## Input
 
-Key codes stay DirectInput scan codes (`DIK_*` values): the game stores them
-in its binding tables and save files. `src/input` maps SDL scancodes to them.
-Joysticks are read through SDL3 into a `DIJOYSTATE2`-like structure of our
-own (axes, sliders, POVs, buttons). Controllers SDL knows the layout of are
-presented as DirectInput showed an Xbox controller: sticks on X/Y and Rx/Ry,
-buttons A, B, X, Y, LB, RB, Back, Start and the stick clicks, the D-pad as
-POV 0. The triggers are Z and Rz, each read as DirectInput wheels report a
-pedal: the maximum when released, the minimum when pressed fully, which is
-what the game expects of a throttle and a brake on separate axes (DirectInput
-put both triggers on Z, which kept them from being pressed together). Raw
-axes that rest at their minimum, such as some wheels' pedals, are turned the
-same way. A gamepad starts with throttle on the right trigger and brake on
-the left (`PORT:` in `CInput::InitDetectedControllerSlot`). Force-feedback effects (constant, spring,
-damper, friction, inertia) map to SDL haptic effects, with rumble as the
-fallback on gamepads.
+`src/input` reads the keyboard and the controllers through SDL3 as actions of
+the two local players: steering left and right, throttle, brake, handbrake,
+gears, camera, look back and pause with an analogue value, and the menu
+directions, confirm and back. Each action is bound to keys, gamepad buttons,
+axis halves, whole axes (pedals) or hat directions in `controls.ini`, by
+kind of device: the two keyboard players, controllers SDL knows the layout
+of, and joysticks and wheels by model. A wheel's pedals are found from where
+its axes rest when it is first connected. Every controller belongs to a
+player: the second one connected to player 2 when two players race, unless
+`controls.ini` says otherwise. Disconnected devices are kept, so their
+force-feedback effects stay valid and they get them back on reconnection.
+
+The game still reads the device records it was written for (`game/Input.cpp`,
+marked `PORT:`). Records 0 and 1 are players 1 and 2 as keyboards, with the
+original keyboard's bits: the cursor keys, Return, Escape, F1 and F2 in the
+menus, bit 1 << action and Escape's bit for the pause on a stage. Records 2
+and 3 are the same players as joysticks: steering on X, the throttle on Rz
+and the brake on Z, each read as DirectInput wheels report a pedal (the
+maximum when released), with fixed configurations that name those axes. The
+players drive with records 2 and 3. Whether the steering, and the throttle
+and brake, come from axes is decided apart, by the last input of each: a
+record reads as a keyboard while both come from keys or buttons, and its
+configuration takes from its axes only those that come from axes, so a D-pad
+steers as keys do (the car's progressive steering) while the triggers stay
+analogue (`PORT:` in `StageObject_UpdatePlayerControlIndicators`). A
+gamepad's thumbstick is eased (steering mode 1) and its response is shaped
+by speed before the game's 0..63 conversion, from linear to a square, fitted
+to the quantiles of the lock used at each speed in the 24 keyboard-driven
+recorded runs of the super specials, keeping full lock at the end of the
+travel (`StageObject_ShapeThumbstickSteering`). Everything after the game's
+conversion of these values to its 0..63 controls, which replays and network
+races record, is unchanged.
+
+The original's controls pages, built on its per-device configurations, are
+replaced by the port's (`PORT:` in `FrontendScreens.cpp`), which edit the
+bindings of `src/input` through `Input_GetBindingText`, `Input_BeginCapture`
+and the settings calls; their texts are the game's own where it has them
+(action names, OK, Default) and the port's in the game's five languages
+otherwise.
+
+Key codes stay DirectInput scan codes (`DIK_*` values) for text entry: the
+game stores them and names them. Force-feedback effects (constant, spring,
+damper, friction, inertia) map to SDL haptic effects on devices that support
+them. Gamepads, whose motors cannot play those, rumble from the amplitude the
+game gives its road noise: lightly with the surface roughness under the front
+wheels times the speed, and with impacts (`PORT:` in `ForceFeedback_UpdatePlayerSlot`).
+A controller lost while a player drives with it holds that player's pause
+action briefly, which pauses a stage.
 
 ## Determinism and the golden tests
 

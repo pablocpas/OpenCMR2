@@ -12,6 +12,7 @@
     <string name="setup_no_space">Espace libre insuffisant : le jeu a besoin de %1$s et %2$s sont libres.</string>
     <string name="setup_failed">Les fichiers du jeu n’ont pas pu être copiés.\n%1$s</string>
     <string name="touch_pause">Pause</string>
+    <string name="touch_back">Retour / Pause</string>
     <string name="touch_ok">OK</string>
     <string name="touch_accelerate">Accélérer</string>
     <string name="touch_brake">Freiner</string>
@@ -52,4 +53,17 @@
     <string name="touch_opacity">Opacité</string>
     <string name="touch_cutout">Éviter la caméra et les découpes de l’écran</string>
     <string name="touch_reset">Réinitialiser la disposition</string>
+
+    <string name="touch_edit">Modifier les commandes tactiles</string>
+    <string name="touch_save">Enregistrer</string>
+    <string name="touch_test">Tester les boutons</string>
+    <string name="touch_edit_mode">Modifier la disposition</string>
+    <string name="touch_adjustments">Réglages</string>
+    <string name="touch_left">Groupe gauche</string>
+    <string name="touch_right">Groupe droit</string>
+    <string name="touch_horizontal">Distance du bord latéral</string>
+    <string name="touch_vertical">Hauteur depuis le bas</string>
+    <string name="touch_rotation">Angle des boutons auxiliaires</string>
+    <string name="touch_test_hint">Maintenez plusieurs boutons pour les tester. Aucune commande ne sera envoyée au jeu.</string>
+    <string name="touch_drag_hint">Faites glisser chaque côté pour déplacer les commandes. Pincez pour redimensionner et tournez les boutons auxiliaires avec deux doigts.</string>
 </resources>

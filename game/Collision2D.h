@@ -17,6 +17,10 @@ struct CollisionBox {
     int hasSecondaryVertices; // 0x2c face boxes: points 4..7 hold a second face
     union {
         FixVector points[8];    // 0x30 first four are the footprint
+        struct {
+            FixVector primaryPoints[4];   // 0x30 current face/footprint
+            FixVector secondaryPoints[4]; // 0x60 corresponding secondary face
+        };
         int pointWords[24];     // same pointer-free vector span
     };
     FixVector *pArray;      // 0x90 eight world corners

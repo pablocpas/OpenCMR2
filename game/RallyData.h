@@ -2,6 +2,7 @@
 #define _RALLY_DATA_H
 
 #include "CarImpact.h"
+#include "CarSetup.h"
 
 // Arcade knockout table: state bits 0-2 mode, 3-5 round (1 = first round ..
 // 4 = final), 6-8, 12-15 current match, 16-19. Each match holds the two
@@ -94,7 +95,7 @@ struct DriverCarRecord {
 // records (FrontendNetwork_WriteSetupPacket/ReadSetupPacket).
 struct RallyDriverGroupTable {
     DriverCarRecord groups[4];      // 0x000 each driver's car damage between stages
-    BYTE field_0x520[4][7];         // 0x520
+    CarSetup playerCarSetups[4];    // 0x520 each player's car setup
     int field_0x53c;                // 0x53c
     RallyPairingTables pairing;     // 0x540
     int field_0x6d0;                // 0x6d0

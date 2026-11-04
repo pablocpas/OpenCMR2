@@ -12,6 +12,7 @@
     <string name="setup_no_space">Za mało wolnego miejsca: gra potrzebuje %1$s, a wolne jest %2$s.</string>
     <string name="setup_failed">Nie udało się skopiować plików gry.\n%1$s</string>
     <string name="touch_pause">Pauza</string>
+    <string name="touch_back">Wstecz / Pauza</string>
     <string name="touch_ok">OK</string>
     <string name="touch_accelerate">Gaz</string>
     <string name="touch_brake">Hamulec</string>
@@ -52,4 +53,17 @@
     <string name="touch_opacity">Krycie</string>
     <string name="touch_cutout">Omijaj aparat i wycięcia ekranu</string>
     <string name="touch_reset">Przywróć układ</string>
+
+    <string name="touch_edit">Edytuj sterowanie dotykowe</string>
+    <string name="touch_save">Zapisz</string>
+    <string name="touch_test">Testuj przyciski</string>
+    <string name="touch_edit_mode">Edytuj układ</string>
+    <string name="touch_adjustments">Ustawienia</string>
+    <string name="touch_left">Lewa grupa</string>
+    <string name="touch_right">Prawa grupa</string>
+    <string name="touch_horizontal">Odległość od boku</string>
+    <string name="touch_vertical">Wysokość od dołu</string>
+    <string name="touch_rotation">Kąt przycisków pomocniczych</string>
+    <string name="touch_test_hint">Przytrzymaj kilka przycisków, aby je przetestować. Gra nie otrzymuje żadnych naciśnięć.</string>
+    <string name="touch_drag_hint">Przeciągnij każdą stronę, aby przesunąć sterowanie. Uszczypnij, aby zmienić rozmiar; obróć przyciski pomocnicze dwoma palcami.</string>
 </resources>

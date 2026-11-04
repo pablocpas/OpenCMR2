@@ -335,8 +335,7 @@ void Gfx_Shutdown(void);
 int Gfx_GetDisplayModeCount(void);
 void Gfx_GetDisplayMode(int index, int *width, int *height);
 /* The resolution of a new configuration, one of the modes offered: the
-   display's aspect ratio at 720 lines (540 on Android), or the display's own
-   when smaller. */
+   display's own. */
 void Gfx_GetDefaultDisplayMode(int *width, int *height);
 
 /* A frame is BeginScene...EndScene blocks (any number) and one Present. */
@@ -562,7 +561,7 @@ void Gfx_SetTextureReplacement(GfxTexture *texture, GfxTexture *replacement);
 int Gfx_GetDistanceFieldScale(GfxTexture *texture);
 /* Give the large menu matrix dot a geometric replacement. Its original
    pixels are kept for native-size and smaller draws; the game still queues
-   the same dots, colours and positions. [video] vector_flags = 0 disables it. */
+   the same dots, colours and positions. */
 void Gfx_VectorizeMenuDot(GfxTexture *texture);
 /* Half a source texel for bitmaps, half a field texel for distance fields,
    and zero for geometry (which must not be cropped to texel centres). */

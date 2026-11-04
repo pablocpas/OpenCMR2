@@ -4,7 +4,6 @@
 #include "port/vector_sprite.h"
 #include "render/gfx_internal.h"
 #include "render/distance_field.h"
-#include "platform/platform.h"
 #include "port/sys.h"
 #include "potracelib.h"
 
@@ -350,8 +349,6 @@ extern "C" void VectorSprite_Replace(const char *name, GfxTexture *texture) {
         return;
     base.resize(dot);
     bool map = IsMap(base);
-    if (!Platform_GetSettingInt(map ? "video.vector_maps" : "video.vector_icons", 1))
-        return;
     auto cells = Cells(base, texture->width, texture->height);
     if (cells.empty())
         return;

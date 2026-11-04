@@ -336,6 +336,7 @@ target_sources(opencmr2_platform PRIVATE
     ${FONTS_HEADER}
     ${ICON_HEADER}
     audio/audio_sdl.cpp
+    input/bindings.cpp
     input/input_sdl.cpp
     input/TouchLayout.cpp
     video/movie.cpp

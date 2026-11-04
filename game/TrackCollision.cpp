@@ -942,11 +942,11 @@ void Track_SetFogAndSkyAlpha(DWORD *pColour, int start, int end)
     g_stageColourAlpha = a;
 }
 
-// Integrates the throttle phase and torque from the accelerator, or from
-// the brake pedal in automatic reverse. Latches accelerator input while
-// the forward throttle ramp is decaying.
+// Digital throttle: integrates the throttle phase and torque from the
+// accelerator, or from the brake pedal in automatic reverse. Latches
+// accelerator input while the forward throttle ramp is decaying.
 // FUNCTION: CMR2 0x004946c0
-void AutoGear_UpdateRollingFollowRate(void)
+void AutoGear_RampDigitalThrottle(void)
 {
     unsigned short angle;
 
@@ -977,10 +977,11 @@ void AutoGear_UpdateRollingFollowRate(void)
     }
 }
 
-// Swings field 0x838 of the auto-gear car toward 0x82c over time while its
-// flag 3 is set and the shift is unlocked; else resets it.
+// Digital brake: brakePhase rises by brakeRampStep while the brake is held
+// (not in automatic reverse) and brakeInput follows a sine of it up to
+// maxBrakeForce; both reset on release.
 // FUNCTION: CMR2 0x00494880
-void AutoGear_UpdateSteeringSwing(void)
+void AutoGear_RampDigitalBrake(void)
 {
     unsigned short angle;
 
@@ -1186,23 +1187,25 @@ void AutoGear_ApplyShiftBodyNudge(void)
 
 extern double g_fixedDegreesToAngle12;
 
-// Eases the car's steering angle towards the value taken from its track
-// surface, then stores the damped angle into 0xb10/0xb12.
+// Steering of an analogue device (steeringInputMode 1 or 2): the target
+// angle from the steering values (flag0x1d0[0..1], 0..63), taken at once in
+// mode 2, eased by the setup's outward and centring rates in mode 1; stored
+// into 0xb10/0xb12.
 // match 87%: implemented; MSVC keeps the two scale factors in different registers and
 // reorders the fixpoint intermediates
 // FUNCTION: CMR2 0x00493ed0
-void CarPhysics_DampSurfaceSteeringAngle(void)
+void AutoGear_FollowAnalogSteering(void)
 {
-    int scaleRight;
-    int scaleLeft;
+    int outwardRate;
+    int centringRate;
     int value;
     int other;
     short target;
     short current;
     short delta;
 
-    scaleRight = g_pAutoGearCar->field_0x7fc;
-    scaleLeft = g_pAutoGearCar->field_0x800;
+    outwardRate = g_pAutoGearCar->steeringOutwardRate;
+    centringRate = g_pAutoGearCar->steeringCentringRate;
     other = FixMul(*(BYTE *)&g_pAutoGearCar->flag0x1d0[1] << 16, 0x410);
     if (other > 0x10000)
         other = 0x10000;
@@ -1234,17 +1237,17 @@ void CarPhysics_DampSurfaceSteeringAngle(void)
         delta = 0x1000 - delta;
     if (delta >= 0x20 || delta <= -0x20) {
         if (current == 0)
-            delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleRight), g_fixedDegreesToAngle12));
+            delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, outwardRate), g_fixedDegreesToAngle12));
         else if (current > 0) {
             if (delta < 0)
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleRight), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, outwardRate), g_fixedDegreesToAngle12));
             else
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleLeft), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, centringRate), g_fixedDegreesToAngle12));
         } else {
             if (delta > 0)
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleRight), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, outwardRate), g_fixedDegreesToAngle12));
             else
-                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, scaleLeft), g_fixedDegreesToAngle12));
+                delta = (short)FTOI(__int64, X87S_MUL((double)FixMul(delta * 0x1680, centringRate), g_fixedDegreesToAngle12));
         }
     }
     *(short *)&g_pAutoGearCar->wheelSteeringAngle -= delta;
@@ -1256,12 +1259,13 @@ int g_unk0x00592168;
 // GLOBAL: CMR2 0x00511308
 double g_minusFixedDegreesToAngle12 = -4096.0 / (360.0 * 65536.0);
 
-// Integrates the auto-gear steering accumulator for the current surface and
-// eases the signed 12-bit wheel angle towards the new target.
+// Steering of keys and buttons (steeringInputMode 0): integrates the steering
+// accumulator for the current surface and eases the signed 12-bit wheel
+// angle towards the new target.
 // Keeps the original intermediate forces and materialized zero bounds.
 // Differential coverage: guarded car, signed limits, angles and real helpers.
 // FUNCTION: CMR2 0x00494110
-void AutoGear_IntegrateSteeringAccumulator(void)
+void AutoGear_IntegrateDigitalSteering(void)
 {
     int v;
     int sum;
@@ -1287,8 +1291,8 @@ void AutoGear_IntegrateSteeringAccumulator(void)
                          g_pAutoGearCar->cornerGrip[0].field_0x14, 0x8000);
     g_unk0x00592164 = FixMul(g_unk0x00592164, v);
     g_unk0x00592168 = FixMul(g_unk0x00592168, v);
-    g_unk0x00592164 = FixMul(g_unk0x00592164, g_pAutoGearCar->field_0x804);
-    g_unk0x00592168 = FixMul(g_unk0x00592168, g_pAutoGearCar->field_0x804);
+    g_unk0x00592164 = FixMul(g_unk0x00592164, g_pAutoGearCar->steeringForceScale);
+    g_unk0x00592168 = FixMul(g_unk0x00592168, g_pAutoGearCar->steeringForceScale);
 
     if ((g_pAutoGearCar->flag0x1d0[0] == 0 &&
          g_pAutoGearCar->flag0x1d0[1] == 0) ||
@@ -1339,7 +1343,7 @@ convert:
         *(short *)&g_pAutoGearCar->wheelSteeringAngle -= limit;
 }
 
-CarPartSet *StageTiming_GetCarReplayRecord(int index);
+CarPartSet *CarPart_GetSet(int carIndex);
 extern double g_fixedDegreesToAngle12;
 
 // Applies the automatic-gear state to the car for one frame: rebuilds the body
@@ -1355,7 +1359,7 @@ void AutoGear_UpdateCarGearState(Car *pCar)
     int v;
 
     g_pAutoGearCar = pCar;
-    g_autoGearPartSet = StageTiming_GetCarReplayRecord((int)pCar->index);
+    g_autoGearPartSet = CarPart_GetSet((int)pCar->index);
     AutoGear_ApplyShiftBodyNudge();
     if (g_pAutoGearCar->analogThrottle != 0) {
         if (*(BYTE *)&g_pAutoGearCar->flag0x1d0[2] != 0) {
@@ -1367,7 +1371,7 @@ void AutoGear_UpdateCarGearState(Car *pCar)
             g_pAutoGearCar->throttleTorque = 0;
         }
     } else {
-        AutoGear_UpdateRollingFollowRate();
+        AutoGear_RampDigitalThrottle();
     }
     if (g_pAutoGearCar->gearRatio[g_pAutoGearCar->gear] < 0)
         g_pAutoGearCar->reversing = 1;
@@ -1398,9 +1402,9 @@ void AutoGear_UpdateCarGearState(Car *pCar)
         }
     }
     if (g_pAutoGearCar->steeringInputMode != 0)
-        CarPhysics_DampSurfaceSteeringAngle();
+        AutoGear_FollowAnalogSteering();
     else
-        AutoGear_IntegrateSteeringAccumulator();
+        AutoGear_IntegrateDigitalSteering();
     if (g_pAutoGearCar->analogBrake != 0) {
         if (*(BYTE *)&g_pAutoGearCar->flag0x1d0[3] != 0) {
             t = FixMul((int)((unsigned int)*(BYTE *)&g_pAutoGearCar->flag0x1d0[3] << 16), 0x410);
@@ -1422,7 +1426,7 @@ void AutoGear_UpdateCarGearState(Car *pCar)
             g_pAutoGearCar->brakeInput = 0;
         }
     } else {
-        AutoGear_UpdateSteeringSwing();
+        AutoGear_RampDigitalBrake();
         if ((g_pAutoGearCar->analogThrottle != 0) && (g_pAutoGearCar->automaticReverse != 0)) {
             t = FixMul((int)((unsigned int)*(BYTE *)&g_pAutoGearCar->flag0x1d0[3] << 16), 0x410);
             if (t > 0x10000)

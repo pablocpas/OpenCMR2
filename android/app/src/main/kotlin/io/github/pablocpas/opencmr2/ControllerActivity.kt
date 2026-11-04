@@ -1,5 +1,6 @@
 package io.github.pablocpas.opencmr2
 
+import android.content.Intent
 import android.hardware.input.InputManager
 import android.os.Bundle
 import android.os.Handler
@@ -37,6 +38,7 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
     private var touchMarginY by mutableStateOf(0f)
     private var touchOpacity by mutableStateOf(1f)
     private var touchCutout by mutableStateOf(true)
+    private var detailedTouchLayout by mutableStateOf(false)
     private val lastAxes = mutableMapOf<Pair<Int, Int>, Float>()
     private var baseline = emptyMap<Pair<Int, Int>, Float>()
     private val device get() = devices.firstOrNull { it.id == selected }
@@ -58,6 +60,7 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
         touchMarginY = ControllerProfiles.touchMarginY(this)
         touchOpacity = ControllerProfiles.touchOpacity(this)
         touchCutout = ControllerProfiles.touchAvoidCutout(this)
+        detailedTouchLayout = ControllerProfiles.detailedTouchLayout(this)
         refresh()
         setContent {
             SetupTheme {
@@ -69,6 +72,19 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = touchOnly, onCheckedChange = { touchOnly = it; ControllerProfiles.touchOnly(this@ControllerActivity, it) })
                             Text(stringResource(R.string.controllers_touch_only), Modifier.padding(start = 12.dp))
+                        }
+                        Text(stringResource(R.string.touch_layout_method), style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = !detailedTouchLayout, onClick = {
+                                detailedTouchLayout = false
+                                ControllerProfiles.detailedTouchLayout(this@ControllerActivity, false)
+                            })
+                            Text(stringResource(R.string.touch_layout_quick))
+                            RadioButton(selected = detailedTouchLayout, onClick = {
+                                detailedTouchLayout = true
+                                ControllerProfiles.detailedTouchLayout(this@ControllerActivity, true)
+                            })
+                            Text(stringResource(R.string.touch_layout_editor))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = touch, onCheckedChange = { touch = it; ControllerProfiles.showTouch(this@ControllerActivity, it) })
@@ -96,6 +112,11 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
                             ControllerProfiles.resetTouchLayout(this@ControllerActivity)
                             touchScale = 1f; touchMarginX = 0f; touchMarginY = 0f; touchOpacity = 1f; touchCutout = true
                         }) { Text(stringResource(R.string.touch_reset)) }
+                        OutlinedButton(onClick = {
+                            detailedTouchLayout = true
+                            ControllerProfiles.detailedTouchLayout(this@ControllerActivity, true)
+                            startActivity(Intent(this@ControllerActivity, TouchLayoutActivity::class.java))
+                        }) { Text(stringResource(R.string.touch_edit)) }
                         if (devices.isEmpty()) Text(stringResource(R.string.controllers_connect))
                         for (pad in devices) {
                             OutlinedButton(onClick = { selected = pad.id; waiting = null; reload() }, modifier = Modifier.fillMaxWidth()) {

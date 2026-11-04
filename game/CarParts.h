@@ -77,7 +77,7 @@ struct SceneNode;
 struct Car;
 
 // Moving part of a car (bonnet, boot, doors...): one 0x1a0-byte record per car
-// in each of the four slot tables g_carPartStateTables.parts[slot]. CarPart_InitWheelHubSlot installs
+// in each of the four slot tables g_carPartStateTables.parts[slot]. CarPart_InitMovingSlot installs
 // the slot's integrator at +0x110; g_partState points at the record being
 // simulated, g_partCar / g_partSet at its car and the car's part set.
 struct PartState {

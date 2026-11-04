@@ -1,15 +1,14 @@
 /*
  * OpenCMR2 input interface, implemented in src/input on SDL3.
  *
- * The game was written against DirectInput and keeps its model: devices it
- * polls each frame, keyboard state indexed by DirectInput scan codes (DIK_*,
- * the key codes in its bindings and save files), joystick axes scaled to a
- * range the game sets, POV hats in hundredths of a degree, buttons with bit
- * 0x80 set while held, and force-feedback effects.
+ * Input is read as actions of the two local players: driving actions with
+ * an analogue value, and menu actions. Each action is bound to keys,
+ * controller buttons, axis halves or hat directions in controls.ini (user
+ * directory); every connected device belongs to a player. game/Input.cpp
+ * presents the result to the game as the device records it was written for.
  *
- * Joystick objects are named by their DirectInput data-format offsets
- * (DIJOFS_*): axes X, Y, Z, Rx, Ry, Rz at 0x00..0x14, sliders at 0x18 and
- * 0x1c, POV hats at 0x20 + 4 * n, buttons at 0x30 + n.
+ * The raw keyboard stays available for text entry: key codes are
+ * DirectInput scan codes (DIK_*), the codes the game stores and names.
  */
 #ifndef OPENCMR2_PORT_INPUT_H
 #define OPENCMR2_PORT_INPUT_H
@@ -83,71 +82,141 @@ int Input_GetTouchPads(TouchPadView *pads, int maxPads, int *windowW, int *windo
 #define INPUT_KEY_RSHIFT 0x36
 #define INPUT_KEY_F1 0x3B
 #define INPUT_KEY_F2 0x3C
+#define INPUT_KEY_F4 0x3E
 #define INPUT_KEY_UP 0xC8
 #define INPUT_KEY_LEFT 0xCB
 #define INPUT_KEY_RIGHT 0xCD
 #define INPUT_KEY_DOWN 0xD0
 
-/* POV value when centred. */
-#define INPUT_POV_CENTERED 0xffffffff
+/* ---- players and actions ------------------------------------------------- */
+
+#define INPUT_PLAYERS 2
+
+/* The driving actions come first, in the order of ControllerData's action
+   masks (bit 1 << action of a keyboard device). */
+enum InputAction {
+    INPUT_STEER_LEFT,
+    INPUT_STEER_RIGHT,
+    INPUT_THROTTLE,
+    INPUT_BRAKE,
+    INPUT_HANDBRAKE,
+    INPUT_SHIFT_UP,
+    INPUT_SHIFT_DOWN,
+    INPUT_CAMERA,
+    INPUT_LOOK_BACK,
+    INPUT_PAUSE,
+    INPUT_MENU_LEFT,
+    INPUT_MENU_RIGHT,
+    INPUT_MENU_UP,
+    INPUT_MENU_DOWN,
+    INPUT_MENU_CONFIRM,
+    INPUT_MENU_BACK,
+    INPUT_ACTION_COUNT
+};
+
+/* Full value of an action: an axis pushed to its saturation, or a key. */
+#define INPUT_FULL 0x10000
+
+/* Reads every device once; the values below hold until the next call. */
+void Input_Update(void);
+/* Local players racing (1 or 2): with one, player 1 also takes the devices
+   of player 2. */
+void Input_SetLocalPlayers(int count);
+
+/* Value of an action of a player, 0..INPUT_FULL. */
+int Input_GetAction(int player, int action);
+/* Whether the player steers with an axis rather than keys or buttons, and
+   whether the throttle and brake are axes: the last input of each came from
+   an axis. */
+BOOL Input_IsAnalogSteering(int player);
+BOOL Input_IsAnalogPedals(int player);
+/* Whether the game eases the steering towards the player's axis rather
+   than following it directly: a gamepad's short stick is eased at the car
+   setup's steering speed, about as fast as keys turn the wheels; a wheel's
+   or joystick's axis is followed directly, as the original did. */
+BOOL Input_IsSmoothSteering(int player);
+/* Whether a joystick or controller was connected or disconnected since the
+   previous call. */
+BOOL Input_DevicesChanged(void);
+/* The device the game sends a player's force feedback to: the controller
+   the player last used, if it has force feedback or rumble (NULL if not).
+   Before one is used, a wheel or joystick with force feedback, else a
+   gamepad that can rumble; NULL without either. When the player then uses
+   another, Input_DevicesChanged reports it, for the menus to set it up. */
+InputDevice *Input_GetFeedbackDevice(int player);
+/* Rumble of the gamepad the player last used (all of the player's before
+   one is used), 0..INPUT_FULL for the low and the high frequency motor,
+   scaled by the rumble setting of each. Fades out unless it is set again
+   within a quarter of a second. */
+void Input_SetRumble(int player, int low, int high);
+
+/* Keyboard keys (DIK_*) of the nine driving actions of the two keyboard
+   players, from an older configuration (Controller.rcf): used only while
+   controls.ini does not exist yet. */
+void Input_ImportKeyboardKeys(int player, const BYTE keys[9]);
+/* Writes controls.ini when the bindings changed since it was read. */
+void Input_SaveBindings(void);
+
+/* ---- controls pages ------------------------------------------------------- */
+
+/* The bindings the controls pages edit: player 1's keys, player 2's keys,
+   gamepads, then each connected joystick or wheel. */
+enum InputProfileKind {
+    INPUT_PROFILE_KEYBOARD,
+    INPUT_PROFILE_KEYBOARD2,
+    INPUT_PROFILE_GAMEPAD,
+    INPUT_PROFILE_JOYSTICK,
+    INPUT_PROFILE_TOUCH         /* Android's on-screen controls: nothing to edit here */
+};
+
+enum InputSetting {
+    INPUT_SETTING_DEADZONE,     /* percent */
+    INPUT_SETTING_CURVE,        /* percent */
+    INPUT_SETTING_RUMBLE        /* percent */
+};
+
+/* Listed: the touch controls (Android), the keyboard players while a
+   physical keyboard is connected, gamepads while one is, then each connected
+   joystick or wheel. The touch controls are edited in the launcher: each of
+   their buttons shows the action it presses. */
+int Input_GetProfileCount(void);
+int Input_GetProfileKind(int profile);
+/* The profile whose keys or controller gave the last input, -1 before any
+   or when it is not listed. */
+int Input_GetLastUsedProfile(void);
+/* The device's name for a joystick or wheel, in the game's character set. */
+const char *Input_GetProfileName(int profile);
+/* The inputs bound to an action, named as on the device (A or Cross, a key
+   in the keyboard's layout), in the game's character set. */
+void Input_GetBindingText(int profile, int action, char *text, int size);
+int Input_GetSetting(int profile, int setting);
+void Input_SetSetting(int profile, int setting, int value);
+void Input_RestoreDefaults(int profile);
+/* Waits for the next key, button, axis or hat of the profile's devices and
+   binds it to the action; an input bound to another driving action of the
+   profile trades places with the action's own. */
+void Input_BeginCapture(int profile, int action);
+/* 1 once bound, -1 if given up (Escape for a controller, or ten seconds),
+   0 while waiting. */
+int Input_UpdateCapture(void);
+/* Reads controls.ini again, dropping the changes not saved. */
+void Input_ReloadBindings(void);
+
+/* ---- raw keyboard and mouse ------------------------------------------------ */
 
 typedef struct InputMouseState {
     LONG lX, lY, lZ;            /* movement since the last read */
     BYTE rgbButtons[8];
 } InputMouseState;
 
-typedef struct InputJoystickState {
-    LONG lX, lY, lZ;
-    LONG lRx, lRy, lRz;
-    LONG rglSlider[2];
-    DWORD rgdwPOV[4];
-    BYTE rgbButtons[128];
-} InputJoystickState;
-
-typedef struct InputCaps {
-    DWORD axes;
-    DWORD buttons;
-    DWORD povs;
-    BOOL forceFeedback;
-} InputCaps;
-
-/* ---- devices ---------------------------------------------------------------- */
-
-/* Joysticks the game can use: its controller table holds two keyboard
-   configurations and four devices. */
-int Input_GetJoystickCount(void);
-/* Whether joysticks were connected or disconnected since they were opened. */
-BOOL Input_JoysticksChanged(void);
-
 InputDevice *Input_OpenKeyboard(void);
 InputDevice *Input_OpenMouse(void);
-InputDevice *Input_OpenJoystick(int index);
-/* A controller in the Xbox layout (see input_sdl.cpp), rather than a raw
-   joystick or wheel. */
-BOOL Input_IsGamepad(InputDevice *device);
 void Input_CloseDevice(InputDevice *device);
-
-const char *Input_GetInstanceName(InputDevice *device);
-const char *Input_GetProductName(InputDevice *device);
-void Input_GetCaps(InputDevice *device, InputCaps *caps);
-/* Name of a joystick object by offset; 0 when the device has no such object. */
-BOOL Input_GetObjectName(InputDevice *device, DWORD offset, char *name, size_t size);
-/* Whether the joystick has the axis at that offset. */
-BOOL Input_HasAxis(InputDevice *device, DWORD offset);
-
-/* Axis properties, as DirectInput's DIPROP_RANGE / DEADZONE / SATURATION
-   (dead zone and saturation in 0..10000 of the range). */
-void Input_SetAxisRange(InputDevice *device, DWORD offset, LONG min, LONG max);
-void Input_SetAxisDeadzone(InputDevice *device, DWORD offset, DWORD deadzone);
-void Input_SetAxisSaturation(InputDevice *device, DWORD offset, DWORD saturation);
-
 /* Mouse capture: exclusive (relative, hidden) or shared. */
 void Input_SetMouseExclusive(InputDevice *device, BOOL exclusive);
 
 BOOL Input_ReadKeyboard(InputDevice *device, BYTE keys[256]);
 BOOL Input_ReadMouse(InputDevice *device, InputMouseState *state);
-BOOL Input_ReadJoystick(InputDevice *device, InputJoystickState *state);
-
 /* Whether a key is held right now (GetAsyncKeyState). */
 BOOL Input_IsKeyDown(int key);
 
@@ -175,7 +244,7 @@ typedef struct InputEffectParams {
     int type;
     DWORD duration;
     DWORD gain;
-    DWORD triggerButton;        /* INPUT_OFFSET_BUTTON(n) or INPUT_EFFECT_NO_TRIGGER */
+    DWORD triggerButton;        /* DIJOFS_BUTTON(n) or INPUT_EFFECT_NO_TRIGGER */
     LONG direction;             /* constant force: polar, hundredths of a degree */
     LONG magnitude;             /* constant force */
     DWORD attackTime, attackLevel, fadeTime, fadeLevel;   /* constant force envelope */
@@ -185,6 +254,8 @@ typedef struct InputEffectParams {
     LONG deadBand;
 } InputEffectParams;
 
+/* Effects outlive a disconnection: they do nothing until the device is
+   connected again. */
 InputEffect *Input_CreateEffect(InputDevice *device, const InputEffectParams *params);
 void Input_UpdateEffect(InputEffect *effect, const InputEffectParams *params);
 void Input_StartEffect(InputEffect *effect);

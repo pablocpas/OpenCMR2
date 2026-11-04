@@ -322,7 +322,7 @@ public:
     static char m_stringGameInfoRCF[32];
 
     // GLOBAL: CMR2 0x0059f8d0
-    static unsigned int m_unk0x0059f8d0;
+    static unsigned int m_fixedMenuKeys;
 
     // GLOBAL: CMR2 0x00520870
     static unsigned int m_unk0x00520870;

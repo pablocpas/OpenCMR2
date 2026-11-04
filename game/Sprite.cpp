@@ -432,8 +432,8 @@ int Sprite_FillRect(BYTE *unused, short *pRect, BYTE *pColour, int layer)
 
     x = pRect[0];
     y = pRect[1];
-    h = pRect[3];
     w = pRect[2];
+    h = pRect[3];
     if (w > 0 && h > 0 && (x >= 0 || w + x >= 0) && (y >= 0 || h + y >= 0)) {
         if (x < (int)g_pGraphics->resX && y < (int)g_pGraphics->resY) {
             if (x < 0) {

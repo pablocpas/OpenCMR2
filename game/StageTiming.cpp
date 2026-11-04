@@ -9,6 +9,7 @@
 #include "TyreWear.h"
 #include "StageObjectCount.h"
 #include "StageTimingSpread.h"
+#include "StageTimeProfile.h"
 #include "StageBlock.h"
 #include "StageTiming.h"
 #include "ReplayStream.h"
@@ -110,9 +111,9 @@ StageSplitState g_stageSplit;
 
 // GLOBAL: CMR2 0x00542418
 short g_unk0x00542418;
-// Split time spread table of the stage (5-byte rows: -, max down, max up).
+// Serialized stage timing profile, selected from .tm0/.tm1/.tm2.
 // GLOBAL: CMR2 0x0054241c
-char *g_splitSpreadTable;
+StageTimeProfile *g_stageTimeProfile;
 
 // FUNCTION: CMR2 0x00456a30
 void StageTiming_SetSplitDisplayFlag(int offset, int unused)
@@ -628,7 +629,7 @@ unsigned int NetPlayers_IsPlayerPresent(int index);
 // Builds the per-split interpolation factors between the first and last split
 // time of the stage.
 // FUNCTION: CMR2 0x00456330
-void StageTiming_BuildSplitInterpolationFactors(StageTimingSpread *param_1)
+void StageTiming_BuildSplitInterpolationFactors(StageTimingSpread *pSpread)
 {
     int local_20;
     int local_24;
@@ -647,19 +648,19 @@ void StageTiming_BuildSplitInterpolationFactors(StageTimingSpread *param_1)
 
     iVar1 = GetStageSplitCount();
     for (iVar5 = 1; iVar5 <= iVar1; iVar5++) {
-        if (param_1->startPositionFixed >= Stage_GetSplitPositionFixed(iVar5 - 1) && param_1->startPositionFixed < Stage_GetSplitPositionFixed(iVar5))
+        if (pSpread->startPositionFixed >= Stage_GetSplitPositionFixed(iVar5 - 1) && pSpread->startPositionFixed < Stage_GetSplitPositionFixed(iVar5))
             local_20 = iVar5;
-        if (param_1->endPositionFixed > Stage_GetSplitPositionFixed(iVar5 - 1) && param_1->endPositionFixed <= Stage_GetSplitPositionFixed(iVar5))
+        if (pSpread->endPositionFixed > Stage_GetSplitPositionFixed(iVar5 - 1) && pSpread->endPositionFixed <= Stage_GetSplitPositionFixed(iVar5))
             local_24 = iVar5;
     }
-    iVar5 = param_1->endPositionFixed;
-    iVar2 = param_1->startPositionFixed;
+    iVar5 = pSpread->endPositionFixed;
+    iVar2 = pSpread->startPositionFixed;
     iVar7 = iVar5 - iVar2;
     local_14 = 0;
-    param_1->sampleWords[0] = 0;
+    pSpread->sampleWords[0] = 0;
     iVar6 = 1;
     if (iVar1 >= 1) {
-        piVar8 = param_1->sampleWords + 0xb;
+        piVar8 = pSpread->sampleWords + 0xb;
         do {
             iVar3 = Stage_GetSplitPositionFixed(iVar6);
             iVar4 = Stage_GetSplitPositionFixed(iVar6 - 1);
@@ -667,13 +668,13 @@ void StageTiming_BuildSplitInterpolationFactors(StageTimingSpread *param_1)
             if (iVar6 < local_20)
                 local_c = uVar7;
             if (iVar6 == local_20)
-                local_c = param_1->startPositionFixed - Stage_GetSplitPositionFixed(iVar6 - 1);
+                local_c = pSpread->startPositionFixed - Stage_GetSplitPositionFixed(iVar6 - 1);
             if (iVar6 > local_20)
                 local_c = 0;
             if (iVar6 < local_24)
                 local_8 = 0;
             if (iVar6 == local_24)
-                local_8 = Stage_GetSplitPositionFixed(iVar6) - param_1->endPositionFixed;
+                local_8 = Stage_GetSplitPositionFixed(iVar6) - pSpread->endPositionFixed;
             if (iVar6 > local_24)
                 local_8 = uVar7;
             *piVar8 = FixDiv(local_c, uVar7);
@@ -1233,7 +1234,7 @@ void StageTiming_SetNodeMeshAlpha(SceneNode *pNode, int alpha, BYTE checkFlag)
 // Interpolates 16 fixed-point samples per row from the car's 0x7c table into
 // pOut, weighting the two corner rows by the car's 0xa8/0xac offsets.
 // FUNCTION: CMR2 0x004564d0
-void StageTiming_InterpolateCarFixedSampleRows(StageTimingSpread *pCar, int *pOut)
+void StageTiming_InterpolateCarFixedSampleRows(StageTimingSpread *pSpread, int *pOut)
 {
     int f;
     int n;
@@ -1256,30 +1257,30 @@ void StageTiming_InterpolateCarFixedSampleRows(StageTimingSpread *pCar, int *pOu
     int v6;
     int v1b;
 
-    f = pCar->endBlendFixed;
-    n = pCar->startBlendFixed;
+    f = pSpread->endBlendFixed;
+    n = pSpread->startBlendFixed;
     rf = f - n;
     rn = 0x10000 - n;
     rc = 0x10000 - f;
     count = GetStageSplitCount();
     if (count >= 1) {
         off = 0x310;
-        pIn = &pCar->sampleWords[31];
+        pIn = &pSpread->sampleWords[31];
         pRow = pOut;
         do {
             p = pRow;
             pRow += 0x10;
             k = 0x10;
             do {
-                v1 = FixMul(FixMul(pIn[-0x14], rn), *(int *)(g_splitSpreadTable + off - 0x280));
-                v2 = FixMul(FixMul(pIn[-0x14], n), *(int *)(g_splitSpreadTable + off));
-                v3 = FixMul(FixMul(pIn[0], rc), *(int *)(g_splitSpreadTable + off - 0x280));
-                v4 = FixMul(FixMul(pIn[0], f), *(int *)(g_splitSpreadTable + off));
-                v5 = FixMul(pIn[-10], *(int *)(g_splitSpreadTable + off - 0x280));
-                v6 = FixMul(pIn[-10], *(int *)(g_splitSpreadTable + off));
-                // the original re-reads pCar+0xa8 here instead of using n
-                v1b = pCar->startBlendFixed + FixMul(rf, pIn[-0x1f]);
-                sum = pCar->startBlendFixed + FixMul(rf, pIn[-0x1e]) + v1b;
+                v1 = FixMul(FixMul(pIn[-0x14], rn), *(int *)((BYTE *)g_stageTimeProfile + off - 0x280));
+                v2 = FixMul(FixMul(pIn[-0x14], n), *(int *)((BYTE *)g_stageTimeProfile + off));
+                v3 = FixMul(FixMul(pIn[0], rc), *(int *)((BYTE *)g_stageTimeProfile + off - 0x280));
+                v4 = FixMul(FixMul(pIn[0], f), *(int *)((BYTE *)g_stageTimeProfile + off));
+                v5 = FixMul(pIn[-10], *(int *)((BYTE *)g_stageTimeProfile + off - 0x280));
+                v6 = FixMul(pIn[-10], *(int *)((BYTE *)g_stageTimeProfile + off));
+                // the original re-reads pSpread+0xa8 here instead of using n
+                v1b = pSpread->startBlendFixed + FixMul(rf, pIn[-0x1f]);
+                sum = pSpread->startBlendFixed + FixMul(rf, pIn[-0x1e]) + v1b;
                 t = FixDiv(sum, 0x20000);
                 // 0x456697 weights the second table by t, the first by 1-t
                 *p = FixMul(t, v6) + FixMul(0x10000 - t, v5) + v4 + v3 + v2 + v1;
@@ -1363,36 +1364,36 @@ void StageTiming_AllocateCarPartNodeTables(int count)
     CGame::RegisterCallback(StageTiming_FreeCarPartNodeTables, NULL);
 }
 
-struct Unk0x00539278 {
-    int field_0x0;
-    int field_0x4;
-    int field_0x8;
-    int field_0xc;
-    int field_0x10;
-    int field_0x14;
-    int field_0x18;
-    int field_0x1c;
-    int field_0x20;
-    int field_0x24;
-    int field_0x28;
-    signed char field_0x2c;         // device index, < 0 when none
+struct ForceFeedbackSlot {
+    int appliedSpring;          // the forces last sent: spring, damper, constant
+    int appliedDamper;
+    int appliedConstant;
+    int spring;                 // the forces of this step
+    int damper;
+    int constant;               // the steering force
+    int textureForce;           // ControllerData::textureForce, scales the steering force
+    int effectsForce;           // ControllerData::effectsForce, scales spring and damper
+    int roadNoise;              // random force of the road surface, alternating sign
+    int impactKick;             // fading kick of a front or rear impact
+    int impactShake;            // strength of the last impact, added to the road noise
+    signed char device;         // device index, < 0 when none
     BYTE pad_0x2d[3];
-    int field_0x30;
-    int field_0x34;                 // slot in use
+    int impactKickReversed;     // the kick pushes the other way
+    int active;                 // slot in use
 };
 
 // Force-feedback state of the two local players.
 // GLOBAL: CMR2 0x00539200
-Unk0x00539278 g_forceFeedbackSlots[2];
+ForceFeedbackSlot g_forceFeedbackSlots[2];
 // GLOBAL: CMR2 0x00539278
-Unk0x00539278 *g_pForceFeedbackSlot;
+ForceFeedbackSlot *g_pForceFeedbackSlot;
 
 // FUNCTION: CMR2 0x004246a0
 void ForceFeedback_CacheAppliedForces(void)
 {
     int i;
     for (i = 0; i < 3; i++)
-        (&g_pForceFeedbackSlot->field_0x0)[i] = (&g_pForceFeedbackSlot->field_0xc)[i];
+        (&g_pForceFeedbackSlot->appliedSpring)[i] = (&g_pForceFeedbackSlot->spring)[i];
 }
 
 // Re-applies the stored force-feedback values to the selected device.
@@ -1400,24 +1401,24 @@ void ForceFeedback_CacheAppliedForces(void)
 // FUNCTION: CMR2 0x00424560
 void ForceFeedback_ApplyStoredForces(void)
 {
-    if (g_pForceFeedbackSlot->field_0x10 != g_pForceFeedbackSlot->field_0x4)
-        CInput::SetConditionCoefficient(1, g_pForceFeedbackSlot->field_0x10,
-                                        g_pForceFeedbackSlot->field_0x2c);
-    if (g_pForceFeedbackSlot->field_0xc != g_pForceFeedbackSlot->field_0x0)
-        CInput::SetConditionCoefficient(0, g_pForceFeedbackSlot->field_0xc,
-                                        g_pForceFeedbackSlot->field_0x2c);
-    if (g_pForceFeedbackSlot->field_0x14 != g_pForceFeedbackSlot->field_0x8) {
+    if (g_pForceFeedbackSlot->damper != g_pForceFeedbackSlot->appliedDamper)
+        CInput::SetConditionCoefficient(1, g_pForceFeedbackSlot->damper,
+                                        g_pForceFeedbackSlot->device);
+    if (g_pForceFeedbackSlot->spring != g_pForceFeedbackSlot->appliedSpring)
+        CInput::SetConditionCoefficient(0, g_pForceFeedbackSlot->spring,
+                                        g_pForceFeedbackSlot->device);
+    if (g_pForceFeedbackSlot->constant != g_pForceFeedbackSlot->appliedConstant) {
         int gain;
         int direction;
 
-        gain = g_pForceFeedbackSlot->field_0x14;
+        gain = g_pForceFeedbackSlot->constant;
         if (gain < 0) {
             gain = -gain;
             direction = 0x2328;
         } else {
             direction = 0x6978;
         }
-        CInput::SetEffectGainAndDirection(2, gain, direction, g_pForceFeedbackSlot->field_0x2c);
+        CInput::SetEffectGainAndDirection(2, gain, direction, g_pForceFeedbackSlot->device);
     }
 }
 
@@ -1430,16 +1431,16 @@ void ForceFeedback_ActivateIdleSlots(void)
 
     for (slot = 0; slot < 2; slot++) {
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[slot];
-        if (g_pForceFeedbackSlot->field_0x34 == 0) {
-            if (g_pForceFeedbackSlot->field_0x2c >= 0) {
-                g_pForceFeedbackSlot->field_0x28 = 0;
-                g_pForceFeedbackSlot->field_0x24 = 0;
+        if (g_pForceFeedbackSlot->active == 0) {
+            if (g_pForceFeedbackSlot->device >= 0) {
+                g_pForceFeedbackSlot->impactShake = 0;
+                g_pForceFeedbackSlot->impactKick = 0;
                 for (i = 0; i < 3; i++) {
-                    (&g_pForceFeedbackSlot->field_0x0)[i] = 0;
-                    (&g_pForceFeedbackSlot->field_0xc)[i] = 0;
+                    (&g_pForceFeedbackSlot->appliedSpring)[i] = 0;
+                    (&g_pForceFeedbackSlot->spring)[i] = 0;
                 }
             }
-            g_pForceFeedbackSlot->field_0x34 = 1;
+            g_pForceFeedbackSlot->active = 1;
         }
     }
 }
@@ -1453,14 +1454,14 @@ void ForceFeedback_DeactivateSlots(void)
 
     for (slot = 0; slot < 2; slot++) {
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[slot];
-        if (g_pForceFeedbackSlot->field_0x34 != 0) {
-            if (g_pForceFeedbackSlot->field_0x2c >= 0) {
+        if (g_pForceFeedbackSlot->active != 0) {
+            if (g_pForceFeedbackSlot->device >= 0) {
                 ForceFeedback_CacheAppliedForces();
                 for (i = 0; i < 3; i++)
-                    (&g_pForceFeedbackSlot->field_0xc)[i] = 0;
+                    (&g_pForceFeedbackSlot->spring)[i] = 0;
                 ForceFeedback_ApplyStoredForces();
             }
-            g_pForceFeedbackSlot->field_0x34 = 0;
+            g_pForceFeedbackSlot->active = 0;
         }
     }
 }
@@ -1474,10 +1475,10 @@ void ForceFeedback_StopSlotForces(void)
 
     for (slot = 0; slot < 2; slot++) {
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[slot];
-        if (g_pForceFeedbackSlot->field_0x34 != 0 && g_pForceFeedbackSlot->field_0x2c >= 0) {
+        if (g_pForceFeedbackSlot->active != 0 && g_pForceFeedbackSlot->device >= 0) {
             ForceFeedback_CacheAppliedForces();
             for (i = 0; i < 3; i++)
-                (&g_pForceFeedbackSlot->field_0xc)[i] = 0;
+                (&g_pForceFeedbackSlot->spring)[i] = 0;
             ForceFeedback_ApplyStoredForces();
         }
     }
@@ -1489,8 +1490,32 @@ void ForceFeedback_ComputeConditionCoefficients(void);
 void ForceFeedback_ComputeRoadNoise(void);
 void ForceFeedback_FadeImpulseForces(void);
 
-extern int g_unk0x00539270[2];
+extern int g_forceFeedbackFrontOnGround[2];
 extern Car *g_pForceFeedbackCar;
+
+// PORT: gamepads have rumble motors rather than a wheel's forces. They
+// follow the amplitude the game gives its road noise (ComputeRoadNoise): the
+// roughness of the surface under the front wheels, growing with speed up to
+// about 90 km/h, plus impacts. The surface is a light texture on the high
+// frequency motor (8% on a gravel road at speed, 16% on its verge), so that
+// it does not drone through a stage; impacts drive the low frequency one.
+static void ForceFeedback_UpdateRumble(int view)
+{
+    int speed;
+    int surface;
+    int impact;
+
+    if (g_pForceFeedbackSlot->device < 0)
+        return;
+    speed = g_pForceFeedbackCar->speed;
+    if (speed > 0x10000)
+        speed = 0x10000;
+    else if (speed < 0)
+        speed = 0;
+    surface = FixMul(g_pForceFeedbackCar->cornerGrip[0].field_0x1c + g_pForceFeedbackCar->cornerGrip[1].field_0x1c, speed);
+    impact = g_pForceFeedbackSlot->impactShake;
+    Input_SetRumble(view, impact, surface + impact / 2);
+}
 
 // Selects the force-feedback slot and car of a player, copies the car's
 // centring state into the shared road-rumble values and re-applies the slot's
@@ -1501,13 +1526,13 @@ void ForceFeedback_UpdatePlayerSlot(int view)
     g_pForceFeedbackSlot = &g_forceFeedbackSlots[view];
     g_pForceFeedbackCar = Car_Get(view);
     if (g_pForceFeedbackCar->field_0xb74 != 0) {
-        g_unk0x00539270[0] = g_pForceFeedbackCar->cornerOnGround[0];
-        g_unk0x00539270[1] = g_pForceFeedbackCar->cornerOnGround[1];
+        g_forceFeedbackFrontOnGround[0] = g_pForceFeedbackCar->cornerOnGround[0];
+        g_forceFeedbackFrontOnGround[1] = g_pForceFeedbackCar->cornerOnGround[1];
     } else {
-        g_unk0x00539270[0] = 0;
-        g_unk0x00539270[1] = 0;
+        g_forceFeedbackFrontOnGround[0] = 0;
+        g_forceFeedbackFrontOnGround[1] = 0;
     }
-    if (g_pForceFeedbackSlot->field_0x34 != 0) {
+    if (g_pForceFeedbackSlot->active != 0) {
         ForceFeedback_CacheAppliedForces();
         ForceFeedback_ComputeAxleRumble();
         ForceFeedback_ComputeRoadNoise();
@@ -1515,6 +1540,7 @@ void ForceFeedback_UpdatePlayerSlot(int view)
         ForceFeedback_ComputeConditionCoefficients();
         ForceFeedback_FadeImpulseForces();
         ForceFeedback_ApplyStoredForces();
+        ForceFeedback_UpdateRumble(view);   // PORT
     }
 }
 
@@ -1522,15 +1548,15 @@ void ForceFeedback_UpdatePlayerSlot(int view)
 // FUNCTION: CMR2 0x00424c00
 void ForceFeedback_FadeImpulseForces(void)
 {
-    if (g_pForceFeedbackSlot->field_0x24 > 0) {
-        g_pForceFeedbackSlot->field_0x24 -= 0x1999;
-        if (g_pForceFeedbackSlot->field_0x24 < 0)
-            g_pForceFeedbackSlot->field_0x24 = 0;
+    if (g_pForceFeedbackSlot->impactKick > 0) {
+        g_pForceFeedbackSlot->impactKick -= 0x1999;
+        if (g_pForceFeedbackSlot->impactKick < 0)
+            g_pForceFeedbackSlot->impactKick = 0;
     }
-    if (g_pForceFeedbackSlot->field_0x28 > 0) {
-        g_pForceFeedbackSlot->field_0x28 -= 0x1999;
-        if (g_pForceFeedbackSlot->field_0x28 < 0)
-            g_pForceFeedbackSlot->field_0x28 = 0;
+    if (g_pForceFeedbackSlot->impactShake > 0) {
+        g_pForceFeedbackSlot->impactShake -= 0x1999;
+        if (g_pForceFeedbackSlot->impactShake < 0)
+            g_pForceFeedbackSlot->impactShake = 0;
     }
 }
 
@@ -1572,50 +1598,49 @@ int g_stageDeformFalloff;
 // GLOBAL: CMR2 0x00588a7c
 int g_stageDeformScale;
 
-// Reads entry `index` of the 0x4b0-byte tail of a car's 0x4d0-byte record.
+// Returns the stored hidden flag for one of the car's four moving-part slots.
 // FUNCTION: CMR2 0x00469bc0
-int StageTiming_GetCarReplayTailEntry(void *pCar, int index)
+int CarPart_GetHiddenState(Car *pCar, int slot)
 {
-    return g_carPartSets[((Car *)pCar)->index].partHidden[index];
+    return g_carPartSets[pCar->index].partHidden[slot];
 }
 
-// Release callback of StageTiming_AllocateCarReplayRecordTables: frees the per-record part tables
-// (0x588b9c), the per-record buffers (0x588ba0) and the record arrays.
+// Releases the original geometry copies and both per-car damage/part arrays.
 // FUNCTION: CMR2 0x00466680
-int StageTiming_FreeCarReplayRecordTables(void)
+int CarPart_FreeTables(void)
 {
-    DeformVertex ***pParts;
-    BYTE **pBuffers;
-    int i;
-    int j;
+    DeformVertex ***pVertexTables;
+    BYTE **pNodeTypeTables;
+    int carIndex;
+    int partIndex;
 
     if (g_carOriginalPartVertices != NULL) {
-        pParts = g_carOriginalPartVertices;
-        for (i = 0; i < g_carPartSetCount; i++) {
-            if (g_carOriginalPartVertices[i] != NULL) {
-                for (j = 0; j < g_carPartSets[i].count; j++) {
-                    if (g_carOriginalPartVertices[i][j] != NULL) {
-                        CFileBuffer::FreeGenericFileBuffer(g_carOriginalPartVertices[i][j]);
-                        g_carOriginalPartVertices[i][j] = NULL;
+        pVertexTables = g_carOriginalPartVertices;
+        for (carIndex = 0; carIndex < g_carPartSetCount; carIndex++) {
+            if (g_carOriginalPartVertices[carIndex] != NULL) {
+                for (partIndex = 0; partIndex < g_carPartSets[carIndex].count; partIndex++) {
+                    if (g_carOriginalPartVertices[carIndex][partIndex] != NULL) {
+                        CFileBuffer::FreeGenericFileBuffer(g_carOriginalPartVertices[carIndex][partIndex]);
+                        g_carOriginalPartVertices[carIndex][partIndex] = NULL;
                     }
                 }
-                CFileBuffer::FreeGenericFileBuffer(g_carOriginalPartVertices[i]);
-                g_carOriginalPartVertices[i] = NULL;
+                CFileBuffer::FreeGenericFileBuffer(g_carOriginalPartVertices[carIndex]);
+                g_carOriginalPartVertices[carIndex] = NULL;
             }
         }
         CFileBuffer::FreeGenericFileBuffer(g_carOriginalPartVertices);
         g_carOriginalPartVertices = NULL;
     }
     if (g_carOriginalPartNodeTypes != NULL) {
-        pBuffers = g_carOriginalPartNodeTypes;
-        for (i = 0; i < g_carPartSetCount; i++) {
-            if (pBuffers[i] != NULL) {
-                CFileBuffer::FreeGenericFileBuffer(pBuffers[i]);
-                g_carOriginalPartNodeTypes[i] = NULL;
-                pBuffers = g_carOriginalPartNodeTypes;
+        pNodeTypeTables = g_carOriginalPartNodeTypes;
+        for (carIndex = 0; carIndex < g_carPartSetCount; carIndex++) {
+            if (pNodeTypeTables[carIndex] != NULL) {
+                CFileBuffer::FreeGenericFileBuffer(pNodeTypeTables[carIndex]);
+                g_carOriginalPartNodeTypes[carIndex] = NULL;
+                pNodeTypeTables = g_carOriginalPartNodeTypes;
             }
         }
-        CFileBuffer::FreeGenericFileBuffer(pBuffers);
+        CFileBuffer::FreeGenericFileBuffer(pNodeTypeTables);
         g_carOriginalPartNodeTypes = NULL;
     }
     if (g_carPartSets != NULL) {
@@ -1631,28 +1656,25 @@ int StageTiming_FreeCarReplayRecordTables(void)
 }
 
 // FUNCTION: CMR2 0x004667c0
-void StageTiming_AllocateCarReplayRecordTables(int count)
+void CarPart_AllocateTables(int count)
 {
-    int i;
-    int offset;
+    int carIndex;
 
     g_carPartSets = (CarPartSet *)CFileBuffer::AllocateLockedBuffer(count * sizeof(CarPartSet));
     g_carDamageRecords = (CarDamageRecord *)CFileBuffer::AllocateLockedBuffer(count * sizeof(CarDamageRecord));
     g_carOriginalPartVertices = (DeformVertex ***)CFileBuffer::AllocateLockedBuffer(count * sizeof(*g_carOriginalPartVertices));
     g_carOriginalPartNodeTypes = (BYTE **)CFileBuffer::AllocateLockedBuffer(count * sizeof(*g_carOriginalPartNodeTypes));
     g_carPartSetCount = count;
-    i = 0;
-    if (i < g_carPartSetCount) {
-        offset = 0;
+    carIndex = 0;
+    if (carIndex < g_carPartSetCount) {
         do {
-            g_carOriginalPartNodeTypes[i] = 0;
-            g_carOriginalPartVertices[i] = 0;
-            g_carPartSetLookup[i] = (CarPartSet *)((BYTE *)g_carPartSets + offset);
-            offset += sizeof(CarPartSet);
-            i++;
-        } while (i < g_carPartSetCount);
+            g_carOriginalPartNodeTypes[carIndex] = 0;
+            g_carOriginalPartVertices[carIndex] = 0;
+            g_carPartSetLookup[carIndex] = &g_carPartSets[carIndex];
+            carIndex++;
+        } while (carIndex < g_carPartSetCount);
     }
-    CGame::RegisterCallback(StageTiming_FreeCarReplayRecordTables, NULL);
+    CGame::RegisterCallback(CarPart_FreeTables, NULL);
 }
 
 // Sets up the whole force-feedback effect set (spring, damper, constant force)
@@ -1662,15 +1684,15 @@ void ForceFeedback_CreateEffects(void)
 {
     int i;
 
-    CInput::CreateSpringEffect(-1, 0x2710, 0, -1, g_pForceFeedbackSlot->field_0x2c);
-    CInput::SetConditionCoefficient(0, 0, g_pForceFeedbackSlot->field_0x2c);
-    CInput::CreateDamperEffect(-1, 0, 0, -1, g_pForceFeedbackSlot->field_0x2c);
-    CInput::SetConditionCoefficient(1, 0, g_pForceFeedbackSlot->field_0x2c);
+    CInput::CreateSpringEffect(-1, 0x2710, 0, -1, g_pForceFeedbackSlot->device);
+    CInput::SetConditionCoefficient(0, 0, g_pForceFeedbackSlot->device);
+    CInput::CreateDamperEffect(-1, 0, 0, -1, g_pForceFeedbackSlot->device);
+    CInput::SetConditionCoefficient(1, 0, g_pForceFeedbackSlot->device);
     CInput::CreateConstantForceEffect(-1, 0, 0x2710, 0, 0, 0, 0, -1,
-                                      g_pForceFeedbackSlot->field_0x2c);
-    CInput::SetEffectGain(2, 0, g_pForceFeedbackSlot->field_0x2c);
+                                      g_pForceFeedbackSlot->device);
+    CInput::SetEffectGain(2, 0, g_pForceFeedbackSlot->device);
     for (i = 0; i < 3; i++)
-        CInput::StartForceFeedbackEffect(i, g_pForceFeedbackSlot->field_0x2c);
+        CInput::StartForceFeedbackEffect(i, g_pForceFeedbackSlot->device);
 }
 
 // GLOBAL: CMR2 0x00591af0
@@ -2190,9 +2212,9 @@ void CarDamage_AllocateImpactDeformRecord(void)
 }
 
 // FUNCTION: CMR2 0x00469680
-CarPartSet *StageTiming_GetCarReplayRecord(int index)
+CarPartSet *CarPart_GetSet(int carIndex)
 {
-    return g_carPartSetLookup[index];
+    return g_carPartSetLookup[carIndex];
 }
 
 // Restricts a deformed vertex to the per-axis displacement limits and writes it
@@ -2346,7 +2368,7 @@ void StageDeform_ApplyRadialDent(void)
                 phase = (phase & ~0x7f) % 0x400 * 0x40;
                 if (phase < 0x8000)
                     phase -= 0x10000;
-                depth = FixMul(depth, phase);
+                depth = FixMul(phase, depth);
                 limit.x = (int)((DeformMeshSources *)pSlot)->vertices[0][vertexIndex].normal8[0] << 9;
                 limit.y = (int)((DeformMeshSources *)pSlot)->vertices[0][vertexIndex].normal8[1] << 9;
                 limit.z = (int)((DeformMeshSources *)pSlot)->vertices[0][vertexIndex].normal8[2] << 9;
@@ -2588,7 +2610,7 @@ Car *g_partCar;
 // Rotates the basis kept at 0x17c with the given angles and writes the three
 // axes into the object's matrix.
 // FUNCTION: CMR2 0x00481560
-void StageTiming_RotatePartBasisFromAngles(unsigned short *pAngles)
+void CarPart_StoreRotatedBasis(unsigned short *pAngles)
 {
     FixBasis basis;
 
@@ -3328,22 +3350,22 @@ int StageTiming_FindModelPartByNodeType(unsigned int type, CarPartSet *pModel)
     return -1;
 }
 
-// Reads the two values at +0x4a0 of the car's 0x4d0-byte record.
+// Returns breakage of the two light model parts (break slots 4 and 5).
 // FUNCTION: CMR2 0x00466870
-void StageTiming_ReadCarReplayTailValues(int *pA, int *pB, Car *pCar)
+void CarLight_GetBrokenFlags(int *pBroken0, int *pBroken1, Car *pCar)
 {
-    *pA = g_carPartSets[pCar->index].partBroken[4];
-    *pB = g_carPartSets[pCar->index].partBroken[5];
+    *pBroken0 = g_carPartSets[pCar->index].partBroken[4];
+    *pBroken1 = g_carPartSets[pCar->index].partBroken[5];
 }
 
-// Clears `count` stage records (0x4d0 bytes) from `first`.
+// Clears `count` part sets starting at car index `first`.
 // FUNCTION: CMR2 0x004669b0
-void StageTiming_ClearCarReplayRecordRange(int first, int count)
+void CarPart_ClearSetRange(int first, int count)
 {
-    int i;
+    int carIndex;
 
-    for (i = first; i < count + first; i++)
-        memset(g_carPartSets + i, 0, sizeof(CarPartSet));
+    for (carIndex = first; carIndex < count + first; carIndex++)
+        memset(g_carPartSets + carIndex, 0, sizeof(CarPartSet));
 }
 
 // GLOBAL: CMR2 0x00542d58
@@ -3483,21 +3505,21 @@ extern BYTE g_carPartModelIndices[4][8];
 
 // Clears every car's four 0x1a0-byte record arrays and the slot tables.
 // FUNCTION: CMR2 0x00480980
-void StageTiming_ResetCarPartRecordsAndSlots(void)
+void CarPart_ResetMovingStateTables(void)
 {
-    PartState **pp;
-    int i;
-    int offset;
+    PartState **pSlot;
+    int carIndex;
+    int recordOffset;
 
-    for (pp = g_carPartStateTables.parts; (INT_PTR)pp < (INT_PTR)(g_carPartStateTables.parts + 4); pp++) {
-        i = 0;
+    for (pSlot = g_carPartStateTables.parts; (INT_PTR)pSlot < (INT_PTR)(g_carPartStateTables.parts + 4); pSlot++) {
+        carIndex = 0;
         if (g_carPartTableCarCount > 0) {
-            offset = 0;
+            recordOffset = 0;
             do {
-                memset((BYTE *)*pp + offset, 0, sizeof(PartState));
-                i++;
-                offset += sizeof(PartState);
-            } while (i < g_carPartTableCarCount);
+                memset((BYTE *)*pSlot + recordOffset, 0, sizeof(PartState));
+                carIndex++;
+                recordOffset += sizeof(PartState);
+            } while (carIndex < g_carPartTableCarCount);
         }
     }
     memset(g_carPartNodes, 0, sizeof(g_carPartNodes));
@@ -3579,7 +3601,7 @@ void StageTiming_ResetWheelWearRecord(int player, int wheel)
 }
 
 // GLOBAL: CMR2 0x00590c68
-int g_unk0x00590c68;
+int g_carPartVibrationAngle;
 
 // Turns the vehicle about its vertical axis by the per-frame rate, toward the
 // side given by its orientation.
@@ -3591,22 +3613,22 @@ void CarPart_IntegrateVerticalAxisTurn(void)
 
     if ((g_partState->flags & 0xf0) == 0x20) {
         angles[0] = 0;
-        int direction = *(int *)&g_partState->basis;
+        int direction = g_partState->basis.right.x;
         angles[1] = 0;
         if (direction < 0)
-            angles[2] = (unsigned short)g_unk0x00590c68;
+            angles[2] = (unsigned short)g_carPartVibrationAngle;
         else
-            angles[2] = (unsigned short)-g_unk0x00590c68;
+            angles[2] = (unsigned short)-g_carPartVibrationAngle;
     } else {
-        int direction = *(int *)&g_partState->basis;
+        int direction = g_partState->basis.right.x;
         angles[0] = 0;
         angles[1] = 0;
         if (direction > 0)
-            angles[2] = (unsigned short)g_unk0x00590c68;
+            angles[2] = (unsigned short)g_carPartVibrationAngle;
         else
-            angles[2] = (unsigned short)-g_unk0x00590c68;
+            angles[2] = (unsigned short)-g_carPartVibrationAngle;
     }
-    StageTiming_RotatePartBasisFromAngles(angles);
+    CarPart_StoreRotatedBasis(angles);
     VehicleMotion_UpdateWorldPosition();
 }
 
@@ -3620,23 +3642,22 @@ int RallyData_GetRouteAvailabilityState(void);
 
 // Lays out count 0x1720-byte car records from p and offsets their route
 // points by the route origin; returns the end of the records.
-// match 67%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
 // FUNCTION: CMR2 0x00498590
 BYTE *StageTiming_RelocateCarRecordRoutePoints(BYTE *p, BYTE **unused, int count)
 {
     int origin[3];
-    short points;
-    AIReferenceRoute **pp;
+    int points;
+    int n;
     int i;
 
     RallyData_GetRouteNodeGroundPosition(0, origin);
     points = RallyData_GetRouteAvailabilityState();
-    for (pp = g_aiReferenceRoutes + 1; count > 0; count--, pp++) {
-        *pp = (AIReferenceRoute *)p;
+    for (n = 1; n <= count; n++) {
+        g_aiReferenceRoutes[n] = (AIReferenceRoute *)p;
         p += sizeof(AIReferenceRoute);
         for (i = 0; i < points; i++) {
-            (*pp)->positionX[i] += origin[0];
-            (*pp)->positionZ[i] += origin[2];
+            g_aiReferenceRoutes[n]->positionX[i] += origin[0];
+            g_aiReferenceRoutes[n]->positionZ[i] += origin[2];
         }
     }
     return p;
@@ -3844,7 +3865,6 @@ void StageTiming_ResetScaledViewObjectStates(void)
 }
 
 // Commits (or, with a == b == 0, first resets) the tyre wear of count players.
-// match 70%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
 // FUNCTION: CMR2 0x0045c610
 void CarTyres_CommitPlayerWear(int a, int b, int count)
 {
@@ -3863,13 +3883,16 @@ void CarTyres_CommitPlayerWear(int a, int b, int count)
             for (j = 0; j < 4; j++, w++) {
                 if (a == 0 && b == 0) {
                     w[0] = w[-0xc];
-                    w[-8] = (w[-0x10] < w[-0x14]) ? w[-0x14] : w[-0x10];
+                    if (w[-0x14] > w[-0x10])
+                        w[-8] = w[-0x14];
+                    else
+                        w[-8] = w[-0x10];
                     w[-4] = 0;
                 }
+                w[0xc] = w[0];
                 w[4] = w[-4];
                 w[8] = w[-8];
                 RallyData_MarkDriverRecordDirty((StageUI_GetRaceEndEventCount() & 0xff) + i);
-                w[0xc] = w[0];
                 Tyre_AddWear(i, j, 0, 0);
             }
         }
@@ -3878,21 +3901,21 @@ void CarTyres_CommitPlayerWear(int a, int b, int count)
 
 // Resets the stage snapshots, then restores the active impact pool and damage.
 // FUNCTION: CMR2 0x00466920
-void StageTiming_ResetCarReplayRecord(CarDamageRecord *p)
+void CarDamage_ResetRecord(CarDamageRecord *pRecord)
 {
     int i;
 
-    p->stageImpacts.count = 0;
-    p->stageImpacts.firstLink = 0;
+    pRecord->stageImpacts.count = 0;
+    pRecord->stageImpacts.firstLink = 0;
     for (i = 0; i < 20; i++)
-        p->stageImpacts.links[i].next = 0xff;
-    memset(p->stageDamage.intensity, 0, sizeof(p->stageDamage.intensity));
+        pRecord->stageImpacts.links[i].next = 0xff;
+    memset(pRecord->stageDamage.intensity, 0, sizeof(pRecord->stageDamage.intensity));
     for (i = 0; i < 4; i++)
-        p->stageDamage.partHidden[i] = 0;
+        pRecord->stageDamage.partHidden[i] = 0;
     for (i = 0; i < 3; i++)
-        p->stageDamage.lineGrounded[i] = 0;
-    memcpy(&p->impacts, &p->stageImpacts, sizeof(p->impacts));
-    memcpy(&p->damage, &p->stageDamage, sizeof(p->damage));
+        pRecord->stageDamage.lineGrounded[i] = 0;
+    memcpy(&pRecord->impacts, &pRecord->stageImpacts, sizeof(pRecord->impacts));
+    memcpy(&pRecord->damage, &pRecord->stageDamage, sizeof(pRecord->damage));
 }
 
 int Stage_GetDriverCount(void);
@@ -3960,38 +3983,37 @@ void StageTiming_InterpolateMovingPartMatrices(int t)
 
 // GLOBAL: CMR2 0x00590d78
 CarPartSet *g_partSet;
-extern BYTE g_wheelSlotDamageIndices[4];
+extern BYTE g_carPartDamageIndices[4];
 
-void StageObject_SetReplayEntryHitFlag(Car *pCar, int index);
+void CarPart_MarkHidden(Car *pCar, int slot);
 
-// Clears the low bit of the vehicle's part-state byte and re-selects the part
-// index held in its high nibble.
+// Deactivates the current moving part and marks its high-nibble slot hidden.
 // FUNCTION: CMR2 0x00483010
-void StageTiming_ClearPartFlagAndReselectIndex(void)
+void CarPart_DeactivateAndMarkHidden(void)
 {
     g_partState->flags &= 0xfe;
-    StageObject_SetReplayEntryHitFlag(g_partCar, g_partState->flags >> 4);
+    CarPart_MarkHidden(g_partCar, g_partState->flags >> 4);
 }
 
-// Starts a part's swing when the load on its side exceeds 0.8: the swing
-// speed (+0x11c) is added or removed depending on which wheel is loaded more.
+// Starts a part's swing above its damage threshold. The paired damage values
+// select which end of the local Z extent becomes the pivot.
 // FUNCTION: CMR2 0x00483050
-void StageTiming_StartLoadedPartSwing(void)
+void CarPart_StartDamageSwing(void)
 {
-    int idx;
-    int a;
-    int b;
+    int damageIndex;
+    int firstDamageIndex;
+    int secondDamageIndex;
 
-    idx = g_wheelSlotDamageIndices[g_partState->flags >> 4];
-    if (g_partSet->damageValues[idx] > 0xcccc) {
+    damageIndex = g_carPartDamageIndices[g_partState->flags >> 4];
+    if (g_partSet->damageValues[damageIndex] > 0xcccc) {
         if ((g_partState->flags & 0xf0) == 0x10) {
-            a = 2;
-            b = 3;
+            firstDamageIndex = 2;
+            secondDamageIndex = 3;
         } else {
-            a = 0;
-            b = 1;
+            firstDamageIndex = 0;
+            secondDamageIndex = 1;
         }
-        if (g_partSet->damageValues[a] > g_partSet->damageValues[b])
+        if (g_partSet->damageValues[firstDamageIndex] > g_partSet->damageValues[secondDamageIndex])
             g_partState->position.z -= g_partState->swingAxis.z;
         else
             g_partState->position.z += g_partState->swingAxis.z;
@@ -4006,18 +4028,18 @@ int g_deformImpactTicks[2];
 // GLOBAL: CMR2 0x00588a88
 int g_deformPulseTicks[2];
 
-// Resets every car's replay recording record.
+// Resets every car's damage record and both local-player deform cooldowns.
 // FUNCTION: CMR2 0x004668d0
-void StageTiming_ResetAllCarReplayRecords(void)
+void CarDamage_ResetAllRecords(void)
 {
-    int i;
+    int index;
 
-    for (i = g_carPartSetCount - 1; i >= 0; i--)
-        StageTiming_ResetCarReplayRecord((g_carDamageRecords + i));
-    for (i = 0; i < 2; i++)
-        g_deformPulseTicks[i] = 0;
-    for (i = 0; i < 2; i++)
-        g_deformImpactTicks[i] = 0;
+    for (index = g_carPartSetCount - 1; index >= 0; index--)
+        CarDamage_ResetRecord((g_carDamageRecords + index));
+    for (index = 0; index < 2; index++)
+        g_deformPulseTicks[index] = 0;
+    for (index = 0; index < 2; index++)
+        g_deformImpactTicks[index] = 0;
 }
 
 void Events_Init(char *unused, int slot, char animate);
@@ -4451,10 +4473,10 @@ extern double g_minus65536;
 // match 47%: the whole FixMul/FixDiv chain matches instruction for instruction, but MSVC6 assigns the
 // stack slots in a different order (the original spills into the dead parameter homes, EBP+8/EBP+0xc);
 // only the [ebp-N] numbers and a few load orders differ. Kept as FUNCTION.
-// Bilinear blend of a car's 5-byte-wide paint-decal rows (0x54241c) into 16
-// fixed-point samples, weighted by the car's two paint offsets (0xa8/0xac).
+// Blends the sixteen drivers' five-byte tuning records into fixed-point
+// ordering values, weighted by the timing workspace's endpoint parameters.
 // FUNCTION: CMR2 0x00455f00
-void StageTiming_BlendCarPaintDecalRows(StageTimingSpread *pCar, int *pOut)
+void StageTiming_BlendDriverTimeTuning(StageTimingSpread *pSpread, int *pOut)
 {
     __int64 v;
     int t;
@@ -4489,17 +4511,17 @@ void StageTiming_BlendCarPaintDecalRows(StageTimingSpread *pCar, int *pOut)
     // The original computes this and discards it (inline __asm FixMul is opaque
     // to MSVC6, so it cannot be eliminated); reproduced to match the codegen.
     FixMul(0x20000, t);
-    a8 = pCar->startBlendFixed;
-    ac = pCar->endBlendFixed;
+    a8 = pSpread->startBlendFixed;
+    ac = pSpread->endBlendFixed;
     r8 = 0x10000 - a8;
     rc = 0x10000 - ac;
     sum = r8 + rc;
-    for (i = 0; i < 0x50; i += 5, pOut++) {
-        d3 = (int)FTOI(__int64, X87S_MUL(g_splitSpreadTable[i + 3], CGraphics::m_65536));
-        d4 = (int)FTOI(__int64, X87S_MUL(g_splitSpreadTable[i + 4], CGraphics::m_65536));
-        d0 = (int)FTOI(__int64, X87S_MUL(g_splitSpreadTable[i], CGraphics::m_65536));
-        t1 = FixDiv(pCar->startPositionFixed, t);
-        t2 = FixDiv(t - pCar->endPositionFixed, t);
+    for (i = 0; i < 16; i++, pOut++) {
+        d3 = (int)FTOI(__int64, X87S_MUL(g_stageTimeProfile->drivers[i].blend0Adjustment, CGraphics::m_65536));
+        d4 = (int)FTOI(__int64, X87S_MUL(g_stageTimeProfile->drivers[i].blend1Adjustment, CGraphics::m_65536));
+        d0 = (int)FTOI(__int64, X87S_MUL(g_stageTimeProfile->drivers[i].baseValue, CGraphics::m_65536));
+        t1 = FixDiv(pSpread->startPositionFixed, t);
+        t2 = FixDiv(t - pSpread->endPositionFixed, t);
         t3 = 0x10000 - t2 - t1;
         m1 = FixMul(r8, d3);
         m2 = FixMul(t1, m1);
@@ -4517,10 +4539,11 @@ void StageTiming_BlendCarPaintDecalRows(StageTimingSpread *pCar, int *pOut)
     }
 }
 
-// Adds a random spread to the computer drivers' times and sorts them.
+// Adds the signed tuning range to the sixteen ordering values and sorts
+// driver indices. The endpoints are randomAdd and -randomSubtract.
 // match 84%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
 // FUNCTION: CMR2 0x00456110
-void StageTiming_RandomizeComputerTimes(int *pTimes)
+void StageTiming_RandomizeAndSortDriverTimeTuning(int *pTimes)
 {
     int split = GetStageSplitCount();
     int i;
@@ -4529,9 +4552,9 @@ void StageTiming_RandomizeComputerTimes(int *pTimes)
     int high;
     unsigned int r;
 
-    for (i = 0; i < 0x50; i += 5, p++) {
-        low = (int)FTOI(__int64, X87S_MUL(g_splitSpreadTable[i + 2], CGraphics::m_65536));
-        high = (int)FTOI(__int64, X87S_MUL(g_splitSpreadTable[i + 1], g_minus65536));
+    for (i = 0; i < 16; i++, p++) {
+        low = (int)FTOI(__int64, X87S_MUL(g_stageTimeProfile->drivers[i].randomAdd, CGraphics::m_65536));
+        high = (int)FTOI(__int64, X87S_MUL(g_stageTimeProfile->drivers[i].randomSubtract, g_minus65536));
         r = (unsigned int)FTOI(__int64, X87S_MUL(rand(), CGraphics::m_65536));
         *p += FixMul(FixDiv(r, 0x7fff0000), -low - high) + low;
     }
@@ -4780,11 +4803,11 @@ void StageTiming_RecordPassedCarSplit(int car, int driver)
 // GLOBAL: CMR2 0x005391f8
 int g_roadRumbleStrength[2];
 // GLOBAL: CMR2 0x00539270
-int g_unk0x00539270[2];
+int g_forceFeedbackFrontOnGround[2];
 // GLOBAL: CMR2 0x0053937c
 Car *g_pForceFeedbackCar;
 // GLOBAL: CMR2 0x00539380
-int g_unk0x00539380;
+int g_forceFeedbackRoadRumble;
 
 // Builds the steering force from the two front-corner axes, the wheel speed,
 // and the force-feedback slot's current centring/impact state.
@@ -4799,14 +4822,14 @@ void ForceFeedback_ComputeSteeringForce(void)
     int speed;
 
     force = g_roadRumbleStrength[1] - g_roadRumbleStrength[0];
-    if (g_unk0x00539270[0] != 0) {
+    if (g_forceFeedbackFrontOnGround[0] != 0) {
         pAxis = &g_pForceFeedbackCar->cornerAxis[0];
         pForward = &g_pForceFeedbackCar->forward;
         left = FixVecDot(pForward, pAxis);
     } else {
         left = 0;
     }
-    if (g_unk0x00539270[1] != 0) {
+    if (g_forceFeedbackFrontOnGround[1] != 0) {
         pAxis = &g_pForceFeedbackCar->cornerAxis[1];
         pForward = &g_pForceFeedbackCar->forward;
         right = FixVecDot(pForward, pAxis);
@@ -4824,19 +4847,19 @@ void ForceFeedback_ComputeSteeringForce(void)
         speed = 0;
     force = FixMul(speed, force);
     force = FixMul(force, 0x6666);
-    force += g_pForceFeedbackSlot->field_0x20;
-    if (g_pForceFeedbackSlot->field_0x30 != 0)
-        force += g_pForceFeedbackSlot->field_0x24;
+    force += g_pForceFeedbackSlot->roadNoise;
+    if (g_pForceFeedbackSlot->impactKickReversed != 0)
+        force += g_pForceFeedbackSlot->impactKick;
     else
-        force -= g_pForceFeedbackSlot->field_0x24;
+        force -= g_pForceFeedbackSlot->impactKick;
     if (FIX_ABS(force) > 0x10000)
         force = force > 0 ? 0x10000 : -0x10000;
 
-    speed = FixMul(0x40000, g_pForceFeedbackSlot->field_0x18);
+    speed = FixMul(0x40000, g_pForceFeedbackSlot->textureForce);
     force = FixMul(force, speed);
     if (FIX_ABS(force) > 0x10000)
         force = force > 0 ? 0x10000 : -0x10000;
-    g_pForceFeedbackSlot->field_0x14 = FixMul(force, 0x27100000) >> 16;
+    g_pForceFeedbackSlot->constant = FixMul(force, 0x27100000) >> 16;
 }
 
 // Computes each axle's rumble from its suspension travel and stiffness,
@@ -4850,7 +4873,7 @@ void ForceFeedback_ComputeAxleRumble(void)
     Car *p = g_pForceFeedbackCar;
 
     for (i = 0; i < 2; i++) {
-        if (g_unk0x00539270[i] == 0) {
+        if (g_forceFeedbackFrontOnGround[i] == 0) {
             g_roadRumbleStrength[i] = 0;
         } else {
             g_roadRumbleStrength[i] = p->wheelSurfaceFx[i].extraGrip + p->cornerGrip[i].grip2B;
@@ -4869,7 +4892,7 @@ void ForceFeedback_ComputeAxleRumble(void)
                 g_roadRumbleStrength[i] = 0x10000;
         }
     }
-    g_unk0x00539380 = FixMul(g_roadRumbleStrength[1] + g_roadRumbleStrength[0], 0x8000);
+    g_forceFeedbackRoadRumble = FixMul(g_roadRumbleStrength[1] + g_roadRumbleStrength[0], 0x8000);
 }
 
 // Builds the two condition-effect coefficients from the car's velocity,
@@ -4884,9 +4907,9 @@ void ForceFeedback_ComputeConditionCoefficients(void)
     int damper;
     int speed;
 
-    spring = FixMul(g_unk0x00539380, 0x6666) + 0x1999;
-    damper = FixMul(g_unk0x00539380, 0x4ccc);
-    if (g_unk0x00539270[0] != 0 && g_unk0x00539270[1] != 0) {
+    spring = FixMul(g_forceFeedbackRoadRumble, 0x6666) + 0x1999;
+    damper = FixMul(g_forceFeedbackRoadRumble, 0x4ccc);
+    if (g_forceFeedbackFrontOnGround[0] != 0 && g_forceFeedbackFrontOnGround[1] != 0) {
         pForward = &g_pForceFeedbackCar->forward;
         pVelocity = &g_pForceFeedbackCar->velocity;
         contact = FixVecDot(pForward, pVelocity);
@@ -4907,22 +4930,23 @@ void ForceFeedback_ComputeConditionCoefficients(void)
             spring += FixMul(-spring, speed);
             if (spring < 0)
                 spring = 0;
-            damper += FixMul(0x8000, speed);
+            contact = 0x8000;
+            damper += FixMul(contact, speed);
             if (damper > 0x10000)
                 damper = 0x10000;
         }
     }
 
-    speed = FixMul(0x40000, g_pForceFeedbackSlot->field_0x1c);
+    speed = FixMul(0x40000, g_pForceFeedbackSlot->effectsForce);
     spring = FixMul(spring, speed);
     if (FIX_ABS(spring) > 0x10000)
         spring = spring > 0 ? 0x10000 : -0x10000;
-    speed = FixMul(0x40000, g_pForceFeedbackSlot->field_0x1c);
+    speed = FixMul(0x40000, g_pForceFeedbackSlot->effectsForce);
     damper = FixMul(damper, speed);
     if (FIX_ABS(damper) > 0x10000)
         damper = damper > 0 ? 0x10000 : -0x10000;
-    g_pForceFeedbackSlot->field_0xc = FixMul(spring, 0x27100000) >> 16;
-    g_pForceFeedbackSlot->field_0x10 = FixMul(damper, 0x27100000) >> 16;
+    g_pForceFeedbackSlot->spring = FixMul(spring, 0x27100000) >> 16;
+    g_pForceFeedbackSlot->damper = FixMul(damper, 0x27100000) >> 16;
 }
 
 // Releases the stage's files (registered callback of 0x455080).
@@ -4981,33 +5005,33 @@ void ForceFeedback_ComputeRoadNoise(void)
     int speed;
     int k;
 
-    if (g_pForceFeedbackSlot->field_0x20 == 0)
-        g_pForceFeedbackSlot->field_0x20 = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
-    else if (g_pForceFeedbackSlot->field_0x20 > 0)
-        g_pForceFeedbackSlot->field_0x20 = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), g_minus65536));
+    if (g_pForceFeedbackSlot->roadNoise == 0)
+        g_pForceFeedbackSlot->roadNoise = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
+    else if (g_pForceFeedbackSlot->roadNoise > 0)
+        g_pForceFeedbackSlot->roadNoise = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), g_minus65536));
     else
-        g_pForceFeedbackSlot->field_0x20 = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
+        g_pForceFeedbackSlot->roadNoise = (int)FTOI(__int64, X87S_MUL(X87S_MUL(X87S_LOAD(rand()), g_oneOverRandMax), CGraphics::m_65536));
     k = g_pForceFeedbackCar->cornerGrip[1].field_0x1c + g_pForceFeedbackCar->cornerGrip[0].field_0x1c;
     speed = FixMul(g_pForceFeedbackCar->speed, 0x10000);
     if (speed > 0x10000)
         speed = 0x10000;
     k = FixMul(k, speed);
-    k += g_pForceFeedbackSlot->field_0x28;
+    k += g_pForceFeedbackSlot->impactShake;
     if (k > 0x10000)
         k = 0x10000;
-    g_pForceFeedbackSlot->field_0x20 = FixMul(g_pForceFeedbackSlot->field_0x20, k);
+    g_pForceFeedbackSlot->roadNoise = FixMul(g_pForceFeedbackSlot->roadNoise, k);
 }
 
 // Attaches a stage object to the current car and copies its matrices.
 // FUNCTION: CMR2 0x004813b0
-int StageTiming_AttachObjectToCurrentCar(int slot)
+int CarPart_AttachSlotNode(int slot)
 {
-    SceneNode *object;
+    SceneNode *pNode;
 
     if (g_partState->pNode == NULL) {
-        object = g_carPartNodes[slot][g_partCar->index];
-        if (object != NULL) {
-            g_partState->pNode = object;
+        pNode = g_carPartNodes[slot][g_partCar->index];
+        if (pNode != NULL) {
+            g_partState->pNode = pNode;
             g_partState->pWorld = &g_partState->matrix;
             g_partState->pForceFrame = &g_partState->worldMatrix;
             memcpy(&g_partState->matrix, &g_partState->pNode->current, sizeof(FixMatrix));
@@ -5070,14 +5094,14 @@ void StageTiming_AdvanceCrossedCheckpoints(int car, int target)
 }
 
 // GLOBAL: CMR2 0x00590b10
-int g_unk0x00590b10[8];
+int g_carPartVibrationOffsets[8];
 // GLOBAL: CMR2 0x00511380
 extern const double g_fixedRadiansToAngle12 = 0.0099471839432434591;
 
-// Smooths the active car's steering offset and derives a short angle.
-// match 71%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
+// Smooths speed/position-derived vibration per car and stores the shared angle
+// in the low word; the upper word retains its previous value.
 // FUNCTION: CMR2 0x00480cb0
-void CarPart_SmoothSteeringOffset(void)
+void CarPart_UpdateVibrationAngle(void)
 {
     int speed = FixMul(g_partCar->speed, FixDiv(0x10000, 0x18000));
     int step;
@@ -5095,23 +5119,23 @@ void CarPart_SmoothSteeringOffset(void)
     phase = FIX_ABS(phase);
     target = FixMul(target, phase << 6);
     index = g_partCar->index;
-    delta = target - g_unk0x00590b10[index];
+    delta = target - g_carPartVibrationOffsets[index];
     if (FIX_ABS(delta) > step) {
         if (delta > 0)
-            target = g_unk0x00590b10[index] + step;
+            target = g_carPartVibrationOffsets[index] + step;
         else
-            target = g_unk0x00590b10[index] - step;
+            target = g_carPartVibrationOffsets[index] - step;
     }
-    g_unk0x00590b10[index] = target;
-    *(short *)&g_unk0x00590c68 = (short)(int)FTOI(__int64, X87S_MUL((double)target, g_fixedRadiansToAngle12));
+    g_carPartVibrationOffsets[index] = target;
+    *(short *)&g_carPartVibrationAngle = (short)(int)FTOI(__int64, X87S_MUL((double)target, g_fixedRadiansToAngle12));
 }
 
 BYTE Car_GetDrawnFlag(int index);
 unsigned short Input_GetControllerSlotMapping(unsigned short slot);
-unsigned int Input_GetControllerPrimaryFlags(unsigned short slot);
-unsigned int Input_GetControllerSecondaryFlags(unsigned short slot);
-DWORD Input_GetControllerField11C(unsigned short slot);
-DWORD Input_GetControllerField118(unsigned short slot);
+unsigned int Input_GetControllerTextureForce(unsigned short slot);
+unsigned int Input_GetControllerEffectsForce(unsigned short slot);
+DWORD Input_GetControllerQuickForceUpdate(unsigned short slot);
+DWORD Input_GetControllerForceFeedback(unsigned short slot);
 
 // Initializes the two force feedback slots and registers their stop callback.
 // FUNCTION: CMR2 0x00423ff0
@@ -5121,8 +5145,8 @@ void StageTiming_InitForceFeedbackSlots(void)
 
     CInput::ResetForceFeedbackEffects();
     for (i = 0; i < 2; i++) {
-        g_forceFeedbackSlots[i].field_0x2c = -1;
-        g_forceFeedbackSlots[i].field_0x34 = 0;
+        g_forceFeedbackSlots[i].device = -1;
+        g_forceFeedbackSlots[i].active = 0;
     }
     for (i = 0; i < (BYTE)RallyDataState(); i++) {
         BYTE device;
@@ -5130,21 +5154,21 @@ void StageTiming_InitForceFeedbackSlots(void)
         g_pForceFeedbackSlot = &g_forceFeedbackSlots[i];
         device = Car_GetDrawnFlag(Car_Get(i)->index);
         CInput::GetAvailableDeviceRecord((signed char)device);
-        if (Input_GetControllerField118(i) != 0) {
+        if (Input_GetControllerForceFeedback(i) != 0) {
             device = Car_GetDrawnFlag(Car_Get(i)->index);
-            CInput::SetForceFeedbackDeviceValue(Input_GetControllerField11C(i), (signed char)device);
-            g_pForceFeedbackSlot->field_0x18 = Input_GetControllerPrimaryFlags(i);
-            g_pForceFeedbackSlot->field_0x1c = Input_GetControllerSecondaryFlags(i);
-            g_pForceFeedbackSlot->field_0x2c = (signed char)Input_GetControllerSlotMapping(i);
-            if (g_pForceFeedbackSlot->field_0x2c >= 0) {
+            CInput::SetQuickForceUpdate(Input_GetControllerQuickForceUpdate(i), (signed char)device);
+            g_pForceFeedbackSlot->textureForce = Input_GetControllerTextureForce(i);
+            g_pForceFeedbackSlot->effectsForce = Input_GetControllerEffectsForce(i);
+            g_pForceFeedbackSlot->device = (signed char)Input_GetControllerSlotMapping(i);
+            if (g_pForceFeedbackSlot->device >= 0) {
                 ForceFeedback_CreateEffects();
                 for (int j = 0; j < 3; j++) {
-                    (&g_pForceFeedbackSlot->field_0x0)[j] = 0;
-                    (&g_pForceFeedbackSlot->field_0xc)[j] = 0;
+                    (&g_pForceFeedbackSlot->appliedSpring)[j] = 0;
+                    (&g_pForceFeedbackSlot->spring)[j] = 0;
                 }
-                g_pForceFeedbackSlot->field_0x20 = 0;
-                g_pForceFeedbackSlot->field_0x24 = 0;
-                g_pForceFeedbackSlot->field_0x28 = 0;
+                g_pForceFeedbackSlot->roadNoise = 0;
+                g_pForceFeedbackSlot->impactKick = 0;
+                g_pForceFeedbackSlot->impactShake = 0;
             }
         }
     }
@@ -5293,13 +5317,11 @@ void StageTiming_SpawnWheelParticles(int carIndex)
         random = TRAIL_RANDOM(g_minus65536);
         FixVecScale(&jitter, &delta, random);
         int t;
-        if (!(!leading)) {
+        if (!leading) {
             t = TRAIL_RANDOM(CGraphics::m_65536);
             if (!uniform) {
                 random = TRAIL_RANDOM(g_minus65536);
                 t = FixDiv(t, 0x1547a - random * 9);
-                random = TRAIL_RANDOM(g_minus65536);
-                t = FixDiv(t, 0x30000 - random * 14);
             }
             FixVecScale(&position, &g_trailPos[carIndex][other], t);
             t = 0x10000 - t;
@@ -5309,6 +5331,8 @@ void StageTiming_SpawnWheelParticles(int carIndex)
             if (!uniform) {
                 random = TRAIL_RANDOM(g_minus65536);
                 t = FixDiv(t, 0x1547a - random * 9);
+                random = TRAIL_RANDOM(g_minus65536);
+                t = FixDiv(t, 0x30000 - random * 14);
             }
             FixVecScale(&position, &g_trailPos[carIndex][other], t);
             t = 0x10000 - t;
@@ -5592,15 +5616,15 @@ extern char g_strPathConcat[];
 void Frontend_SetObjectField118(struct Texture *pTexture, int value);
 
 // GLOBAL: CMR2 0x00543e90
-Texture *g_unk0x00543e90;
+Texture *g_rainTexture;
 // GLOBAL: CMR2 0x00543ea4
-Texture *g_unk0x00543ea4;
+Texture *g_splatTexture;
 // GLOBAL: CMR2 0x00543ea8
-Texture *g_unk0x00543ea8[3];
+Texture *g_snowTextures[3];
 // GLOBAL: CMR2 0x005477f0
-Texture *g_unk0x005477f0;
+Texture *g_splat2Texture;
 // GLOBAL: CMR2 0x00547ad0
-Texture *g_unk0x00547ad0;
+Texture *g_sunGlowTexture;
 
 // Loads the weather particle textures (rain, splats, snow, sunglow).
 // FUNCTION: CMR2 0x0045eb50
@@ -5610,26 +5634,26 @@ void StageTiming_LoadWeatherParticleTextures(void)
     int i;
 
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strRainTga);
-    g_unk0x00543e90 = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
+    g_rainTexture = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
                                                      CFrontend::m_stringDest, &didLoad, NULL, 0, 0);
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strSplatTga);
-    g_unk0x00543ea4 = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
+    g_splatTexture = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
                                                      CFrontend::m_stringDest, &didLoad, NULL, 0, 0);
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strSplat2Tga);
-    g_unk0x005477f0 = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
+    g_splat2Texture = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
                                                      CFrontend::m_stringDest, &didLoad, NULL, 0, 0);
     for (i = 0; i < 3; i++) {
         sprintf(CFrontend::m_stringDest, g_strSnowTga, CInstallInfo::GetTexturesDirectory(), i + 1);
-        g_unk0x00543ea8[i] = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
+        g_snowTextures[i] = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
                                                             CFrontend::m_stringDest, &didLoad, NULL, 0, 0);
     }
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strSunGlowTga);
-    g_unk0x00547ad0 = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
+    g_sunGlowTexture = CTexture::FindLoadTexture((GenericFile *)StageTiming_GetStageFile0(),
                                                      CFrontend::m_stringDest, &didLoad, NULL, 0, 0);
-    Frontend_SetObjectField118(g_unk0x00547ad0, 1);
+    Frontend_SetObjectField118(g_sunGlowTexture, 1);
 }
 
-// File name formats of the three "team" model archives.
+// File name formats of the three difficulty/mode variants of timing profiles.
 // GLOBAL: CMR2 0x0051a134
 char g_strTm2Format[] = "%s.tm2";
 // GLOBAL: CMR2 0x0051a13c
@@ -5637,11 +5661,11 @@ char g_strTm1Format[] = "%s.tm1";
 // GLOBAL: CMR2 0x0051a144
 char g_strTm0Format[] = "%s.tm0";
 
-// Finds the three .tm? model archives of the current team and copies the one
-// selected by the game mode into the locked stage buffer.
+// Finds the stage's three .tm? timing profiles and copies the one selected
+// by difficulty/game mode into the stage buffer.
 // match 80%: registers differ; the extra sprintf argument is the original's (see CONOCIMIENTO 4.y)
 // FUNCTION: CMR2 0x00455300
-void StageTiming_LoadSelectedTeamArchive(void)
+void StageTiming_LoadSelectedTimeProfile(void)
 {
     unsigned int sizes[3];
     void *bufs[3];
@@ -5676,7 +5700,7 @@ void StageTiming_LoadSelectedTeamArchive(void)
         }
         memcpy(dest, bufs[index], sizes[index]);
         g_unk0x00541f8c = (BYTE *)dest + sizes[index];
-        g_splitSpreadTable = (char *)dest;
+        g_stageTimeProfile = (StageTimeProfile *)dest;
         if (dest != NULL)
             g_unk0x00542604 = 1;
     }
@@ -5719,7 +5743,7 @@ void StageTiming_EstimateRemainingDriverTimes(void)
             pSlot++;
             g_unk0x0053d1da[k] = 1;
             value = FixDiv((StageTiming_GetCheckpointField10(k) & 0xffff) << 16, total);
-            if (value >= 1) {
+            if (value > 0) {
                 int elapsed = Timing_CentisecondsToFixedSeconds(g_stageClock);
                 g_driverFinishTimes[k] =
                     ConvertRawTimeToCentiseconds(FixMul(FixDiv(0x10000, value), elapsed));
@@ -5900,15 +5924,15 @@ void StageTiming_RecordAndReorderSplitTime(int car)
         g_carStageTiming[car].field_0x80 = (char)0xff;
 }
 
-// Refreshes the paint-decal samples of one car and applies the resulting time
-// spread to the current timing record.
+// Builds driver ordering values from the profile and timing workspace, then
+// perturbs and sorts them for the current stage.
 // FUNCTION: CMR2 0x00455ed0
-void StageTiming_RefreshPaintSamplesAndTimeSpread(StageTimingSpread *pCar)
+void StageTiming_BuildAndSortDriverTimeTuning(StageTimingSpread *pSpread)
 {
     int samples[16];
 
-    StageTiming_BlendCarPaintDecalRows(pCar, samples);
-    StageTiming_RandomizeComputerTimes(samples);
+    StageTiming_BlendDriverTimeTuning(pSpread, samples);
+    StageTiming_RandomizeAndSortDriverTimeTuning(samples);
 }
 
 int NetPlayers_GetPlayerIDCount(void);
@@ -6115,43 +6139,44 @@ void StageTiming_PlaceEventStartingGrid(char param_1)
 
 #include "Particle.h"
 
-// Per-particle-kind texture handles for the wheel spray / smoke effects.
+// Particle effect textures, named after the files that
+// StageTiming_LoadEffectParticleTextures loads into them.
 // GLOBAL: CMR2 0x005435c8
-Texture *g_wheelSprayTextures;
+Texture *g_splashDropTexture;
 // GLOBAL: CMR2 0x00543650
-Texture *g_unk0x00543650;
+Texture *g_sparkTexture;
 // GLOBAL: CMR2 0x00543654
-Texture *g_unk0x00543654;
+Texture *g_paintTexture;
 // GLOBAL: CMR2 0x00543658
-Texture *g_unk0x00543658;
+Texture *g_glassTexture;
 // GLOBAL: CMR2 0x0054365c
-Texture *g_unk0x0054365c;
+Texture *g_exhaust03Texture;
 // GLOBAL: CMR2 0x00543660
-Texture *g_unk0x00543660;
+Texture *g_exhaust02Texture;
 // GLOBAL: CMR2 0x00543664
-Texture *g_unk0x00543664;
+Texture *g_exhaust02TextureCopy;
 // GLOBAL: CMR2 0x00543668
-Texture *g_unk0x00543668;
+Texture *g_wheelSprayTexture;
 // GLOBAL: CMR2 0x0054366c
-Texture *g_unk0x0054366c;
+Texture *g_snowCloudTexture;
 // GLOBAL: CMR2 0x00543670
-Texture *g_unk0x00543670;
+Texture *g_splashSprayTexture;
 // GLOBAL: CMR2 0x00543674
-Texture *g_unk0x00543674;
+Texture *g_splashSprayFTexture;
 // GLOBAL: CMR2 0x00543678
-Texture *g_unk0x00543678;
+Texture *g_snowSprayTexture;
 // GLOBAL: CMR2 0x0054367c
-Texture *g_unk0x0054367c[5];
+Texture *g_leafTextures[5];
 // GLOBAL: CMR2 0x00543690
-Texture *g_unk0x00543690[2];
+Texture *g_grassTexturesA[2];
 // GLOBAL: CMR2 0x00543698
-Texture *g_unk0x00543698[2];
+Texture *g_grassTexturesB[2];
 // GLOBAL: CMR2 0x005436a0
-Texture *g_unk0x005436a0[5];
+Texture *g_gravelTextures[5];
 // GLOBAL: CMR2 0x005436b8
-Texture *g_unk0x005436b8[8];
+Texture *g_dustCloudTextures[8];
 // GLOBAL: CMR2 0x005436d8
-Texture *g_unk0x005436d8[4];
+Texture *g_detailTextures[4];
 // GLOBAL: CMR2 0x00547fb4
 Texture *g_unk0x00547fb4;
 
@@ -6210,7 +6235,7 @@ void StageTiming_InitEffectParticleTypes(void)
   }
   Particle_SetPoolCapacity(uVar2);
   ParticleEdit_Select(0);
-  ParticleEdit_SetTextureParams(g_unk0x0054365c,0xffff0000,0x10000,0x10000,0xffff0000);
+  ParticleEdit_SetTextureParams(g_exhaust03Texture,0xffff0000,0x10000,0x10000,0xffff0000);
   ParticleEdit_SetMotion(0xc80000,6,0x10000,0,0,0,0);
   ParticleEdit_SetAlphaRamp(0x1e,0,3,1);
   ParticleEdit_SetSizeRamp(0x28f,0x10000,0x5a1);
@@ -6219,11 +6244,11 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(1);
   ParticleEdit_CopyTemplate(0);
-  ParticleEdit_SetTextureParams(g_unk0x00543660,0xffff0000,0x10000,0x10000,0xffff0000);
+  ParticleEdit_SetTextureParams(g_exhaust02Texture,0xffff0000,0x10000,0x10000,0xffff0000);
   ParticleEdit_SetAlphaRamp(0x50,0,3,1);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(2);
-  ParticleEdit_SetTextureParams(g_unk0x00543664,0xffff0000,0x10000,0x10000,0xffff0000);
+  ParticleEdit_SetTextureParams(g_exhaust02TextureCopy,0xffff0000,0x10000,0x10000,0xffff0000);
   ParticleEdit_SetMotion(0x12c0000,6,0x10000,0,0,0,0);
   ParticleEdit_SetAlphaRamp(100,0,1,1);
   ParticleEdit_SetSizeRamp(0x1999,0x10000,0xb43);
@@ -6234,13 +6259,13 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CopyTemplate(0);
   ParticleEdit_SetMotion(0x40000,0,0,0,0,0,0);
   ParticleEdit_SetSizeRamp(0xccc,0x2147,0xccc);
-  ParticleEdit_SetExtendedParams(g_unk0x005436d8,4,0,0x10000,0,0,0xffff0000,0x10000,0x10000,0xffff0000);
+  ParticleEdit_SetExtendedParams(g_detailTextures,4,0,0x10000,0,0,0xffff0000,0x10000,0x10000,0xffff0000);
   ParticleEdit_SetAlphaRamp(0xfe,0xfe,0,0);
   ParticleEdit_SetSizeRange(0x1999,0x3333);
   ParticleEdit_SetCallbacks(0,0,CarEffect_SpawnExhaustParticle,CarEffects_InitParticleOwnerData,0);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(6);
-  ParticleEdit_SetTextureParams(g_unk0x0054366c,0xffff999a,0x6666,0x6666,0xffff999a);
+  ParticleEdit_SetTextureParams(g_snowCloudTexture,0xffff999a,0x6666,0x6666,0xffff999a);
   ParticleEdit_SetMotion(0x210000,0x20,0,0,0,0,0);
   ParticleEdit_SetAlphaRamp(0xd2,0,6,1);
   ParticleEdit_SetColour(0xff,0xff,0xff,1);
@@ -6251,13 +6276,13 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(4);
   ParticleEdit_CopyTemplate(6);
-  ParticleEdit_SetTextureParams(g_unk0x0054366c,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
+  ParticleEdit_SetTextureParams(g_snowCloudTexture,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
   ParticleEdit_SetMotion(0x780000,0x20,0,0,0,0,0);
   ParticleEdit_SetAlphaRamp(100,0,2,1);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(7);
   ParticleEdit_CopyTemplate(6);
-  ParticleEdit_SetTextureParams(g_unk0x0054366c,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
+  ParticleEdit_SetTextureParams(g_snowCloudTexture,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
   ParticleEdit_SetSizeRamp(0x4ccc,0x13333,0x147a);
   ParticleEdit_SetMotion(0x640000,0,0xa0000,0,0,0,0);
   ParticleEdit_SetAlphaRamp(0xd2,0,6,1);
@@ -6267,19 +6292,19 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(10);
   ParticleEdit_CopyTemplate(6);
-  ParticleEdit_SetExtendedParams(g_unk0x005436b8,8,0,0x20000,0,0,0xffffb334,0x4ccc,0x4ccc,0xffffb334);
+  ParticleEdit_SetExtendedParams(g_dustCloudTextures,8,0,0x20000,0,0,0xffffb334,0x4ccc,0x4ccc,0xffffb334);
   ParticleEdit_SetAlphaRamp(100,0,0,0);
   ParticleEdit_SetColour(0xff,0xff,0xff,1);
   ParticleEdit_SetCallbacks(0,0,CarEffects_UpdateCarFollowingRisingParticle,CarEffects_InitParticleOwnerData,0);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(8);
   ParticleEdit_CopyTemplate(4);
-  ParticleEdit_SetExtendedParams(g_unk0x005436b8,8,0,0x20000,1,1,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
+  ParticleEdit_SetExtendedParams(g_dustCloudTextures,8,0,0x20000,1,1,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
   ParticleEdit_SetColour(0x98,0x7e,0x66,1);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0xb);
   ParticleEdit_CopyTemplate(7);
-  ParticleEdit_SetExtendedParams(g_unk0x005436b8,8,0,0x20000,1,1,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
+  ParticleEdit_SetExtendedParams(g_dustCloudTextures,8,0,0x20000,1,1,0xffff4ccd,0xb333,0xb333,0xffff4ccd);
   ParticleEdit_SetSizeRamp(0x4ccc,0x13333,0x147a);
   ParticleEdit_SetMotion(0x640000,0,0xa0000,0,0,0,0);
   ParticleEdit_SetAlphaRamp(100,0,0,0);
@@ -6288,7 +6313,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(5);
   ParticleEdit_CopyTemplate(4);
-  ParticleEdit_SetTextureParams(g_unk0x0054366c,0xffff999a,0x6666,0x6666,0xffff999a);
+  ParticleEdit_SetTextureParams(g_snowCloudTexture,0xffff999a,0x6666,0x6666,0xffff999a);
   ParticleEdit_SetMotion(0x300000,0x20,0x30000,0,0,0,0);
   ParticleEdit_SetAlphaRamp(100,0,2,1);
   ParticleEdit_SetSizeRamp(0x4ccc,0x10000,0x1999);
@@ -6297,21 +6322,21 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0xc);
   ParticleEdit_CopyTemplate(5);
-  ParticleEdit_SetExtendedParams(g_unk0x005436b8,8,0,0x20000,1,1,0xffffc000,0x4000,0x8000,0xffffc000);
+  ParticleEdit_SetExtendedParams(g_dustCloudTextures,8,0,0x20000,1,1,0xffffc000,0x4000,0x8000,0xffffc000);
   ParticleEdit_SetAlphaRamp(0x1e,0,4,1);
   ParticleEdit_SetSizeRamp(0x4ccc,0x5555,0x3332);
   ParticleEdit_SetField2CAndFlag5(0);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0xd);
   ParticleEdit_CopyTemplate(5);
-  ParticleEdit_SetExtendedParams(g_unk0x005436b8,8,0,0x20000,1,1,0xffff0000,0x10000,0x20000,0xffff0000);
+  ParticleEdit_SetExtendedParams(g_dustCloudTextures,8,0,0x20000,1,1,0xffff0000,0x10000,0x20000,0xffff0000);
   ParticleEdit_SetAlphaRamp(0x46,0,2,1);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0xe);
   ParticleEdit_CopyTemplate(5);
   ParticleEdit_SetMotion(0x1900000,0,0,0,0,0,0);
   ParticleEdit_SetField2CAndFlag5(0);
-  ParticleEdit_SetTextureParams(g_unk0x00543674,0,0x20000,0x20000,0);
+  ParticleEdit_SetTextureParams(g_splashSprayFTexture,0,0x20000,0x20000,0);
   ParticleEdit_SetSizeRamp(0x1999,0x10000,0xa3d);
   ParticleEdit_SetAlphaRamp(0xff,0,0xf,1);
   ParticleEdit_SetSpread(0,0,0,0);
@@ -6319,10 +6344,10 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0xf);
   ParticleEdit_CopyTemplate(0xe);
-  ParticleEdit_SetTextureParams(g_unk0x00543670,0,0,0x20000,0xfffe0000);
+  ParticleEdit_SetTextureParams(g_splashSprayTexture,0,0,0x20000,0xfffe0000);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x10);
-  ParticleEdit_SetExtendedParams(g_unk0x0054367c,5,0x20000,0x10000,1,1,0xffff3334,0xcccc,0xcccc,0xffff3334);
+  ParticleEdit_SetExtendedParams(g_leafTextures,5,0x20000,0x10000,1,1,0xffff3334,0xcccc,0xcccc,0xffff3334);
   ParticleEdit_SetMotion(0xc80000,0x28f,0,0,0,0,1);
   ParticleEdit_SetAlphaRamp(0xff,0xff,0,1);
   ParticleEdit_SetColour(0xff,0xff,0xff,1);
@@ -6337,7 +6362,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x12);
   ParticleEdit_CopyTemplate(0x10);
-  ParticleEdit_SetExtendedParams(g_unk0x00543690,2,0x40000,0x40000,1,1,0xfffe8000,0x18000,0x18000,0xfffe8000);
+  ParticleEdit_SetExtendedParams(g_grassTexturesA,2,0x40000,0x40000,1,1,0xfffe8000,0x18000,0x18000,0xfffe8000);
   ParticleEdit_SetMotion(0xc80000,0x28f,0,0,0,0,1);
   ParticleEdit_SetAlphaRamp(0xff,0xff,0,1);
   ParticleEdit_SetColour(0xff,0xff,0xff,1);
@@ -6352,7 +6377,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x14);
   ParticleEdit_CopyTemplate(0x12);
-  ParticleEdit_SetExtendedParams(g_unk0x00543698,2,0x40000,0x40000,1,1,0xfffe8000,0x18000,0x18000,0xfffe8000);
+  ParticleEdit_SetExtendedParams(g_grassTexturesB,2,0x40000,0x40000,1,1,0xfffe8000,0x18000,0x18000,0xfffe8000);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x15);
   ParticleEdit_CopyTemplate(0x14);
@@ -6369,7 +6394,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_SetSizeRange(0x147a,0xa3d);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x18);
-  ParticleEdit_SetTextureParams(g_wheelSprayTextures,0xffffc000,0x4000,0x4000,0xffffc000);
+  ParticleEdit_SetTextureParams(g_splashDropTexture,0xffffc000,0x4000,0x4000,0xffffc000);
   ParticleEdit_SetMotion(0xc80000,0xccc,0,0x1999,0,1,1);
   ParticleEdit_SetAlphaRamp(0xff,0xff,0,1);
   ParticleEdit_SetSizeRamp(0x1999,0x1999,0);
@@ -6378,7 +6403,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_SetCallbacks(0,0,CarEffects_UpdateParticleAtCarPosition,CarEffects_InitParticleOwnerData,0);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x1a);
-  ParticleEdit_SetTextureParams(g_unk0x00543650,0xffffcccd,0x3333,0x3333,0xffffcccd);
+  ParticleEdit_SetTextureParams(g_sparkTexture,0xffffcccd,0x3333,0x3333,0xffffcccd);
   ParticleEdit_SetMotion(0x140000,0x147,0,0,0,0,1);
   ParticleEdit_SetAlphaRamp(0xfe,0,0x22,1);
   ParticleEdit_SetSizeRamp(0x10000,0x10000,0);
@@ -6387,7 +6412,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_SetCallbacks(Spark_Draw,0,CarEffects_UpdateAgedParticleAppearance,0,0);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x1b);
-  ParticleEdit_SetTextureParams(g_unk0x00543654,0xffffcccd,0x3333,0x3333,0xffffcccd);
+  ParticleEdit_SetTextureParams(g_paintTexture,0xffffcccd,0x3333,0x3333,0xffffcccd);
   ParticleEdit_SetMotion(0x140000,0x147,0,0,0,0,1);
   ParticleEdit_SetAlphaRamp(0xff,0xff,0,0);
   ParticleEdit_SetSizeRamp(0x10000,0x10000,0);
@@ -6396,7 +6421,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_SetCallbacks(GlassShard_Draw,0,0,GlassShard_Init,0);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x1c);
-  ParticleEdit_SetTextureParams(g_unk0x00543658,0xffffcccd,0x3333,0x3333,0xffffcccd);
+  ParticleEdit_SetTextureParams(g_glassTexture,0xffffcccd,0x3333,0x3333,0xffffcccd);
   ParticleEdit_SetMotion(0x640000,0x189,0,0,0,0,1);
   ParticleEdit_SetAlphaRamp(0xff,0xff,0,0);
   ParticleEdit_SetSizeRamp(0x10000,0x10000,0);
@@ -6406,7 +6431,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   iVar1 = WheelSpray_Init(0x10000,0x190000);
   ParticleEdit_Select(0x1d);
-  ParticleEdit_SetExtendedParams(g_unk0x005436a0,5,0x20000,0x10000,1,1,0xfffff99a,0x666,0x666,0xfffff99a);
+  ParticleEdit_SetExtendedParams(g_gravelTextures,5,0x20000,0x10000,1,1,0xfffff99a,0x666,0x666,0xfffff99a);
   ParticleEdit_SetMotion(0xf0000,FixMul(iVar1, 0x3333),0,0xb333,0,1,0);
   ParticleEdit_SetAlphaRamp(0xff,0xff,0,0);
   ParticleEdit_SetColour(0xff,0,0xff,1);
@@ -6415,7 +6440,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_SetSpread(0,0,0,0);
   ParticleEdit_CommitCurrentType();
   ParticleEdit_Select(0x1e);
-  ParticleEdit_SetExtendedParams(g_unk0x005436a0,5,0x20000,0x10000,1,1,0xfffff70b,0x8f5,0x8f5,0xfffff70b);
+  ParticleEdit_SetExtendedParams(g_gravelTextures,5,0x20000,0x10000,1,1,0xfffff70b,0x8f5,0x8f5,0xfffff70b);
   ParticleEdit_SetMotion(0x190000,iVar1,0,0xb333,0,1,0);
   ParticleEdit_SetAlphaRamp(0xff,0xff,0,0);
   ParticleEdit_SetColour(0xff,0,0xff,1);
@@ -6482,9 +6507,7 @@ void Car_Spawn(Car *param_1, SceneNode *param_2, int param_3, FixVector *param_4
 void Car_ResetBodyBasis(Car *param_1);
 void StageTiming_IntegratePartSpringMotion(void);
 
-// One wheel/hub record (stride 0x1a0) of the four slots CarPart_InitWheelHubSlot installs:
-// the hub transform, the offsets accumulated during the physics step and the
-// collision state used while resolving ground contact.
+// Normalises a moving part's axis, preserving a zero vector.
 inline void Motion_NormalizeInto(FixVector *out, FixVector *v)
 {
     int len = FixVecLength(v);
@@ -6502,16 +6525,13 @@ inline void Motion_NormalizeInto(FixVector *out, FixVector *v)
 
 int VehiclePhysics_TestMotionCorrectionCollision(void);
 void Vehicle_UpdateMotion(FixVector *pInput);
-void StageTiming_FireCarPartDebris(int *param_1, unsigned int param_2);
+void CarPart_EmitGroundDebris(FixVector *pVelocity, unsigned int cornerIndex);
 extern double g_minusFixedDegreesToAngle12;
 
-// Per-slot integrator for slot 1 (CarPart_InitWheelHubSlot installs its address at
-// +0x110): swings the hub about its axis, resolves the ground contact of the
-// part against the three contact planes, re-orthogonalises the part's basis
-// and finally integrates the motion offset into the world position.
-// match 65%: logic checked against the original; the stack slots differ.
+// Slot 1 integrates the moving part's swing, spring force and ground drag,
+// re-orthogonalises its basis and updates its world position.
 // FUNCTION: CMR2 0x004816f0
-void CarPart_IntegrateHubGroundContact(void)
+void CarPart_IntegrateSwingAndDrag(void)
 {
     int detached;
     int len;
@@ -6540,7 +6560,7 @@ void CarPart_IntegrateHubGroundContact(void)
     type = g_partCar->type;
     if (type != 9 && type != 11) {
         if ((g_partState->flags & 6) == 0)
-            StageTiming_StartLoadedPartSwing();
+            CarPart_StartDamageSwing();
         torque.x = 0;
         torque.y = 0;
         torque.z = 0;
@@ -6587,7 +6607,7 @@ void CarPart_IntegrateHubGroundContact(void)
                 v3c.y = g_partCar->velocity.y - v3c.y;
                 v3c.z = g_partCar->velocity.z - v3c.z;
                 FixVecScale(&v3c, &v3c, 0x3333);
-                StageTiming_FireCarPartDebris((int *)&v3c, idx);
+                CarPart_EmitGroundDebris(&v3c, idx);
             }
             v24.x = v3c.x + v4c.x;
             v24.y = v3c.y + v4c.y;
@@ -6780,16 +6800,16 @@ renormalize:
             angles[1] = 0;
             angles[2] = 0;
             if ((g_partState->flags & 2) == 0) {
-                a = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_unk0x00590c68 * 0x1680, 0x10000), g_fixedDegreesToAngle12));
+                a = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_carPartVibrationAngle * 0x1680, 0x10000), g_fixedDegreesToAngle12));
                 if ((g_partState->flags & 0xf0) == 0x10) {
                     angles[2] = a;
-                    StageTiming_RotatePartBasisFromAngles(angles);
+                    CarPart_StoreRotatedBasis(angles);
                 } else {
                     angles[2] = -a;
-                    StageTiming_RotatePartBasisFromAngles(angles);
+                    CarPart_StoreRotatedBasis(angles);
                 }
             } else {
-                a = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_unk0x00590c68 * 0x1680, 0x8000), g_fixedDegreesToAngle12));
+                a = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_carPartVibrationAngle * 0x1680, 0x8000), g_fixedDegreesToAngle12));
                 if ((g_partState->flags & 0xf0) == 0x10) {
                     if (g_partState->position.z > 0) {
                         angles[0] = -a;
@@ -6803,7 +6823,7 @@ renormalize:
                     angles[0] = a;
                 }
                 angles[1] = a;
-                StageTiming_RotatePartBasisFromAngles(angles);
+                CarPart_StoreRotatedBasis(angles);
             }
         } else {
             FixMatrix_SetRight(&g_partState->basis.right, g_partState->pWorld);
@@ -6813,22 +6833,22 @@ renormalize:
     } else if (type == 9) {
         detached = 0;
         angles[0] = 0;
-        angles[1] = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_unk0x00590c68 * 0x1680, 0x10000), g_minusFixedDegreesToAngle12));
+        angles[1] = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_carPartVibrationAngle * 0x1680, 0x10000), g_minusFixedDegreesToAngle12));
         angles[2] = 0;
-        StageTiming_RotatePartBasisFromAngles(angles);
+        CarPart_StoreRotatedBasis(angles);
     } else {
         detached = 0;
         angles[0] = 0;
-        angles[1] = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_unk0x00590c68 * 0x1680, 0x20000), g_minusFixedDegreesToAngle12));
+        angles[1] = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_carPartVibrationAngle * 0x1680, 0x20000), g_minusFixedDegreesToAngle12));
         angles[2] = 0;
-        StageTiming_RotatePartBasisFromAngles(angles);
+        CarPart_StoreRotatedBasis(angles);
     }
     VehicleMotion_UpdateWorldPosition();
     if (detached != 0)
         Vehicle_UpdateMotion(&saved);
 }
 
-// Defined in StageObjects.cpp; CarPart_InitWheelHubSlot installs this callback.
+// Defined in StageObjects.cpp; CarPart_InitMovingSlot installs this callback.
 void CarPart_IntegrateDetachedMotion(void);
 
 // Places the two view nodes of a car at the shared angle/position buffers and
@@ -6847,24 +6867,21 @@ void StageTiming_PlaceCarViewNodesAndBody(SceneNode *pNodeA, SceneNode *pNodeB, 
         StageTiming_SnapshotCarNetworkPose(Car_Get(carIndex));
 }
 
-// Initialises one of a car's four wheel/hub records: points the shared record
-// pointer at the car's slot, picks the static geometry for the wheel type,
-// installs the per-slot integrator and clears the dynamic state.
-// match 13%: implementada; MSVC6 se queda con g_partState y el puntero base en registro
-// en vez de releerlos del global en cada acceso como hace el original
+// Attaches one of four moving body-part slots using its model's centre/extents,
+// selects a pivot and update callback, and clears the dynamic state.
 // FUNCTION: CMR2 0x00480e50
-void CarPart_InitWheelHubSlot(int slot)
+void CarPart_InitMovingSlot(int slot)
 {
-    int type = g_carPartModelIndices[slot][g_partCar->index];
-    FixVector off;
+    int modelIndex = g_carPartModelIndices[slot][g_partCar->index];
+    FixVector pivotOffset;
 
-    off.x = 0;
-    off.z = 0;
-    off.y = 0;
+    pivotOffset.x = 0;
+    pivotOffset.z = 0;
+    pivotOffset.y = 0;
 
     g_partState =
         g_carPartStateTables.parts[slot] + g_partCar->index;
-    if (StageTiming_AttachObjectToCurrentCar(slot) == 0)
+    if (CarPart_AttachSlotNode(slot) == 0)
         return;
     g_partState->flags = (g_partState->flags & 0xf) | (slot << 4);
     g_partState->flags |= 1;
@@ -6874,46 +6891,46 @@ void CarPart_InitWheelHubSlot(int slot)
     g_partState->pNode->useParentWorld = 0;
     switch (slot) {
     case 0:
-        off.x = -g_partSet->halfExtents[type].x;
-        off.y = g_partSet->halfExtents[type].y;
-        off.z = 0;
+        pivotOffset.x = -g_partSet->halfExtents[modelIndex].x;
+        pivotOffset.y = g_partSet->halfExtents[modelIndex].y;
+        pivotOffset.z = 0;
         g_partState->angle = 0x288;
         g_partState->update = CarPart_IntegrateVerticalAxisTurn;
         break;
     case 2:
         if (g_partCar->type == 11) {
-            off.x = 0;
-            off.y = g_partSet->halfExtents[type].y;
-            off.z = -g_partSet->halfExtents[type].z;
+            pivotOffset.x = 0;
+            pivotOffset.y = g_partSet->halfExtents[modelIndex].y;
+            pivotOffset.z = -g_partSet->halfExtents[modelIndex].z;
         } else if (g_partCar->type == 9) {
-            off.x = -g_partSet->halfExtents[type].x;
-            off.y = 0;
-            off.z = g_partSet->halfExtents[type].z;
+            pivotOffset.x = -g_partSet->halfExtents[modelIndex].x;
+            pivotOffset.y = 0;
+            pivotOffset.z = g_partSet->halfExtents[modelIndex].z;
         } else {
             if (g_partCar->type == 8) {
-                off.x = -g_partSet->halfExtents[type].x;
-                off.y = -g_partSet->halfExtents[type].y;
+                pivotOffset.x = -g_partSet->halfExtents[modelIndex].x;
+                pivotOffset.y = -g_partSet->halfExtents[modelIndex].y;
             } else {
-                off.x = g_partSet->halfExtents[type].x;
-                off.y = g_partSet->halfExtents[type].y;
+                pivotOffset.x = g_partSet->halfExtents[modelIndex].x;
+                pivotOffset.y = g_partSet->halfExtents[modelIndex].y;
             }
-            off.z = 0;
+            pivotOffset.z = 0;
         }
         g_partState->angle = 0x288;
         g_partState->update = CarPart_IntegrateDetachedMotion;
         break;
     case 1:
         if (g_partCar->type != 9 && g_partCar->type != 11) {
-            off.x = FixMul(g_partSet->halfExtents[type].x, 0x8000);
-            off.y = g_partSet->halfExtents[type].y;
-            off.z = 0;
+            pivotOffset.x = FixMul(g_partSet->halfExtents[modelIndex].x, 0x8000);
+            pivotOffset.y = g_partSet->halfExtents[modelIndex].y;
+            pivotOffset.z = 0;
         } else {
-            off.y = 0;
-            off.x = g_partSet->halfExtents[type].x;
-            off.z = -g_partSet->halfExtents[type].z;
+            pivotOffset.y = 0;
+            pivotOffset.x = g_partSet->halfExtents[modelIndex].x;
+            pivotOffset.z = -g_partSet->halfExtents[modelIndex].z;
         }
         g_partState->angle = 0;
-        g_partState->update = CarPart_IntegrateHubGroundContact;
+        g_partState->update = CarPart_IntegrateSwingAndDrag;
         g_partState->stiffness.x = 0x10e5;
         g_partState->stiffness.y = 0x1eb8;
         g_partState->stiffness.z = 0x10e5;
@@ -6921,17 +6938,17 @@ void CarPart_InitWheelHubSlot(int slot)
     case 3:
         g_partState->flags |= 2;
         if (g_partCar->type == 8) {
-            off.x = 0;
-            off.z = 0;
-            off.y = g_partSet->halfExtents[type].y;
+            pivotOffset.x = 0;
+            pivotOffset.z = 0;
+            pivotOffset.y = g_partSet->halfExtents[modelIndex].y;
         } else {
-            off.x = 0;
+            pivotOffset.x = 0;
             if (g_partSet->damageValues[2] > g_partSet->damageValues[3]) {
-                off.z = g_partSet->halfExtents[type].z;
-                off.y = -g_partSet->halfExtents[type].y;
+                pivotOffset.z = g_partSet->halfExtents[modelIndex].z;
+                pivotOffset.y = -g_partSet->halfExtents[modelIndex].y;
             } else {
-                off.z = -g_partSet->halfExtents[type].z;
-                off.y = -g_partSet->halfExtents[type].y;
+                pivotOffset.z = -g_partSet->halfExtents[modelIndex].z;
+                pivotOffset.y = -g_partSet->halfExtents[modelIndex].y;
             }
         }
         g_partState->angle = 0;
@@ -6944,12 +6961,12 @@ void CarPart_InitWheelHubSlot(int slot)
     g_partState->stiffness.y = 0x1eb8;
     g_partState->stiffness.z = 0x6ccc;
 common:
-    g_partState->position.x = g_partSet->centres[type].x + off.x;
-    g_partState->position.y = g_partSet->centres[type].y + off.y;
-    g_partState->position.z = g_partSet->centres[type].z + off.z;
-    g_partState->boundsRadius = FixVecLength(&g_partSet->halfExtents[type]);
-    g_partState->previousPosition = g_partSet->centres[type];
-    g_partState->swingAxis = g_partSet->halfExtents[type];
+    g_partState->position.x = g_partSet->centres[modelIndex].x + pivotOffset.x;
+    g_partState->position.y = g_partSet->centres[modelIndex].y + pivotOffset.y;
+    g_partState->position.z = g_partSet->centres[modelIndex].z + pivotOffset.z;
+    g_partState->boundsRadius = FixVecLength(&g_partSet->halfExtents[modelIndex]);
+    g_partState->previousPosition = g_partSet->centres[modelIndex];
+    g_partState->swingAxis = g_partSet->halfExtents[modelIndex];
     g_partState->velocity.x = 0;
     g_partState->velocity.y = 0;
     g_partState->velocity.z = 0;
@@ -6968,32 +6985,31 @@ void Car_SpawnDebris(int size, FixVector *pPos, Car *pCar, FixVector *pAxes, int
 // Aims and fires the debris/particles of a car part: rotates the part's local
 // offset into world space, normalises the part's direction, and spawns debris
 // along the cross product of the two.
-// match 44%: implementada, difiere la extension del argumento short y el reparto de locales/registros
 // FUNCTION: CMR2 0x00483100
-void StageTiming_FireCarPartDebris(int *param_1, unsigned int param_2)
+void CarPart_EmitGroundDebris(FixVector *pVelocity, unsigned int cornerIndex)
 {
-    int sel = g_carPartModelIndices[g_partState->flags >> 4][g_partCar->index];
+    int modelIndex = g_carPartModelIndices[g_partState->flags >> 4][g_partCar->index];
     FixVector pos;
     FixVector offset;
     FixVector debrisAxes[3];
     int len;
 
-    if (StageObject_IsEligibleType(g_partCar->wheelSurface[param_2 & 0xff], 0, 0) != 0) {
+    if (StageObject_IsEligibleType(g_partCar->wheelSurface[cornerIndex & 0xff], 0, 0) != 0) {
         pos = g_partState->position;
-        pos.y -= FixMul(0x20000, g_partSet->halfExtents[sel].y);
+        pos.y -= FixMul(0x20000, g_partSet->halfExtents[modelIndex].y);
         if (g_partState->position.z > 0)
             FixVecScale(&offset, &g_partState->basis.forward,
-                        -FixMul(0x1cccc, g_partSet->halfExtents[sel].z));
+                        -FixMul(0x1cccc, g_partSet->halfExtents[modelIndex].z));
         else
             FixVecScale(&offset, &g_partState->basis.forward,
-                        FixMul(0x1cccc, g_partSet->halfExtents[sel].z));
+                        FixMul(0x1cccc, g_partSet->halfExtents[modelIndex].z));
         pos.x += offset.x;
         pos.y += offset.y;
         pos.z += offset.z;
         FixMatrix_RotateVector(&offset, &pos, g_partCar->pWorld);
-        len = FixVecLength((FixVector *)param_1);
+        len = FixVecLength(pVelocity);
         if (len > 0) {
-            FixVecScaleRecip(&debrisAxes[0], (FixVector *)param_1, -len);
+            FixVecScaleRecip(&debrisAxes[0], pVelocity, -len);
             len = FixMul(len, 0x50000);
             if (len > 0x10000)
                 len = 0x10000;
@@ -7002,7 +7018,7 @@ void StageTiming_FireCarPartDebris(int *param_1, unsigned int param_2)
             debrisAxes[1] = g_partCar->groundNormal;
             FixVecCross(&debrisAxes[2], &debrisAxes[0], &debrisAxes[1]);
             Motion_NormalizeInto(&debrisAxes[2], &debrisAxes[2]);
-            Car_SpawnDebris(len, &offset, (Car *)((BYTE *)g_partCar), &debrisAxes[0], 0x40000, 0x6666);
+            Car_SpawnDebris(len, &offset, g_partCar, &debrisAxes[0], 0x40000, 0x6666);
         }
     }
 }
@@ -7220,13 +7236,13 @@ void StageTiming_IntegratePartSpringMotion(void)
                 FixVecScale(&g_partState->angularVelocity,
                             g_carFlexibleLineConstraintAxes[(g_partCar)->index], t);
             }
-                t = FixMul((short)g_unk0x00590c68 * 0x1680, 0x8000);
+                t = FixMul((short)g_carPartVibrationAngle * 0x1680, 0x8000);
             if (g_partState->position.z < 0)
                 t = -t;
             angles[1] = 0;
             angles[2] = 0;
             angles[0] = (short)FTOI(__int64, X87S_MUL((double)t, g_fixedDegreesToAngle12));
-            StageTiming_RotatePartBasisFromAngles(angles);
+            CarPart_StoreRotatedBasis(angles);
         } else {
             FixMatrix_SetRight(&g_partState->basis.right, g_partState->pWorld);
             FixMatrix_SetUp(&g_partState->basis.up, g_partState->pWorld);
@@ -7236,8 +7252,8 @@ void StageTiming_IntegratePartSpringMotion(void)
         detached = 0;
         angles[0] = 0;
         angles[1] = 0;
-        angles[2] = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_unk0x00590c68 * 0x1680, 0x50000), g_minusFixedDegreesToAngle12));
-        StageTiming_RotatePartBasisFromAngles(angles);
+        angles[2] = (short)FTOI(__int64, X87S_MUL((double)FixMul((short)g_carPartVibrationAngle * 0x1680, 0x50000), g_minusFixedDegreesToAngle12));
+        CarPart_StoreRotatedBasis(angles);
     }
     VehicleMotion_UpdateWorldPosition();
     if (detached != 0)
@@ -7582,12 +7598,12 @@ void StageObject_IntegrateViewDeformationGrid(int param_1, ViewWeatherState *rec
                 pNode->snowPhaseDegrees -= 0x1680000;
         }
     }
-    if (param_1 != 0 && rec->particleCount != rec->targetParticleCount) {
+    if (param_1 != 0 && rec->targetParticleCount != rec->particleCount) {
         if (rec->particleCount < rec->targetParticleCount) {
             rec->particleCount += FixMul(rec->particleCountChangeRate, g_stageObjectTimeStep);
             if (rec->particleCount > rec->targetParticleCount)
                 rec->particleCount = rec->targetParticleCount;
-        } else if (rec->targetParticleCount < rec->particleCount) {
+        } else if (rec->particleCount > rec->targetParticleCount) {
             rec->particleCount -= FixMul(rec->particleCountChangeRate, g_stageObjectTimeStep);
             if (rec->particleCount < rec->targetParticleCount)
                 rec->particleCount = rec->targetParticleCount;
@@ -7598,8 +7614,8 @@ void StageObject_IntegrateViewDeformationGrid(int param_1, ViewWeatherState *rec
 // Helpers implemented in other translation units.
 struct ReplaySample;
 void Replay_EncodeCarPoseSample(Car *pCar, ReplaySample *pSample);
-extern int g_wheelSlotDamageThresholds[4];   // per-slot thresholds 0x590c44..0x590c53
-extern BYTE g_wheelSlotDamageIndices[4];
+extern int g_carPartDamageThresholds[4];   // per-slot thresholds 0x590c44..0x590c53
+extern BYTE g_carPartDamageIndices[4];
 
 // Encodes one car pose into the next periodic replay sample.
 // FUNCTION: CMR2 0x0046c4e0
@@ -7610,29 +7626,20 @@ void Replay_RecordCarPoseSample(ReplaySample *pSample, BYTE index)
     Replay_EncodeCarPoseSample(pCar, pSample);
 }
 
-// Wakes the wheels of the current car whose static slot record has no model
-// installed yet and whose slot clock is still below the load threshold: the
-// slot is empty (0x469bc0 returns 0), the car's slot entry is 0 and the source
-// value of the slot exceeds the per-slot threshold.
+// Attaches visible, unattached body-part slots whose damage exceeds their
+// threshold, visiting slots from 3 down to 0.
 // FUNCTION: CMR2 0x00480de0
-void StageTiming_WakeUnloadedWheelSlots(void)
+void CarPart_AttachDamagedSlots(void)
 {
     int slot;
-    int offset;
 
-    slot = 3;
-    offset = 0;
-    for (; offset >= -0xc; slot--) {
-        if (StageTiming_GetCarReplayTailEntry(g_partCar, slot) == 0 &&
-            // offset steps over ints; the parts table holds pointers, scaled where
-            // they are wider than an int (the factor is 1 on Win32).
-            (*(PartState **)((BYTE *)&g_carPartStateTables.parts[3] +
-                             offset * (int)(sizeof(PartState *) / sizeof(int))))[g_partCar->index].pNode == NULL &&
-            g_partSet->damageValues[g_wheelSlotDamageIndices[slot]] >
-                *(int *)((BYTE *)&g_wheelSlotDamageThresholds[3] + offset)) {
-            CarPart_InitWheelHubSlot(slot);
+    for (slot = 3; slot >= 0; slot--) {
+        if (CarPart_GetHiddenState(g_partCar, slot) == 0 &&
+            g_carPartStateTables.parts[slot][g_partCar->index].pNode == NULL &&
+            g_partSet->damageValues[g_carPartDamageIndices[slot]] >
+                g_carPartDamageThresholds[slot]) {
+            CarPart_InitMovingSlot(slot);
         }
-        offset -= 4;
     }
 }
 
@@ -7800,9 +7807,7 @@ void StageTiming_RecomputeCarSplitBarSamples(Car *pCar, unsigned int mask, int *
             b = REF_TRACK->speedSamples[angles[1]];
             t = REF_TRACK->headingDegrees[angles[1]];
             if (b > 0x3c0000) {
-                if (baseAngle < 0x280000) {
-                    t = curAngle;
-                } else {
+                if (baseAngle >= 0x280000) {
                     a = b - baseAngle;
                     if (a > 0) {
                         scale = FixMul(0xb333, b - 0x280000);
@@ -7813,6 +7818,8 @@ void StageTiming_RecomputeCarSplitBarSamples(Car *pCar, unsigned int mask, int *
                             t -= FixMul(FixDiv(slack, scale), tmp);
                         }
                     }
+                } else {
+                    t = curAngle;
                 }
             }
             tmp = frontAngle - t;
@@ -7886,65 +7893,65 @@ void StageTiming_LoadEffectParticleTextures(void)
 
     CMain::GetFrameDelta();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexSpark);
-    g_unk0x00543650 = LOAD_EFFECT_TEXTURE();
+    g_sparkTexture = LOAD_EFFECT_TEXTURE();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexPaint);
-    g_unk0x00543654 = LOAD_EFFECT_TEXTURE();
+    g_paintTexture = LOAD_EFFECT_TEXTURE();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexGlass);
-    g_unk0x00543658 = LOAD_EFFECT_TEXTURE();
+    g_glassTexture = LOAD_EFFECT_TEXTURE();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexExhaust3);
-    g_unk0x0054365c = LOAD_EFFECT_TEXTURE();
+    g_exhaust03Texture = LOAD_EFFECT_TEXTURE();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexExhaust2);
-    g_unk0x00543660 = LOAD_EFFECT_TEXTURE();
+    g_exhaust02Texture = LOAD_EFFECT_TEXTURE();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexSnowCloud);
-    g_unk0x0054366c = LOAD_EFFECT_TEXTURE();
+    g_snowCloudTexture = LOAD_EFFECT_TEXTURE();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexWheelSpray);
-    g_unk0x00543668 = LOAD_EFFECT_TEXTURE();
+    g_wheelSprayTexture = LOAD_EFFECT_TEXTURE();
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexSplashSpray2);
-    g_unk0x00543670 = LOAD_EFFECT_TEXTURE();
-    Frontend_SetObjectField118(g_unk0x00543670, 1);
+    g_splashSprayTexture = LOAD_EFFECT_TEXTURE();
+    Frontend_SetObjectField118(g_splashSprayTexture, 1);
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexSplashSpray2f);
-    g_unk0x00543674 = LOAD_EFFECT_TEXTURE();
-    Frontend_SetObjectField118(g_unk0x00543674, 1);
+    g_splashSprayFTexture = LOAD_EFFECT_TEXTURE();
+    Frontend_SetObjectField118(g_splashSprayFTexture, 1);
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexSnowSpray);
-    g_unk0x00543678 = LOAD_EFFECT_TEXTURE();
+    g_snowSprayTexture = LOAD_EFFECT_TEXTURE();
     for (i = 0; i < 8; i++) {
         sprintf(CFrontend::m_stringDest, g_strNumberedTga, CInstallInfo::GetTexturesDirectory(), g_strTexDustCloud, i);
-        g_unk0x005436b8[i] = LOAD_EFFECT_TEXTURE();
+        g_dustCloudTextures[i] = LOAD_EFFECT_TEXTURE();
     }
     for (i = 0; i < 4; i++) {
         sprintf(CFrontend::m_stringDest, g_strNumberedTga, CInstallInfo::GetTexturesDirectory(), g_strTexDetail, i + 1);
-        g_unk0x005436d8[i] = LOAD_EFFECT_TEXTURE();
-        Frontend_SetObjectField118(g_unk0x005436d8[i], 1);
+        g_detailTextures[i] = LOAD_EFFECT_TEXTURE();
+        Frontend_SetObjectField118(g_detailTextures[i], 1);
     }
     for (i = 0; i < 5; i++) {
         sprintf(CFrontend::m_stringDest, g_strNumberedTga, CInstallInfo::GetTexturesDirectory(), g_strTexLeaf, i);
-        g_unk0x0054367c[i] = LOAD_EFFECT_TEXTURE();
+        g_leafTextures[i] = LOAD_EFFECT_TEXTURE();
     }
     for (i = 0; i < 2; i++) {
         sprintf(CFrontend::m_stringDest, g_strNumberedTga, CInstallInfo::GetTexturesDirectory(), g_strTexGrass, i + 1);
-        g_unk0x00543690[i] = LOAD_EFFECT_TEXTURE();
+        g_grassTexturesA[i] = LOAD_EFFECT_TEXTURE();
     }
     for (i = 0; i < 2; i++) {
         sprintf(CFrontend::m_stringDest, g_strNumberedTga, CInstallInfo::GetTexturesDirectory(), g_strTexGrass, i + 3);
-        g_unk0x00543698[i] = LOAD_EFFECT_TEXTURE();
+        g_grassTexturesB[i] = LOAD_EFFECT_TEXTURE();
     }
     sprintf(CFrontend::m_stringDest, g_strPathConcat, CInstallInfo::GetTexturesDirectory(), g_strTexSplashDrop);
-    g_wheelSprayTextures = LOAD_EFFECT_TEXTURE();
-    Frontend_SetObjectField118(g_wheelSprayTextures, 1);
+    g_splashDropTexture = LOAD_EFFECT_TEXTURE();
+    Frontend_SetObjectField118(g_splashDropTexture, 1);
     for (i = 0; i < 5; i++) {
         sprintf(CFrontend::m_stringDest, g_strNumberedTga, CInstallInfo::GetTexturesDirectory(), g_strTexRocksGrav, i);
-        g_unk0x005436a0[i] = LOAD_EFFECT_TEXTURE();
+        g_gravelTextures[i] = LOAD_EFFECT_TEXTURE();
     }
     CMain::GetFrameDelta();
-    g_unk0x00543664 = g_unk0x00543660;
-    CarEffects_InitUVs(g_unk0x00543650, g_unk0x00543654);
+    g_exhaust02TextureCopy = g_exhaust02Texture;
+    CarEffects_InitUVs(g_sparkTexture, g_paintTexture);
 }
 #undef LOAD_EFFECT_TEXTURE
 
 
 unsigned int StageTiming_GetTotalCarCount(void);
 void Car_AllocateTable(int count);
-void StageTiming_AllocateCarReplayRecordTables(int count);
+void CarPart_AllocateTables(int count);
 void StageTiming_AllocateCarPartNodeTables(int count);
 void StageTiming_AllocateMotionRecordTable(int count);
 void StageTiming_AllocateViewWeatherRecords(int count);
@@ -7965,9 +7972,9 @@ void Car_BuildRaceOrder(int count);
 short *Car_GetOrder(void);
 short Car_GetOrderCount(void);
 void CarPart_CacheFlexibleLineProfiles(short *pList, short count);
-void StageTiming_ResetCarPartRecordsAndSlots(void);
-void StageTiming_ClearCarReplayRecordRange(int first, int count);
-void StageTiming_ResetAllCarReplayRecords(void);
+void CarPart_ResetMovingStateTables(void);
+void CarPart_ClearSetRange(int first, int count);
+void CarDamage_ResetAllRecords(void);
 void CarDamage_SetupOrderedCarParts(int, int, short *, short);
 void CarTyres_CommitPlayerWear(int a, int b, int count);
 void Particle_KillAll(void);
@@ -7994,7 +8001,7 @@ int StageTiming_LoadStageCarsAndEffects(void)
     count = StageTiming_GetTotalCarCount();
     memset(g_carInfoBuffers, 0, sizeof(g_carInfoBuffers));
     Car_AllocateTable(count);
-    StageTiming_AllocateCarReplayRecordTables(count);
+    CarPart_AllocateTables(count);
     StageTiming_AllocateCarPartNodeTables(count);
     StageTiming_AllocateMotionRecordTable(count);
     StageTiming_AllocateViewWeatherRecords(count);
@@ -8038,9 +8045,9 @@ int StageTiming_LoadStageCarsAndEffects(void)
     CGame::RegisterCallback(StageTiming_FreeSceneAndFinishResources, NULL);
     Car_BuildRaceOrder(count);
     CarPart_CacheFlexibleLineProfiles(Car_GetOrder(), Car_GetOrderCount());
-    StageTiming_ResetCarPartRecordsAndSlots();
-    StageTiming_ClearCarReplayRecordRange(0, count);
-    StageTiming_ResetAllCarReplayRecords();
+    CarPart_ResetMovingStateTables();
+    CarPart_ClearSetRange(0, count);
+    CarDamage_ResetAllRecords();
     CarDamage_SetupOrderedCarParts(0, 0, Car_GetOrder(), Car_GetOrderCount());
     CarTyres_CommitPlayerWear(0, 0, (BYTE)RallyDataState());
     Particle_KillAll();
@@ -8108,7 +8115,7 @@ BOOL Car_ShowsCleanWheels(Car *pCar);
 void Car_SwapWheelTextures(char mode, SceneNode **pWheels);
 void Scene_AddShadowCaster(SceneNode *pNode, int exactMeshes);
 void SceneNode_SetMeshFlagBits(SceneNode *pNode, unsigned int value);
-void StageObject_SetCarStateSlot(int value, int index);
+void CarDamage_SetModelEnabled(int enabled, int carIndex);
 void StageTiming_ResetWheelWearRecord(int player, int wheel);
 void StageTiming_InitStageTypeEvents(char *unused, int slot, int type);
 
@@ -8428,7 +8435,7 @@ wheelsDone:
         if ((char)RallyData_GetSelectionFlag28())
             CGameInfo::GetSoundOptionBit30();
     } else {
-        StageObject_SetCarStateSlot(1, car);
+        CarDamage_SetModelEnabled(1, car);
     }
     if (car < (int)(BYTE)RallyDataState() &&
         ((CGameInfo::GetConfiguredGameMode() != 0 && CGameInfo::GetConfiguredGameMode() != 1) || RallyDataStageIndex() == 0 ||
@@ -8487,9 +8494,9 @@ wheelsDone:
     return 1;
 }
 
-void StageObject_ResetPartTuningAndRandomSeed(void);
+void CarPart_ResetDamageThresholds(void);
 void StageObject_ClearPartTuningState(void);
-void StageObject_ResetAttachedCarNodes(BYTE *pCar);
+void CarPart_ResetAttachedNodes(Car *pCar);
 void StageTiming_RegisterSlotMeshNode(SceneNode *pNode, CarPartSet *pSlot);
 void StageObject_AssignMatchingCarClassSlots(Car *pCar, SceneNode *pObject, BYTE flag);
 void CarDamage_RebuildPartBounds(int param_1, SceneNode *param_2, CarPartSet *param_3);
@@ -8517,14 +8524,14 @@ void CarDamage_SetupOrderedCarParts(int lock, int keep, short *pOrder, short cou
     RallyCarDamageState *pSaved;
     BYTE *p;
 
-    StageObject_ResetPartTuningAndRandomSeed();
+    CarPart_ResetDamageThresholds();
     if (lock == 0)
         StageObject_ClearPartTuningState();
     for (n = count - 1; n >= 0; n--) {
         {
             car = pOrder[n];
             pCar = Car_Get(car);
-            StageObject_ResetAttachedCarNodes((BYTE *)pCar);
+            CarPart_ResetAttachedNodes(pCar);
             pParts = g_carPartSets + car;
             pDamage = g_carDamageRecords + car;
             pParts->count = 0;
@@ -8995,7 +9002,7 @@ void RallyTiming_SortOrder(int *piTimes, char *pcOrder, int iDirection, int iCou
 
 // Builds the CPU drivers' split times for a stage and sorts every split.
 // FUNCTION: CMR2 0x004561e0
-void StageTiming_BuildAndSortCPUSplitTimes(StageTimingSpread *pTimes)
+void StageTiming_BuildAndSortCPUSplitTimes(StageTimingSpread *pSpread)
 {
     int *pDeltas;
     int n;
@@ -9004,8 +9011,8 @@ void StageTiming_BuildAndSortCPUSplitTimes(StageTimingSpread *pTimes)
     char *pOrder;
 
     pDeltas = (int *)CFileBuffer::AllocateLockedBuffer(0x280);
-    StageTiming_BuildSplitInterpolationFactors(pTimes);
-    StageTiming_InterpolateCarFixedSampleRows(pTimes, pDeltas);
+    StageTiming_BuildSplitInterpolationFactors(pSpread);
+    StageTiming_InterpolateCarFixedSampleRows(pSpread, pDeltas);
     StageTiming_PerturbComputerSplitDeltas(pDeltas);
     StageTiming_AccumulateSplitDeltas(pDeltas);
     n = GetStageSplitCount();
@@ -9069,7 +9076,7 @@ void CarEffect_UpdateExhaustSmokeAndBackfire(int car)
         revs = -revs;
     speed = (pCar->velocity.x < 0 ? -pCar->velocity.x : pCar->velocity.x) +
             (pCar->velocity.z < 0 ? -pCar->velocity.z : pCar->velocity.z);
-    heat = 0x17c - (FixMul(0x15e0000, (StageTiming_GetCarReplayRecord(pCar->index))->engineTorqueScale) >> 16);
+    heat = 0x17c - (FixMul(0x15e0000, (CarPart_GetSet(pCar->index))->engineTorqueScale) >> 16);
     if (heat > 0xff)
         heat = 0xff;
     else if (heat < 0)
@@ -9191,8 +9198,11 @@ void StageTiming_UpdateCarWheelAndExhaustEffects(int car)
         ((BYTE *)&car)[3] = 0xff;
     }
     CarEffects_SetSplashColour(index, (BYTE *)&car);
-    CarEffect_UpdateWheelSurfaceParticles(index,particles);
-    if (View_GetActiveCameraMode(index) != 3) {
+    // PORT: only cars 0 and 1 have a view. For the cars of a network game from
+    // 2 the original read the camera type past the view arrays (for car 2,
+    // view 1's near plane, not 3), so their wheel effects were drawn.
+    if (index >= 2 || View_GetActiveCameraMode(index) != 3) {
+        CarEffect_UpdateWheelSurfaceParticles(index, particles);
         StageTiming_SpawnWheelParticles(index);
         WheelSplash_Update(index);
         WheelSpray_Update(index);
@@ -9202,14 +9212,14 @@ void StageTiming_UpdateCarWheelAndExhaustEffects(int car)
 
 void CarDamage_StepClimbingCarRecords(short *param_1, short count);
 void Car_BreakQueuedWindows(Car *pCar);
-void CarPart_SmoothSteeringOffset(void);
-void StageTiming_WakeUnloadedWheelSlots(void);
+void CarPart_UpdateVibrationAngle(void);
+void CarPart_AttachDamagedSlots(void);
 
 // Per-frame update of the attached body parts (bonnet, doors, bumpers...) of
 // the cars in `pOrder` (last first): each active part's world transform is
 // rebuilt and its per-part handler runs; then queued windows break.
 // FUNCTION: CMR2 0x00480bb0
-void StageTiming_UpdateAttachedCarParts(Car *pCars, short *pOrder, short count)
+void CarPart_UpdateOrderedCars(Car *pCars, short *pOrder, short count)
 {
     int n;
     short *pIndex;
@@ -9222,9 +9232,9 @@ void StageTiming_UpdateAttachedCarParts(Car *pCars, short *pOrder, short count)
         int remaining = n + 1;
         do {
             g_partCar = pCars + *pIndex;
-            g_partSet = StageTiming_GetCarReplayRecord(g_partCar->index);
-            StageTiming_WakeUnloadedWheelSlots();
-            CarPart_SmoothSteeringOffset();
+            g_partSet = CarPart_GetSet(g_partCar->index);
+            CarPart_AttachDamagedSlots();
+            CarPart_UpdateVibrationAngle();
             pTable = &g_carPartStateTables.parts[3];
             do {
                 pPart = *pTable + g_partCar->index;
@@ -9527,7 +9537,7 @@ void StageTiming_InitRaceDriverRecords(char param_1)
         g_stageTimingRandomSeed = CMain::GetFrameTime();
     srand(g_stageTimingRandomSeed);
     StageTiming_AssignReservedDriverSlots(CGameInfo::GetConfiguredPlayerCount());
-    StageTiming_RefreshPaintSamplesAndTimeSpread(&local);
+    StageTiming_BuildAndSortDriverTimeTuning(&local);
     StageTiming_BuildAndSortCPUSplitTimes(&local);
     StageTiming_RebuildSplitPositions();
     if ((char)RallyData_GetSelectionFlag27() != 0) {
@@ -9537,8 +9547,8 @@ void StageTiming_InitRaceDriverRecords(char param_1)
             p[0] = 0;
             p += 6;
         } while ((INT_PTR)p < (INT_PTR)(g_unk0x00542528 + 0xd0));
-        g_unk0x00542420[0] = ConvertRawTimeToCentiseconds(*(int *)(g_splitSpreadTable + 0x2d0));
-        g_unk0x00542420[1] = ConvertRawTimeToCentiseconds(*(int *)(g_splitSpreadTable + 0x310));
+        g_unk0x00542420[0] = ConvertRawTimeToCentiseconds(g_stageTimeProfile->blend1Times[0][0]);
+        g_unk0x00542420[1] = ConvertRawTimeToCentiseconds(g_stageTimeProfile->blend1Times[1][0]);
         StageTiming_PairPlayerOpponentSlots();
         StageTiming_ClearSplitDisplayFlags();
         return;

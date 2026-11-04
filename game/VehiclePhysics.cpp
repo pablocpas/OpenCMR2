@@ -41,13 +41,6 @@ FixVector g_collisionLineStart;
 // GLOBAL: CMR2 0x00591adc
 int g_collisionDirectionDirty;
 
-// The tracked object is the one defined (and annotated) in StageTiming.cpp:
-// both struct views are the same memory, so reference that symbol instead of
-// keeping a second definition. The casts preserve this file's field layout.
-
-#define COLLISION_VECTOR(offset) (*(FixVector *)((BYTE *)g_collisionCar + (offset)))
-#define COLLISION_INT(offset) (*(int *)((BYTE *)g_collisionCar + (offset)))
-
 inline int Collision_FixSqrt(int value)
 {
     // PORT: the same table square root as FixSqrt, which is portable C.
@@ -221,7 +214,9 @@ int VehiclePhysics_TestBehindFaceCollision(void)
 }
 
 // Classifies face vertices by signed distance from the active collision plane.
-// match 89%: below the 90% bar; kept as FUNCTION on purpose so reccmp measures it (see CONVENCIONES)
+// Points 0..3 are the current footprint; points 4..7 are the corresponding
+// secondary points when hasSecondaryVertices is set. Candidate indices always
+// refer to the first group, including when a secondary point rejects a vertex.
 // FUNCTION: CMR2 0x00490720
 void Collision_ClassifyFaceVertices(void)
 {
@@ -230,11 +225,10 @@ void Collision_ClassifyFaceVertices(void)
     FixVector targetDelta;
     FixVector startDelta;
     FixVector secondaryDelta;
-    int length;
+    int directionLength;
     int sideAtTarget;
     int sideAtStart;
     int secondaryDistance;
-    int vertexOffset;
     int vertexIndex;
     int *pDistance;
 
@@ -244,13 +238,13 @@ void Collision_ClassifyFaceVertices(void)
         newDirection.y = 0;
         newDirection.z = g_collisionTarget.x - g_collisionLineStart.x;
 
-        length = Collision_FixSqrt(FixMul(newDirection.x, newDirection.x) +
+        directionLength = Collision_FixSqrt(FixMul(newDirection.x, newDirection.x) +
                                    FixMul(newDirection.z, newDirection.z));
         if (FixVecDot(&newDirection, &g_collisionDirection) <= 0) {
-            length = -length;
-            FixVecScaleRecip(&newDirection, &newDirection, length);
+            directionLength = -directionLength;
+            FixVecScaleRecip(&newDirection, &newDirection, directionLength);
         } else {
-            FixVecScaleRecip(&newDirection, &newDirection, length);
+            FixVecScaleRecip(&newDirection, &newDirection, directionLength);
         }
         g_collisionDirection = newDirection;
     }
@@ -264,17 +258,15 @@ void Collision_ClassifyFaceVertices(void)
     g_collisionNegativeVertexCount = 0;
     g_collisionPositiveVertexCount = 0;
     vertexIndex = 0;
-    vertexOffset = 0;
     pDistance = g_collisionVertexDistances;
 
     do {
-        FixVector *pPrimary = (FixVector *)(vertexOffset + (BYTE *)g_collisionFace + 0x30);
-        targetDelta.x = g_collisionTarget.x - pPrimary->x;
-        targetDelta.y = g_collisionTarget.y - pPrimary->y;
-        targetDelta.z = g_collisionTarget.z - pPrimary->z;
-        startDelta.x = g_collisionLineStart.x - pPrimary->x;
-        startDelta.y = g_collisionLineStart.y - pPrimary->y;
-        startDelta.z = g_collisionLineStart.z - pPrimary->z;
+        targetDelta.x = g_collisionTarget.x - g_collisionFace->primaryPoints[vertexIndex].x;
+        targetDelta.y = g_collisionTarget.y - g_collisionFace->primaryPoints[vertexIndex].y;
+        targetDelta.z = g_collisionTarget.z - g_collisionFace->primaryPoints[vertexIndex].z;
+        startDelta.x = g_collisionLineStart.x - g_collisionFace->primaryPoints[vertexIndex].x;
+        startDelta.y = g_collisionLineStart.y - g_collisionFace->primaryPoints[vertexIndex].y;
+        startDelta.z = g_collisionLineStart.z - g_collisionFace->primaryPoints[vertexIndex].z;
 
         sideAtTarget = FixVecDot(&targetDelta, &sideDirection);
         sideAtStart = FixVecDot(&startDelta, &sideDirection);
@@ -300,12 +292,9 @@ checkSecondary:
             if (g_collisionFace->hasSecondaryVertices == 0)
                 goto addVertex;
 
-            {
-                FixVector *pSecondary = (FixVector *)(vertexOffset + (BYTE *)g_collisionFace + 0x60);
-                secondaryDelta.x = g_collisionTarget.x - pSecondary->x;
-                secondaryDelta.y = g_collisionTarget.y - pSecondary->y;
-                secondaryDelta.z = g_collisionTarget.z - pSecondary->z;
-            }
+            secondaryDelta.x = g_collisionTarget.x - g_collisionFace->secondaryPoints[vertexIndex].x;
+            secondaryDelta.y = g_collisionTarget.y - g_collisionFace->secondaryPoints[vertexIndex].y;
+            secondaryDelta.z = g_collisionTarget.z - g_collisionFace->secondaryPoints[vertexIndex].z;
             secondaryDistance = FixVecDot(&secondaryDelta, &g_collisionDirection);
             if (*pDistance > 0) {
                 if (secondaryDistance <= *pDistance)
@@ -318,11 +307,12 @@ checkSecondary:
 addVertex:
         if (*pDistance >= 0)
             g_collisionPositiveCandidates[g_collisionPositiveCandidateCount++] = (BYTE)vertexIndex;
-        else
-            g_collisionNegativeCandidates[g_collisionNegativeCandidateCount++] = (BYTE)vertexIndex;
+        else {
+            g_collisionNegativeCandidates[g_collisionNegativeCandidateCount] = (BYTE)vertexIndex;
+            g_collisionNegativeCandidateCount++;
+        }
 
 nextVertex:
-        vertexOffset += sizeof(FixVector);
         vertexIndex++;
         pDistance++;
     } while ((INT_PTR)pDistance < (INT_PTR)(g_collisionVertexDistances + 4)); // 0x5919b4 in the original
@@ -389,24 +379,24 @@ void Vehicle_UpdateMotion(FixVector *pInput)
     g_partState->flags &= (BYTE)~2;
 }
 
-void StageObject_QueueViewLensFlare(int *pObj, int *param2, int *param3, FixVector *pVerts);
+void Collision_BuildCarBox(CollisionBox *pBox, int *pBodyAxes, FixVector *pPosition, FixVector *pCorners);
 
 // Selects a candidate face, transforms and classifies its vertices, then uses
 // candidate and side counts to decide whether it participates in car collision.
 // Byte-exact against the original (fastcmp EXACT).
 // FUNCTION: CMR2 0x00490b90
-int VehiclePhysics_ClassifyCandidateFace(int param_1)
+int VehiclePhysics_ClassifyCandidateFace(int useParallelSide)
 {
     int result = 0;
     int found;
 
-    if (param_1 != 0)
+    if (useParallelSide != 0)
         found = VehiclePhysics_SelectParallelCollisionSide();
     else
         found = VehiclePhysics_TestBehindFaceCollision();
     if (found != 0) {
-        StageObject_QueueViewLensFlare((int *)g_collisionFace, &g_collisionCar->right.x,
-                     &g_collisionCar->position.x,
+        Collision_BuildCarBox(g_collisionFace, &g_collisionCar->right.x,
+                     &g_collisionCar->position,
                      &g_collisionCar->corners[0]);
         Collision_ClassifyFaceVertices();
         result = 0;
@@ -422,7 +412,7 @@ int VehiclePhysics_ClassifyCandidateFace(int param_1)
     return result;
 }
 
-void StageTiming_ClearPartFlagAndReselectIndex(void);
+void CarPart_DeactivateAndMarkHidden(void);
 
 // Tests whether the length of the motion-state correction vector exceeds the
 // current ground offset; when it does, latches the collision and reports it.
@@ -433,7 +423,7 @@ int VehiclePhysics_TestMotionCorrectionCollision(void)
 
     if (FixVecLength(pV) >
         g_partCar->collisionRadius + g_partState->boundsRadius) {
-        StageTiming_ClearPartFlagAndReselectIndex();
+        CarPart_DeactivateAndMarkHidden();
         return 1;
     }
     return 0;
@@ -488,8 +478,8 @@ int Collision_ResolveSectorEdgeContact(char type, int param)
     if ((g_pCollisionFinRecord->flags & 1) == 0)
         result = Collision_TestSectorEdgeEndpoints(type);
 
-    StageObject_QueueViewLensFlare((int *)g_collisionFace, &g_collisionCar->right.x,
-                 &g_collisionCar->position.x,
+    Collision_BuildCarBox(g_collisionFace, &g_collisionCar->right.x,
+                 &g_collisionCar->position,
                  &g_collisionCar->corners[0]);
     Collision_ClassifyFaceVertices();
 

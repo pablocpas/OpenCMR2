@@ -44,6 +44,11 @@
             android:name=".EffectsActivity"
             android:exported="false"
             android:theme="@style/Theme.OpenCMR2.Setup" />
+        <activity
+            android:name=".TouchLayoutActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.OpenCMR2.Setup" />
 
         <!-- SDLActivity: SDL handles these configuration changes itself. -->
         <activity

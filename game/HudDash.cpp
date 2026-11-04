@@ -433,8 +433,8 @@ void Dash_DrawBar(int player, int *pViewRect)
         if (len > split) {
             rest = len - split;
         } else {
-            rest = 0;
             split = len;
+            rest = 0;
         }
         rect[0] = DASH_X(0xfd70) - (short)((g_pGraphics->resX * 0x82) / 640) + dx;
         rect[1] = DASH_Y(0xfd70) - (short)((g_pGraphics->resY * 0x28) / 480) + dy;
@@ -942,15 +942,18 @@ void ChaseCamera_Update(CameraRecord *param_1, FixMatrix *param_2, int param_3)
     CameraOperator_Update(param_1,param_2,&operatorOffset,g_chaseCameraPitch[2+param_1->view]);
     CornerCameraRoll_Update(param_1,param_2);
     index = param_1->index;
-    pUp = &g_chaseCameraOffsets[2 + index];
     pRight = &g_chaseCameraViewOffsets[2 + index];
+    pUp = &g_chaseCameraOffsets[2 + index];
     FixVecCross(&cross, pUp, pRight);
     FixMatrix_Identity(&mat);
     FixMatrix_SetRight(&cross, &mat);
     FixMatrix_SetUp(pUp, &mat);
     FixMatrix_SetForward(pRight, &mat);
 
-    if (param_3 == 0) {
+    if (param_3 != 0) {
+        xform = mat;
+        FixMatrix_RebuildBasis(&xform);
+    } else {
         xform = *param_2;
         xform.forward.x = param_2->right.x;
         xform.forward.y = param_2->right.y;
@@ -958,9 +961,6 @@ void ChaseCamera_Update(CameraRecord *param_1, FixMatrix *param_2, int param_3)
         xform.right.x = -param_2->forward.x;
         xform.right.y = -param_2->forward.y;
         xform.right.z = -param_2->forward.z;
-    } else {
-        xform = mat;
-        FixMatrix_RebuildBasis(&xform);
     }
 
     if (g_playerCameraMode[index] == 3) {

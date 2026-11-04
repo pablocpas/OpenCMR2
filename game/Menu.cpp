@@ -267,14 +267,14 @@ void Menu_CallCallback2(Menu *pMenu)
 void Menu_PlaySound(int id)
 {
     if (id >= 0)
-        Sound_PlaySampleWithParameters(id, CInput::m_unk0x0059f900, 0x57e4, 0, 0, 0);
+        Sound_PlaySampleWithParameters(id, CInput::m_menuSoundVolume, 0x57e4, 0, 0, 0);
 }
 
 // FUNCTION: CMR2 0x004a0ad0
 void Menu_SetNextAction(Menu *action)
 {
     if (g_unk0x0059f8fc == 0 && g_unk0x0059fa14 != 0)
-        Menu_PlaySound(CInput::m_unk0x0059f910);
+        Menu_PlaySound(CInput::m_menuSelectSound);
     g_unk0x0059fa16 = 0;
     g_menuNextAction = action;
 }
@@ -403,7 +403,7 @@ Menu *Menu_Update(Menu *pMenu, unsigned int input)
                 } while (!ITEM_AT(pMenu, cursor)->enabled || !ITEM_AT(pMenu, cursor)->visible);
                 pMenu->moveFlags |= 1;
                 if (wrapped && g_unk0x0059fa14 != 0)
-                    Menu_PlaySound(CInput::m_unk0x0059f8f8);
+                    Menu_PlaySound(CInput::m_menuMoveSound);
             } else {
                 moved = 0;
             }
@@ -427,7 +427,7 @@ Menu *Menu_Update(Menu *pMenu, unsigned int input)
                 } while (!ITEM_AT(pMenu, cursor)->enabled || !ITEM_AT(pMenu, cursor)->visible);
                 pMenu->moveFlags &= 0xfe;
                 if (wrapped && g_unk0x0059fa14 != 0)
-                    Menu_PlaySound(CInput::m_unk0x0059f8f8);
+                    Menu_PlaySound(CInput::m_menuMoveSound);
             } else {
                 moved = 0;
             }
@@ -453,7 +453,7 @@ Menu *Menu_Update(Menu *pMenu, unsigned int input)
                     if (pItem->max == 0xff)
                         pItem->max = pItem->min - 1;
                     if (g_unk0x0059fa14 != 0)
-                        Menu_PlaySound(CInput::m_unk0x0059f90c);
+                        Menu_PlaySound(CInput::m_menuChangeSound);
                     pMenu->moveFlags &= 0xfd;
                 } else {
                     moved = 0;
@@ -469,7 +469,7 @@ Menu *Menu_Update(Menu *pMenu, unsigned int input)
                             pItem->max = 0;
                     }
                     if (g_unk0x0059fa14 != 0)
-                        Menu_PlaySound(CInput::m_unk0x0059f90c);
+                        Menu_PlaySound(CInput::m_menuChangeSound);
                     pMenu->moveFlags |= 2;
                 } else {
                     moved = 0;
@@ -488,7 +488,7 @@ back:
                 if (pMenu->pItemCallbacks != NULL && pMenu->pItemCallbacks->pfnBack != NULL)
                     pMenu->pItemCallbacks->pfnBack(pMenu, ITEM_AT(pMenu, pMenu->cursor), 1);
                 if (g_unk0x0059fa14 != 0)
-                    Menu_PlaySound(CInput::m_unk0x0059f8f4);
+                    Menu_PlaySound(CInput::m_menuBackSound);
             }
         } else {
             if (pItem->action != NULL)
@@ -500,7 +500,7 @@ back:
                 if (pMenu->pItemCallbacks != NULL && pMenu->pItemCallbacks->pfnSelect != NULL)
                     pMenu->pItemCallbacks->pfnSelect(pMenu, ITEM_AT(pMenu, pMenu->cursor), 1);
                 if (g_unk0x0059fa14 != 0)
-                    Menu_PlaySound(CInput::m_unk0x0059f910);
+                    Menu_PlaySound(CInput::m_menuSelectSound);
             }
         }
         if (pMenu->pfnCallback1 != NULL)
@@ -533,7 +533,7 @@ done:
 void Menu_GoBack(Menu *pMenu)
 {
     if (g_unk0x0059f8fc == 0 && g_unk0x0059fa14 != 0)
-        Menu_PlaySound(CInput::m_unk0x0059f910);
+        Menu_PlaySound(CInput::m_menuSelectSound);
     g_menuNextAction = pMenu->pParent;
     g_unk0x0059fa17 = 1;
 }
@@ -554,19 +554,19 @@ void Menu_PlaySoundId(int id)
 
     switch (id) {
     case 0:
-        snd = CInput::m_unk0x0059f8f8;
+        snd = CInput::m_menuMoveSound;
         break;
     case 1:
-        snd = CInput::m_unk0x0059f910;
+        snd = CInput::m_menuSelectSound;
         break;
     case 2:
-        snd = CInput::m_unk0x0059f8f4;
+        snd = CInput::m_menuBackSound;
         break;
     case 3:
-        snd = CInput::m_unk0x0059f8f0;
+        snd = CInput::m_menuErrorSound;
         break;
     case 4:
-        snd = CInput::m_unk0x0059f90c;
+        snd = CInput::m_menuChangeSound;
         break;
     }
     Menu_PlaySound(snd);

@@ -80,7 +80,7 @@ void *CFileBuffer::GetGenericFileBuffer(char *fileName, BOOL isLocalFile)
         lpBuffer = AllocateLockedBuffer(pFileHeaderOut.archiveSize);
         CGenericFileLoader::m_fileSize = pFileHeaderOut.archiveSize;
         gzread(unk0x004bdee0, lpBuffer, pFileHeaderOut.archiveSize);
-        bIsBFL = true;
+        bIsBFL = TRUE;
     }
 
     gzclose(unk0x004bdee0);

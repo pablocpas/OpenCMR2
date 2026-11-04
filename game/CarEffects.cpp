@@ -160,9 +160,6 @@ void CarEffects_Init(void)
 void Car_ShatterWindow(FixVector *pQuad, FixVector *pDir, int window, Car *pCar)
 {
     FixVector t;
-    FixVector top;
-    FixVector bottom;
-    FixVector e;
     FixVector n;
     FixVector d;
     FixVector centre;
@@ -191,20 +188,20 @@ void Car_ShatterWindow(FixVector *pQuad, FixVector *pDir, int window, Car *pCar)
     }
 
     // Grid rows between the two side edges, then points along each row.
-    top.x = pQuad[1].x - pQuad[0].x;
-    top.y = pQuad[1].y - pQuad[0].y;
-    top.z = pQuad[1].z - pQuad[0].z;
-    bottom.x = pQuad[2].x - pQuad[3].x;
-    bottom.y = pQuad[2].y - pQuad[3].y;
-    bottom.z = pQuad[2].z - pQuad[3].z;
+    u.x = pQuad[1].x - pQuad[0].x;
+    u.y = pQuad[1].y - pQuad[0].y;
+    u.z = pQuad[1].z - pQuad[0].z;
+    v.x = pQuad[2].x - pQuad[3].x;
+    v.y = pQuad[2].y - pQuad[3].y;
+    v.z = pQuad[2].z - pQuad[3].z;
     i = 0;
     pRow = g_windowGrid[0];
     do {
-        FixVecScale(&pRow[0], &top, FixMul(0x1999, i << 16));
+        FixVecScale(&pRow[0], &u, FixMul(0x1999, i << 16));
         pRow[0].x += pQuad[0].x;
         pRow[0].y += pQuad[0].y;
         pRow[0].z += pQuad[0].z;
-        FixVecScale(&pRow[7], &bottom, FixMul(0x1999, i << 16));
+        FixVecScale(&pRow[7], &v, FixMul(0x1999, i << 16));
         pRow[7].x += pQuad[3].x;
         pRow[7].y += pQuad[3].y;
         i++;
@@ -234,13 +231,13 @@ void Car_ShatterWindow(FixVector *pQuad, FixVector *pDir, int window, Car *pCar)
     centre.x += pQuad[2].x;
     centre.y += pQuad[2].y;
     centre.z += pQuad[2].z;
-    e.x = pQuad[0].x - pQuad[1].x;
-    e.y = pQuad[0].y - pQuad[1].y;
-    e.z = pQuad[0].z - pQuad[1].z;
-    FixVecCross(&d, &e, &d);
+    vel.x = pQuad[0].x - pQuad[1].x;
+    vel.y = pQuad[0].y - pQuad[1].y;
+    vel.z = pQuad[0].z - pQuad[1].z;
+    FixVecCross(&d, &vel, &d);
     d.y = 0;
-    FixMatrix_RotateVector(&e, &d, pCar->pWorld);
-    FIX_NORMALIZE_INTO(n, e);
+    FixMatrix_RotateVector(&vel, &d, pCar->pWorld);
+    FIX_NORMALIZE_INTO(n, vel);
     facing = FixMul(0x6666, FixMul(FIX_ABS(FixVecDot(pDir, &n)), FixDiv(0x10000, 0x20000))) + 0x9999;
     if (facing > 0x10000)
         facing = 0x10000;
@@ -553,7 +550,7 @@ void Car_SpawnDebris(int size, FixVector *pPos, Car *pCar, FixVector *pAxes, int
     BYTE light;
 
     glass = 0;
-    pRecord = StageTiming_GetCarReplayRecord(pCar->index);
+    pRecord = CarPart_GetSet(pCar->index);
     if ((BYTE)RallyData_GetSelectionFlag26() != 0 || pCar->isGhost != 0)
         return;
     n = EFFECT_RAND();
@@ -1457,15 +1454,15 @@ void WheelSplash_Update(int player)
                     vel.y = FixMul(vel.y, k);
                     vel.z = FixMul(vel.z, k);
                 }
-                if (type != 0xd) {
-                    pPos = &rel;
-                    f48 = rel.y - 0x10000;
-                } else {
+                if (type == 0xd) {
                     vel.x = pVel->x / 3;
                     vel.y = pVel->y / 3;
                     vel.z = pVel->z / 3;
                     pPos = &p;
                     f48 = p.y - 0x630000;
+                } else {
+                    pPos = &rel;
+                    f48 = rel.y - 0x10000;
                 }
                 Particle_Spawn(type, pPos, &vel, f48, 0, colour, g_trailLevel[player][wheel], &player,
                                pCar->pBodyNode->viewMask);
