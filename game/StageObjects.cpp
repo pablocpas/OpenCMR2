@@ -12053,6 +12053,13 @@ void StageObject_ResetCarObjectState(Car *pCar)
     }
     StageObject_RebuildDamagePartValues(pCar);
     StageTiming_FlagCarPartBreaks(pCar, 1);
+    if (Sys_GetOption("video.diag_replay_glass", 0) != 0 && CGameInfo::GetConfiguredGameMode() == 4) {
+        for (i = 0; i < 8; i++)
+            Sys_Log("replay-glass-diag: reset-restore car %d slot %d saved-intensity %d bias %x dmg %x broken %d damaged %d",
+                    (int)pCar->index, i, (int)pRecord->damage.intensity[26 + i],
+                    set->damageBiases[26 + i], set->damageValues[26 + i],
+                    set->partBroken[i], set->partDamaged[i]);
+    }
 }
 
 // Initialises the stage-object state of one car (list type 0): resets the car's
