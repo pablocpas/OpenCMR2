@@ -32,6 +32,12 @@ void Audio_Shutdown(void);
 /* Holds the output while the game is in the background, as DirectSound
    silenced a window without the focus; the buffers keep their positions. */
 void Audio_SetPaused(BOOL paused);
+BOOL Audio_IsPaused(void);
+/* While held, Audio_SetPaused(FALSE) is ignored: the offline replay export
+   owns the mixer and the window-focus handler cannot resume the device.
+   The export sets this after pausing and clears it before restoring the
+   previous pause state. */
+void Audio_SetExportHold(BOOL hold);
 /* Sets the output channel count (2, 4, 6 or 8). Must be called before
    Audio_Init, or the device is recreated on the next Audio_Init. */
 BOOL Audio_SetOutputChannels(int channels);

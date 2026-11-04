@@ -14,14 +14,18 @@
 // the same mix the player hears - into a WAV. Game sound parameters are set
 // from the sim-step update, so per-step tapping stays in sync with the frames.
 //
-// Mux: at the end the exact ffmpeg command is written to export-command.txt and
-// ffmpeg is spawned (no shell, argv only) when found on PATH; otherwise the PNGs
-// and WAV remain for a manual run. ffmpeg is an external tool the user installs;
-// nothing is bundled.
+// Mux: ffmpeg is a hard requirement, preflighted (Sys_CommandExists) before any
+// frame is captured; without it the export fails early with a clear dependency
+// message instead of producing frames that are not a video. At the end the exact
+// command is written to export-command.txt and ffmpeg runs synchronously
+// (Sys_RunAndWait): success requires exit code 0 AND a nonempty replay.mp4,
+// anything else is reported as a failure with the manual command kept.
 //
 // Scope: export of the FIRST replay played this launch; capture only, no
-// gameplay or physics input. Any failure aborts the export cleanly (WAV stays
-// valid up to the last written sample, audio unpauses, the replay plays on).
+// gameplay or physics input. Audio is required: any persistent audio failure
+// aborts the whole export. Every abort leaves the WAV valid up to the last
+// written sample, restores the pre-export audio pause state, and lets the
+// replay play on.
 #include "port/sys.h"
 #include "port/gfx.h"
 #include "port/audio.h"
@@ -55,7 +59,7 @@ struct State {
     long frames = 0;             // PNG frames acknowledged
     long taps = 0;               // audio slices written (== frames when in sync)
     double tapFrac = 0.0;        // fractional sample accumulator (rate/25 may be non-integer)
-    bool audioCapped = false;
+    BOOL wasPaused = 0;          // audio pause state before the export; restored at the end
     int rate = 0, channels = 0;
     unsigned wavData = 0;
     FILE *wav = NULL;
@@ -148,37 +152,44 @@ inline bool WriteWavHeader(State &s) {
 // One audio slice per exported frame: rate/25 samples (fractional remainder
 // accumulated so long exports do not drift). Tapped at ack time, after the sim
 // step for that frame ran, so slice k is the sound of the step frame k shows.
+inline void Finalize(const char *reason);
+inline void Fail(State &s, const char *why);
+
 inline void TapAudio(State &s) {
-    if (s.audioCapped)
-        return;
     s.tapFrac += (double)s.rate / 25.0;
     int frames = (int)s.tapFrac;
     s.tapFrac -= frames;
     if (frames <= 0)
         return;
     if (s.wavData + (unsigned)(frames * s.channels * 2) > kMaxWavData) {
-        s.audioCapped = true;
-        Sys_Log("replay-export: WAV size cap reached; audio stops, video continues");
+        Fail(s, "WAV size cap reached");
+        Finalize("aborted");
         return;
     }
     short *buf = new short[(size_t)frames * s.channels];
     int got = Audio_MixOffline(buf, frames);
     if (got != frames) {
-        // The window focus handler (main.cpp SetGameActiveState) can resume the
-        // device mid-export; the tap refuses while unpaused. Re-pause and retry
-        // once: samples the live callback consumed meanwhile are a short gap.
+        // The tap refuses while the device is unpaused. The export hold blocks
+        // the focus handler's unpause, so a refusal here means real trouble;
+        // re-pause and retry once before giving up.
         Audio_SetPaused(1);
-        Sys_Log("replay-export: device was unpaused (focus change?); re-paused, brief audio gap possible");
         got = Audio_MixOffline(buf, frames);
     }
     if (got != frames) {
         delete[] buf;
-        Sys_Log("replay-export: offline mix refused (%d of %d frames); audio stops, video continues", got, frames);
-        s.audioCapped = true;
+        // Audio is required: a persistent mix failure aborts the whole export.
+        Sys_Log("replay-export: offline mix refused (%d of %d frames)", got, frames);
+        Fail(s, "audio mix failed");
+        Finalize("aborted");
         return;
     }
     size_t wrote = fwrite(buf, 2, (size_t)frames * s.channels, s.wav);
     delete[] buf;
+    if (wrote != (size_t)frames * s.channels) {
+        Fail(s, "audio write failed");
+        Finalize("aborted");
+        return;
+    }
     s.wavData += (unsigned)(wrote * 2);
     s.taps++;
     PatchWavHeader(s); // keep the WAV valid even if the game exits mid-export
@@ -199,12 +210,15 @@ inline void Finalize(const char *reason) {
         fclose(s.wav);
         s.wav = NULL;
     }
-    Audio_SetPaused(0);
+    // Release the mixer and put audio back the way it was before the export.
+    Audio_SetExportHold(0);
+    Audio_SetPaused(s.wasPaused);
     double secs = s.frames / 25.0;
     Sys_Log("replay-export: %s - %ld frames (%.1f s), %ld audio slices into %s",
             reason, s.frames, secs, s.taps, s.dir);
-    if (s.frames < 1) {
-        Sys_Log("replay-export: nothing captured, no video assembled");
+    if (s.failed || s.frames < 1) {
+        if (!s.failed)
+            Sys_Log("replay-export: nothing captured, no video assembled");
         return;
     }
     char cmdPath[1200], mp4[1200], pattern[1200], wavPath[1200];
@@ -222,11 +236,18 @@ inline void Finalize(const char *reason) {
                 pattern, wavPath, mp4);
         fclose(cmd);
     }
-    bool spawned = Sys_RunDetached("ffmpeg", argv) != 0;
-    if (spawned)
-        Sys_Log("replay-export: ffmpeg started; %s appears when encoding finishes", mp4);
+    // Encode now, synchronously: the replay is over and an export was asked
+    // for, so the game waits. Done means done: exit code 0 and a nonempty file.
+    Sys_Log("replay-export: encoding %ld frames with ffmpeg; the game waits for it", s.frames);
+    int rc = Sys_RunAndWait("ffmpeg", argv);
+    FILE *out = fopen(mp4, "rb");
+    long outSize = 0;
+    if (out) { fseek(out, 0, SEEK_END); outSize = ftell(out); fclose(out); }
+    if (rc == 0 && outSize > 0)
+        Sys_Log("replay-export: video written: %s (%ld bytes, %ld frames, %.1f s)", mp4, outSize, s.frames, secs);
     else
-        Sys_Log("replay-export: ffmpeg not found on PATH; frames + WAV kept, run %s to assemble the video", cmdPath);
+        Sys_Log("replay-export: ffmpeg failed (exit %d, output %ld bytes); frames + WAV kept, run %s to assemble the video",
+                rc, outSize, cmdPath);
 }
 
 // Called once per rendered race frame (Race_UpdateFrameEffects), like
@@ -244,7 +265,15 @@ inline void Tick() {
     if (s.failed)
         return;
     if (!s.started) {
-        // Begin: need the mixer (audio is the point of the export) and a writable folder.
+        // Begin: the export needs the mixer (audio is the point), ffmpeg (the
+        // video), and a writable folder. All are preflighted before the first
+        // frame is captured, so a missing dependency fails early and clearly
+        // instead of leaving frames that are not a video.
+        if (!Sys_CommandExists("ffmpeg")) {
+            Sys_Log("replay-export: ffmpeg not found on PATH; it is required to assemble the video. Install it (e.g. brew install ffmpeg) and run again; nothing captured");
+            s.failed = true; s.done = true;
+            return;
+        }
         s.rate = Audio_GetOutputRate();
         s.channels = Audio_GetOutputChannels();
         if (s.rate <= 0 || s.channels <= 0) {
@@ -266,7 +295,11 @@ inline void Tick() {
             s.failed = true; s.done = true;
             return;
         }
-        Audio_SetPaused(1); // stop live device consumption; the offline tap takes over
+        // Stop live device consumption and take ownership: while the hold is
+        // set, the window-focus handler cannot resume the device mid-export.
+        s.wasPaused = Audio_IsPaused();
+        Audio_SetPaused(1);
+        Audio_SetExportHold(1);
         s.started = true;
         TapAudio(s); // slice 0: the start state's sound, aligned with frame 0
         s.serial = Gfx_GetCaptureSerial();

@@ -167,10 +167,15 @@ const char *Sys_GetLaunchSummary(int line);
 /* --attract-capture: output folder (NULL when off) plus interval seconds and shot count. */
 const char *Sys_GetCaptureDir(int *intervalSeconds, int *count);
 const char *Sys_GetReplayExportDir(void);
-/* Runs a detached child process by PATH lookup with an explicit argv (no
-   shell; argv[0] is the program). Returns FALSE when the program cannot be
-   started (for example not installed). The caller cannot wait on the child. */
-BOOL Sys_RunDetached(const char *path, const char *const argv[]);
+/* TRUE when an executable with this name is found on PATH (no process is
+   run). Used to preflight external tool dependencies (ffmpeg) before work
+   that needs them begins. */
+BOOL Sys_CommandExists(const char *name);
+/* Runs a child process by PATH lookup with an explicit argv (no shell, so
+   arguments with spaces or metacharacters pass verbatim) and waits for it.
+   Returns the child's exit code, or -1 when it cannot be started. The caller
+   blocks; use for bounded post-work tools, not long-lived processes. */
+int Sys_RunAndWait(const char *path, const char *const argv[]);
 void Sys_RequestQuit(void);
 /* The option's text, or fallback when it is not set. */
 const char *Sys_GetOptionText(const char *name, const char *fallback);

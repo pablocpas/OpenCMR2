@@ -51,6 +51,7 @@ namespace {
 
 SDL_AudioStream *s_stream;
 bool s_paused;
+bool s_exportHold;   // offline replay export owns the device: the focus handler cannot resume it
 SDL_Mutex *s_lock;
 int s_outputRate = 44100;
 int s_outputChannels = 2;   // 2, 4, 6 (5.1) or 8 (7.1)
@@ -317,6 +318,12 @@ extern "C" BOOL Audio_Init(int sampleRate, int channels)
 
 extern "C" void Audio_SetPaused(BOOL paused)
 {
+    // While the offline export holds the mixer, an unpause (the window-focus
+    // handler) must not resume device consumption: the export's offline tap is
+    // the only consumer, and a resumed callback would advance the same buffer
+    // cursors concurrently / eat samples the export never sees.
+    if (!paused && s_exportHold)
+        return;
     s_paused = paused != 0;
     if (s_stream == NULL)
         return;
@@ -324,6 +331,16 @@ extern "C" void Audio_SetPaused(BOOL paused)
         SDL_PauseAudioStreamDevice(s_stream);
     else
         SDL_ResumeAudioStreamDevice(s_stream);
+}
+
+extern "C" BOOL Audio_IsPaused(void)
+{
+    return s_paused ? TRUE : FALSE;
+}
+
+extern "C" void Audio_SetExportHold(BOOL hold)
+{
+    s_exportHold = hold != 0;
 }
 
 extern "C" int Audio_GetOutputRate(void)
