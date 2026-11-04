@@ -2211,6 +2211,11 @@ void CarDamage_AllocateImpactDeformRecord(void)
     CarDamage_DecodeImpactPayload(&pRec->impact);
 }
 
+CarPartSet *StageTiming_GetCarReplayRecord(int index)
+{
+    return g_carPartSetLookup[index];
+}
+
 // FUNCTION: CMR2 0x00469680
 CarPartSet *CarPart_GetSet(int carIndex)
 {
@@ -6466,7 +6471,7 @@ void StageTiming_InitEffectParticleTypes(void)
   // Optional lingering dry-surface clouds. Reuse the existing soft smoke
   // texture rather than add external assets or animated chip sprites.
   ParticleEdit_Select(DUST_PLUME_TYPE);
-  ParticleEdit_SetTextureParams(g_unk0x00543664, -0x10000, 0x10000, 0x10000, -0x10000);
+  ParticleEdit_SetTextureParams(g_exhaust03Texture, -0x10000, 0x10000, 0x10000, -0x10000);
   ParticleEdit_SetMotion(DUST_PLUME_LIFE << 16, 0, 0, 0, 0, 0, 0);
   ParticleEdit_SetAlphaRamp(0, 0, 0, 0);
   ParticleEdit_SetColour(0xff,0xff,0xff,1);
@@ -6476,7 +6481,7 @@ void StageTiming_InitEffectParticleTypes(void)
   ParticleEdit_CommitCurrentType();
   // Optional sparse speed specks (video.speed_motes): small, pale, world-fixed, short-lived.
   ParticleEdit_Select(SPEED_MOTE_TYPE);
-  ParticleEdit_SetTextureParams(g_unk0x00543664, -0x10000, 0x10000, 0x10000, -0x10000);
+  ParticleEdit_SetTextureParams(g_exhaust03Texture, -0x10000, 0x10000, 0x10000, -0x10000);
   ParticleEdit_SetMotion(SPEED_MOTE_LIFE << 16, 0, 0, 0, 0, 0, 0);
   ParticleEdit_SetAlphaRamp(0, 0, 0, 0);
   ParticleEdit_SetColour(0xe0,0xd8,0xc4,1);
@@ -6491,7 +6496,7 @@ void StageTiming_InitEffectParticleTypes(void)
   // -> 0x1000 ("much smaller"): bug-sized specks now (~7px at 3 units, 1-3px far,
   // 1440p); the higher amount ceiling (500, cap 240) in AirMote.h keeps the field dense.
   ParticleEdit_Select(AIR_MOTE_TYPE);
-  ParticleEdit_SetTextureParams(g_unk0x0054366c, -0x10000, 0x10000, 0x10000, -0x10000);
+  ParticleEdit_SetTextureParams(g_snowCloudTexture, -0x10000, 0x10000, 0x10000, -0x10000);
   ParticleEdit_SetMotion(AIR_MOTE_LIFE << 16, 0, 0, 0, 0, 0, 0);
   ParticleEdit_SetAlphaRamp(0, 0, 0, 0);
   ParticleEdit_SetColour(0xf2,0xea,0xd8,1);
@@ -6503,7 +6508,7 @@ void StageTiming_InitEffectParticleTypes(void)
   // sun/view alignment hits a snow-surface facet, plus light-cone boosts. Static,
   // short-lived; peak alpha stamped by the init callback (SnowGlint.h).
   ParticleEdit_Select(SNOW_GLINT_TYPE);
-  ParticleEdit_SetTextureParams(g_unk0x0054366c, -0x10000, 0x10000, 0x10000, -0x10000);
+  ParticleEdit_SetTextureParams(g_snowCloudTexture, -0x10000, 0x10000, 0x10000, -0x10000);
   ParticleEdit_SetMotion(SNOW_GLINT_LIFE << 16, 0, 0, 0, 0, 0, 0);
   ParticleEdit_SetColour(0xff,0xff,0xff,1);
   ParticleEdit_SetSizeRamp(0x600,0x500,0);

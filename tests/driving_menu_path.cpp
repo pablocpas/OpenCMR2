@@ -33,10 +33,10 @@ int main(){
  CHECK(Menu_Update(config,0x10)==bindings);
  Menu_SetActionLatch(0);Menu_QueueDefaultAction();
  // Actual enter+save callbacks on a synthetic keyboard preserve edited keys.
- CInput::m_availableDevices[0].field_0x0=1;g_controlsSelectedSlot=0;g_controlsDeviceSelection.slots[0]=0;
+ CInput::m_availableDevices[0].type=1;g_controlsSelectedSlot=0;g_controlsDeviceSelection.slots[0]=0;
  bindings->pfnCallback0(bindings,0);for(int i=0;i<9;i++)CHECK(bindings->items[i].enabled&&bindings->items[i].visible);
- g_controlsCopy[0]=CInput::m_controllerInfo[0];g_controlsCopy[0].field_0x13e[2]=0x1e;
- bindings->cursor=11;CHECK(Menu_Update(bindings,0x10)==controls);CHECK(CInput::m_controllerInfo[0].field_0x13e[2]==0x1e);
+ g_controlsCopy[0]=CInput::m_controllerInfo[0];g_controlsCopy[0].keys[2]=0x1e;
+ bindings->cursor=11;CHECK(Menu_Update(bindings,0x10)==controls);CHECK(CInput::m_controllerInfo[0].keys[2]==0x1e);
  // Both player device pages reach same global extension capture, not a
  // tenth byte written into the packed nine-key save record.
  for(int slot=0;slot<2;slot++){

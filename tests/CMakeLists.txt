@@ -90,10 +90,10 @@ target_include_directories(touch_overlay_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_include_directories(touch_overlay_test PRIVATE ${PROJECT_SOURCE_DIR}/src/render)
 add_test(NAME touch_overlay COMMAND touch_overlay_test)
 
-add_executable(gamepad_layout_test gamepad_layout.cpp)
-target_include_directories(gamepad_layout_test PRIVATE ${PROJECT_SOURCE_DIR}/game)
-target_link_libraries(gamepad_layout_test PRIVATE opencmr2_platform)
-add_test(NAME gamepad_layout COMMAND gamepad_layout_test)
+# gamepad_layout_test removed: it exercised the DirectInput-style
+# Input_ReadJoystick layer that the merged upstream input rewrite
+# (src/input/bindings.cpp + Input_GetAction) replaced. The new layer is
+# covered by input_actions_test.
 
 add_executable(input_actions_test input_actions.cpp)
 target_include_directories(input_actions_test PRIVATE ${PROJECT_SOURCE_DIR}/game)

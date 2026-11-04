@@ -1060,48 +1060,6 @@ extern "C" BOOL Input_ReadMouse(InputDevice *device, InputMouseState *state)
     return TRUE;
 }
 
-extern "C" BOOL Input_ReadJoystick(InputDevice *device, InputJoystickState *state)
-{
-    LONG values[8];
-
-    memset(state, 0, sizeof(*state));
-    if (device->joystick == NULL || !SDL_JoystickConnected(device->joystick))
-        return FALSE;
-    SDL_UpdateJoysticks();
-    for (int i = 0; i < 8; i++) {
-        if (i >= device->sdlAxisCount) {
-            values[i] = (device->axes[i].min + device->axes[i].max) / 2;
-            continue;
-        }
-        values[i] = ScaleAxis(device->axes[i], RawAxis(device, i));
-    }
-    state->lX = values[0];
-    state->lY = values[1];
-    state->lZ = values[2];
-    state->lRx = values[3];
-    state->lRy = values[4];
-    state->lRz = values[5];
-    state->rglSlider[0] = values[6];
-    state->rglSlider[1] = values[7];
-    if (device->gamepad != NULL) {
-        state->rgdwPOV[0] = PovOfHat(HatOfGamepad(device->gamepad));
-        for (int i = 1; i < 4; i++)
-            state->rgdwPOV[i] = INPUT_POV_CENTERED;
-        for (size_t i = 0; i < SDL_arraysize(s_gamepadButtons); i++)
-            if (SDL_GetGamepadButton(device->gamepad, s_gamepadButtons[i]))
-                state->rgbButtons[i] = 0x80;
-        return TRUE;
-    }
-    int hats = SDL_GetNumJoystickHats(device->joystick);
-    for (int i = 0; i < 4; i++)
-        state->rgdwPOV[i] = i < hats ? PovOfHat(SDL_GetJoystickHat(device->joystick, i)) : INPUT_POV_CENTERED;
-    int buttons = SDL_GetNumJoystickButtons(device->joystick);
-    for (int i = 0; i < buttons && i < 128; i++)
-        if (SDL_GetJoystickButton(device->joystick, i))
-            state->rgbButtons[i] = 0x80;
-    return TRUE;
-}
-
 extern "C" void Input_TouchEvent(int type, long long fingerId, float x, float y)
 {
     if (!TouchActive())

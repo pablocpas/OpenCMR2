@@ -6113,9 +6113,9 @@ int TuningPanel_ToggleKey(void)
     // Also refuse a key the player has bound to a driving action on any attached keyboard device.
     for (int device = 0; ok && device < CInput::CountAttachedInputDevices(); device++) {
         DeviceInfo *info = CInput::GetAvailableDeviceRecord(device);
-        if (info && info->field_0x0 == 1)
+        if (info && info->type == 1)
             for (int action = 0; action < 9; action++)
-                if ((&info->keyboard.field_0x468)[action] == key) ok = false;
+                if ((&info->keyboard.steerLeftKey)[action] == key) ok = false;
     }
     if (!ok) Sys_Log("tuning panel: video.tuning_key=%d is a driving/menu key or invalid; using F10 (68)", key);
     result = ok ? key : kTuningToggleDefault;
@@ -6337,9 +6337,9 @@ int WindscreenWiperKeyPressed(void)
         bool conflict=false;
         for(int device=0;device<CInput::CountAttachedInputDevices();device++) {
             DeviceInfo *info=CInput::GetAvailableDeviceRecord(device);
-            if(info && info->field_0x0==1)
+            if(info && info->type==1)
                 for(int action=0;action<9;action++)
-                    if((&info->keyboard.field_0x468)[action]==key)conflict=true;
+                    if((&info->keyboard.steerLeftKey)[action]==key)conflict=true;
         }
         if(conflict)down=0;
     }
