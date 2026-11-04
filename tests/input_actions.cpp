@@ -355,8 +355,11 @@ void CheckRacePresses(Pad &pad)
     // and holding a button repeats for neither of them.
     memset(s_keys, 0, sizeof(s_keys));
     Release(pad);
+    g_selectedRallyData = 2 << 14;   // two local players: device 1 is player 2's
     CInput::UpdateAllAvailableDevices();
-    s_keys[kRightBracket] = s_keys[Device(1).keyboard.shiftUpKey] = 0x80;
+    // Player 2's keyboard2 shift-up is PageUp (0xc9) by default; device 1's
+    // record table is unset here, the bindings layer owns the keys now.
+    s_keys[kRightBracket] = s_keys[0xc9] = 0x80;
     CInput::UpdateRaceDevices(0);
     CInput::UpdateRaceDevices(1);
     Check((Device(0).pressed & 0x20) != 0 && (Device(1).pressed & 0x20) == 0,
@@ -368,6 +371,7 @@ void CheckRacePresses(Pad &pad)
         Check(((Device(0).pressed | Device(1).pressed) & 0x20) == 0,
               "held gear buttons never repeat for either player");
     }
+    g_selectedRallyData = 0;
     // Pending actions cannot leak out of a race into a frontend/pause menu.
     memset(s_keys, 0, sizeof(s_keys));
     CInput::UpdateAllAvailableDevices();

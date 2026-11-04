@@ -127,10 +127,17 @@ CHECK(run({"t","--camera-move-chase","-60"})&&e2.empty()&&t.overrides["video.cam
  // Explicit in-game save serializes only actual control edits, never CLI keys.
  char installPath[]=".";CInstallInfo::SetGameHDPath(installPath);CInput::m_playerControllers[0]=0;CInput::m_playerControllers[1]=1;
  memset(CInput::m_controllerInfo,0,sizeof CInput::m_controllerInfo);CInput::m_controllerInfo[0].keys[0]=0x2c;
- strcpy(CInput::m_controllerInfo[0].keyNames[0],"Z");CInput::SaveControllerInfo();auto saved=read(user/"Configuration/Controller.rcf");CHECK(saved.size()==0x11a4);
- CInput::m_controllerInfo[0].keys[0]=0;CInput::LoadControllerInfo();CHECK(CInput::m_controllerInfo[0].keys[0]==0x2c);CHECK(device.keyboard.steerLeftKey==0x2c);
- Platform_Shutdown();CHECK(read(user/"Configuration/Controller.rcf")==saved);
+ strcpy(CInput::m_controllerInfo[0].keyNames[0],"Z");
+ // The merged input layer persists controls.ini, never Controller.rcf; the
+ // edit enters the bindings layer the way LoadControllerInfo imports legacy
+ // tables. The per-launch CLI keys (block above: left=A right=D) must not.
+ Input_ImportKeyboardKeys(0,CInput::m_controllerInfo[0].keys);
+ CInput::SaveControllerInfo();
+ auto saved=read(user/"controls.ini");
+ CHECK(saved.find("steer_left = Z")!=std::string::npos&&saved.find("steer_left = A")==std::string::npos&&saved.find("steer_right = D")==std::string::npos);
+ CInput::m_controllerInfo[0].keys[0]=0;CInput::LoadControllerInfo(); // the sentinel rcf is no legacy table: no import, controls.ini stands
+ Platform_Shutdown();CHECK(read(user/"Configuration/Controller.rcf")=="sentinel saved controls");
  SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"SDL_VIDEODRIVER","dummy",true);CHECK(Platform_Init(5,bv));CGameInfo::m_fixedMenuKeys=0;memset(keys,0,sizeof keys);keys[0x2c]=0x80;Input_Update();CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);Platform_SetTestKeyboard(nullptr);Platform_Shutdown();
- CHECK(read(user/"Configuration/Controller.rcf")==saved&&read(user/"opencmr2.ini")==ini);
+ CHECK(read(user/"controls.ini")==saved&&read(user/"opencmr2.ini")==ini);
  fs::remove_all(root);puts("CLI parsing, transient settings, profile/save preservation: pass");return 0;
 }

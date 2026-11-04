@@ -39,7 +39,7 @@ int main(){
  BYTE keys[256]={};keys[0xcb]=0x80;
  Platform_SetTestKeyboard(keys);
  CGameInfo::m_fixedMenuKeys=0;CInput::UpdateDevice(0);CHECK(device.held==1);CHECK(!memcmp(&device.keyboard.steerLeftKey,base,9));
- keys[0x1c]=0x80;CGameInfo::m_fixedMenuKeys=1;CInput::UpdateDevice(0);CHECK(device.held==(1|0x10));
+ keys[0x1c]=0x80;CGameInfo::m_fixedMenuKeys=1;CInput::UpdateDevice(0);CHECK((device.held&(1|0x10))==(1|0x10)); // UpdateDevice also sets its 0x10000 "any button" flag
  Platform_SetTestKeyboard(nullptr);
  // Nine keys/labels followed by a tenth button action: no overwrite of names.
  ControllerData data={};memset(data.keyNames,'Z',sizeof data.keyNames);data.keys[0]=data.keys[8]=0x11;data.actionMasks[0]=data.actionMasks[8]=1;
