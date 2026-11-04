@@ -5,6 +5,7 @@
 #include "ReplayCameraCycle.h"
 #include "FreeCam.h"
 #include "ReplayChaseOrbit.h"
+#include "ReplayExport.h"
 #include <math.h>
 #include "FloatToInt.h"
 #include <stddef.h>
@@ -4067,6 +4068,7 @@ int Car_UpdateEngineNoteFalloff(int *pOut)
         g_carSimulationPreviousMs = CMain::GetFrameTime();
     }
     g_carSimulationFrameMs = g_replayClock.Frame(CMain::GetFrameTime(), ReplayControls_TimeScale());   // OpenCMR2: replay pause/slow/fast scale the real time that feeds the step count; scale 1 = unchanged
+    ReplayExport::OverrideClock(&g_carSimulationFrameMs);   // OpenCMR2: --replay-export gates the sim clock to one 40 ms step per saved frame; no-op otherwise
     if (InRaceMenu_IsOpening() != 0)
         g_carSimulationPreviousMs = g_carSimulationFrameMs;
     if (Race_ConsumeTransitionLatch() != 0)

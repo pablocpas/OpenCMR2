@@ -51,6 +51,7 @@ namespace {
 
 SDL_AudioStream *s_stream;
 bool s_paused;
+bool s_exportHold;   // offline replay export owns the device: the focus handler cannot resume it
 SDL_Mutex *s_lock;
 int s_outputRate = 44100;
 int s_outputChannels = 2;   // 2, 4, 6 (5.1) or 8 (7.1)
@@ -247,25 +248,36 @@ void MixBuffer(AudioBuffer *b, float *out, int frames, int nChannels)
     }
 }
 
+// Mixes `frames` output frames of every playing buffer and movie stream into
+// dst (float, s_outputChannels interleaved, caller-allocated). Advances buffer
+// playback cursors: whoever calls this owns consumption while it runs.
+// OpenCMR2: shared by the live device callback (Feed) and the offline replay
+// export tap (Audio_MixOffline); never both at once - the export pauses the
+// device first and refuses to mix while unpaused.
+void MixInto(float *dst, int frames)
+{
+    s_movieMix.resize((size_t)frames * s_outputChannels);
+    SDL_LockMutex(s_lock);
+    for (AudioBuffer *b : s_buffers)
+        if (b->playing)
+            MixBuffer(b, dst, frames, s_outputChannels);
+    for (AudioStream *movie : s_movieStreams) {
+        if (!movie->playing)
+            continue;
+        int bytes = SDL_GetAudioStreamData(movie->converter, s_movieMix.data(), frames * s_outputChannels * sizeof(float));
+        for (int i = 0; i < bytes / (int)sizeof(float); ++i)
+            dst[i] += s_movieMix[i];
+    }
+    SDL_UnlockMutex(s_lock);
+}
+
 void SDLCALL Feed(void *, SDL_AudioStream *stream, int additional, int)
 {
     int frames = additional / (int)(s_outputChannels * sizeof(float));
     if (frames <= 0)
         return;
     s_mix.assign((size_t)frames * s_outputChannels, 0.0f);
-    s_movieMix.resize((size_t)frames * s_outputChannels);
-    SDL_LockMutex(s_lock);
-    for (AudioBuffer *b : s_buffers)
-        if (b->playing)
-            MixBuffer(b, s_mix.data(), frames, s_outputChannels);
-    for (AudioStream *movie : s_movieStreams) {
-        if (!movie->playing)
-            continue;
-        int bytes = SDL_GetAudioStreamData(movie->converter, s_movieMix.data(), frames * s_outputChannels * sizeof(float));
-        for (int i = 0; i < bytes / (int)sizeof(float); ++i)
-            s_mix[i] += s_movieMix[i];
-    }
-    SDL_UnlockMutex(s_lock);
+    MixInto(s_mix.data(), frames);
     for (float &v : s_mix)
         v = v > 1.0f ? 1.0f : (v < -1.0f ? -1.0f : v);
     SDL_PutAudioStreamData(stream, s_mix.data(), frames * s_outputChannels * (int)sizeof(float));
@@ -306,6 +318,12 @@ extern "C" BOOL Audio_Init(int sampleRate, int channels)
 
 extern "C" void Audio_SetPaused(BOOL paused)
 {
+    // While the offline export holds the mixer, an unpause (the window-focus
+    // handler) must not resume device consumption: the export's offline tap is
+    // the only consumer, and a resumed callback would advance the same buffer
+    // cursors concurrently / eat samples the export never sees.
+    if (!paused && s_exportHold)
+        return;
     s_paused = paused != 0;
     if (s_stream == NULL)
         return;
@@ -313,6 +331,38 @@ extern "C" void Audio_SetPaused(BOOL paused)
         SDL_PauseAudioStreamDevice(s_stream);
     else
         SDL_ResumeAudioStreamDevice(s_stream);
+}
+
+extern "C" BOOL Audio_IsPaused(void)
+{
+    return s_paused ? TRUE : FALSE;
+}
+
+extern "C" void Audio_SetExportHold(BOOL hold)
+{
+    s_exportHold = hold != 0;
+}
+
+extern "C" int Audio_GetOutputRate(void)
+{
+    return s_stream != NULL ? s_outputRate : 0;
+}
+
+extern "C" int Audio_MixOffline(short *dst, int frames)
+{
+    // Offline export tap: renders `frames` output frames as 16-bit PCM.
+    // Refuses while the live device is unpaused so the callback and this tap
+    // can never advance the same buffer cursors concurrently; the caller must
+    // Audio_SetPaused(1) first (pause stops device consumption itself).
+    if (s_stream == NULL || !s_paused || dst == NULL || frames <= 0)
+        return 0;
+    std::vector<float> mix((size_t)frames * s_outputChannels, 0.0f);
+    MixInto(mix.data(), frames);
+    for (int i = 0; i < frames * s_outputChannels; ++i) {
+        float v = mix[i] > 1.0f ? 1.0f : (mix[i] < -1.0f ? -1.0f : mix[i]);
+        dst[i] = (short)(v * 32767.0f);
+    }
+    return frames;
 }
 
 extern "C" AudioStream *Audio_CreateStream(DWORD sampleRate, int channels)
