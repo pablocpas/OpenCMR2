@@ -10,11 +10,11 @@ ok = True
 def need(c, m):
     global ok
     if not c: print("FAIL", m); ok = False
-need("CarLight_SetChannelMasks(LIGHT_CAR, vA == 0 || vB == 0, vA == 0 || vB == 0, 0x10);" in t,
+need("CarLight_SetChannelMasks(LIGHT_CAR, broken0 == 0 || broken1 == 0, broken0 == 0 || broken1 == 0, 0x10);" in t,
      "type-8 channel must be masked off when both sides' lamp glass is broken")
-need("CarLight_SetChannelMasks(LIGHT_CAR, vA == 0, vB == 0, 1);" in t,
+need("CarLight_SetChannelMasks(LIGHT_CAR, broken0 == 0, broken1 == 0, 1);" in t,
      "original per-side headlight gating must be preserved")
-need("CarLight_SetChannelMasks(LIGHT_CAR, vA == 0, vB == 0, 2);" in t,
+need("CarLight_SetChannelMasks(LIGHT_CAR, broken0 == 0, broken1 == 0, 2);" in t,
      "original per-side brake gating must be preserved")
 need("CarLight_SetChannelMasks(LIGHT_CAR, 1, 1, 0x10);" not in t,
      "ungated always-on type-8 mask must be gone")

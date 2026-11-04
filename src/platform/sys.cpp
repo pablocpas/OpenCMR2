@@ -38,8 +38,9 @@
 // clash with port/types.h here (same split as menu_shortcut.cpp).
 #if defined(__APPLE__)
 #include <mach/mach.h>
-#elif !defined(_WIN32)
-#include <unistd.h>
+#endif
+#if !defined(_WIN32)
+#include <unistd.h> // access/X_OK (Sys_WhichExecutable POSIX branch)
 #endif
 
 // Detached child spawn (Sys_RunDetached, replay-export ffmpeg assembly).

@@ -915,14 +915,25 @@ void CInput::ReadKeyboardDevice(DeviceInfo *pDevice)
         int keyboard = pDevice == &m_availableDevices[0] ? 0 :
                        pDevice == &m_availableDevices[1] ? 1 : -1;
         if (keyboard >= 0) {
+            // Only the actions the launch remap rebinds come from the device
+            // table here; every other bit stays with the bindings layer, so
+            // pads and wheels sharing the record keep their actions. The key
+            // state follows Input_IsKeyDown, the same source Input_Update
+            // reads: m_keyboardState is only filled while a DirectInput-style
+            // keyboard device exists.
+            const BYTE *table = &pDevice->keyboard.steerLeftKey;
             BYTE keys[9];
-            memcpy(keys, &pDevice->keyboard.steerLeftKey, sizeof(keys));
+            memcpy(keys, table, sizeof(keys));
             Sys_ApplyGameplayKeys(keyboard, keys);
-            unsigned int keyActions = 0;
-            for (int action = 0; action < 9; ++action)
-                if (keys[action] != 0 && (m_keyboardState[keys[action]] & 0x80))
+            unsigned int remapped = 0, keyActions = 0;
+            for (int action = 0; action < 9; ++action) {
+                if (keys[action] == table[action])
+                    continue;
+                remapped |= 1u << action;
+                if (keys[action] != 0 && Input_IsKeyDown(keys[action]))
                     keyActions |= 1u << action;
-            pDevice->held = (pDevice->held & ~0x1ffu) | keyActions;
+            }
+            pDevice->held = (pDevice->held & ~remapped) | keyActions;
         }
     }
 }

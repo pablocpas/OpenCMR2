@@ -1,5 +1,6 @@
 #include <vector>
 #include "platform/enhancements.h"
+#include "platform/testing.h"
 #include "render/gpu_startup_options.h"
 #include "Input.h"
 #include "GameInfo.h"
@@ -117,9 +118,11 @@ CHECK(run({"t","--camera-move-chase","-60"})&&e2.empty()&&t.overrides["video.cam
  std::string bound[]={"test","--data",game.string(),"--user-dir",user.string(),"--bind-key","left=A","--bind-key","right=D"};
  char *bv[9];for(int j=0;j<9;j++)bv[j]=bound[j].data();SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"SDL_VIDEODRIVER","dummy",true);CHECK(Platform_Init(9,bv));
  auto &device=CInput::m_availableDevices[0];device.type=1;device.keyboard.steerLeftKey=0xcb;device.keyboard.steerRightKey=0xcd;
- CGameInfo::m_fixedMenuKeys=0;memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0x1e]=0x80;CInput::ReadKeyboardDevice(&device);CHECK(device.held==1&&device.keyboard.steerLeftKey==0xcb);
- memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0xcb]=0x80;CInput::ReadKeyboardDevice(&device);CHECK(device.held==0);
- CGameInfo::m_fixedMenuKeys=1;CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);
+ BYTE keys[256]={};
+ Platform_SetTestKeyboard(keys);
+ CGameInfo::m_fixedMenuKeys=0;keys[0x1e]=0x80;Input_Update();CInput::ReadKeyboardDevice(&device);CHECK(device.held==1&&device.keyboard.steerLeftKey==0xcb);
+ keys[0x1e]=0;keys[0xcb]=0x80;Input_Update();CInput::ReadKeyboardDevice(&device);CHECK(device.held==0);
+ CGameInfo::m_fixedMenuKeys=1;Input_Update();CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);
  CHECK(read(user/"Configuration/Controller.rcf")=="sentinel saved controls");
  // Explicit in-game save serializes only actual control edits, never CLI keys.
  char installPath[]=".";CInstallInfo::SetGameHDPath(installPath);CInput::m_playerControllers[0]=0;CInput::m_playerControllers[1]=1;
@@ -127,7 +130,7 @@ CHECK(run({"t","--camera-move-chase","-60"})&&e2.empty()&&t.overrides["video.cam
  strcpy(CInput::m_controllerInfo[0].keyNames[0],"Z");CInput::SaveControllerInfo();auto saved=read(user/"Configuration/Controller.rcf");CHECK(saved.size()==0x11a4);
  CInput::m_controllerInfo[0].keys[0]=0;CInput::LoadControllerInfo();CHECK(CInput::m_controllerInfo[0].keys[0]==0x2c);CHECK(device.keyboard.steerLeftKey==0x2c);
  Platform_Shutdown();CHECK(read(user/"Configuration/Controller.rcf")==saved);
- SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"SDL_VIDEODRIVER","dummy",true);CHECK(Platform_Init(5,bv));CGameInfo::m_fixedMenuKeys=0;memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0x2c]=0x80;CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);Platform_Shutdown();
+ SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"SDL_VIDEODRIVER","dummy",true);CHECK(Platform_Init(5,bv));CGameInfo::m_fixedMenuKeys=0;memset(keys,0,sizeof keys);keys[0x2c]=0x80;Input_Update();CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);Platform_SetTestKeyboard(nullptr);Platform_Shutdown();
  CHECK(read(user/"Configuration/Controller.rcf")==saved&&read(user/"opencmr2.ini")==ini);
  fs::remove_all(root);puts("CLI parsing, transient settings, profile/save preservation: pass");return 0;
 }

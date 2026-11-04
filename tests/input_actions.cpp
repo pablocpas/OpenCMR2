@@ -356,7 +356,7 @@ void CheckRacePresses(Pad &pad)
     memset(s_keys, 0, sizeof(s_keys));
     Release(pad);
     CInput::UpdateAllAvailableDevices();
-    s_keys[kRightBracket] = s_keys[Device(1).keyboard.shiftDownKey] = 0x80;
+    s_keys[kRightBracket] = s_keys[Device(1).keyboard.shiftUpKey] = 0x80;
     CInput::UpdateRaceDevices(0);
     CInput::UpdateRaceDevices(1);
     Check((Device(0).pressed & 0x20) != 0 && (Device(1).pressed & 0x20) == 0,

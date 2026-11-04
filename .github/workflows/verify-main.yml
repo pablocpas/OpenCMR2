@@ -1,14 +1,25 @@
 name: verify-main
 
-# Compile + test every push to main. The build workflow covers PRs, tags and
-# manual runs; a merge produced outside a PR (for example a local upstream
-# merge pushed straight to main) used to land without ever being compiled,
-# which is how renamed input/texture structures broke the build on 2026-11-05.
-# Linux x86_64 only: no packaging, no artifacts, no extra release matrix.
+# Compile + test every push to main. The build workflow covers Linux on PRs,
+# tags and manual runs; a merge produced outside a PR (for example a local
+# upstream merge pushed straight to main) used to land without ever being
+# compiled, which is how renamed input/texture structures broke the build on
+# 2026-11-05. The macOS job also runs on PRs: the build workflow skips macOS
+# there, so without this a Mac-only compile break (for example a POSIX-only
+# header branch on 2026-11-05) is invisible until it hits main.
+# No packaging, no artifacts, no caches: this workflow stays within the free
+# tier for public repositories on standard GitHub-hosted runners
+# (docs.github.com/billing - "GitHub Actions usage is free for ... public
+# repositories that use standard GitHub-hosted runners").
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE*'
+  pull_request:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
@@ -23,6 +34,8 @@ concurrency:
 
 jobs:
   linux:
+    # PR Linux coverage already comes from the build workflow.
+    if: github.event_name == 'push'
     timeout-minutes: 45
     runs-on: ubuntu-24.04
     steps:
@@ -39,3 +52,17 @@ jobs:
       - run: cmake --preset linux -DOPENCMR2_VENDORED_SDL=ON
       - run: cmake --build --preset linux
       - run: ctest --timeout 120 --preset linux
+
+  macos:
+    timeout-minutes: 60
+    runs-on: macos-14
+    steps:
+      - run: brew install ninja glslang
+      - uses: actions/checkout@v4
+      # Builds SDL3, shipped in the release, and spirv-cross for the Metal shaders.
+      - run: python3 -m venv .ci-python
+      - run: .ci-python/bin/python -m pip install -r tools/scenery-patch/requirements.txt
+      - run: echo "$GITHUB_WORKSPACE/.ci-python/bin" >> "$GITHUB_PATH"
+      - run: cmake --preset macos -DOPENCMR2_VENDORED_SDL=ON
+      - run: cmake --build --preset macos
+      - run: ctest --timeout 120 --preset macos
