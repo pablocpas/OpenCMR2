@@ -10446,6 +10446,18 @@ void StageObject_DrawProjectedViewIcon(int *pViewRect, int param_2)
                                           (float)CGraphics::m_projection33, (float)CGraphics::m_projection43);
         Gfx_SetFogLights(fogLights, fogLightTotal);
     }
+    // World-anchored fog banks (video.fog_spatial, render/fog_camera.h): camera position and horizontal axes in world units, so the
+    // shader can pin density banks to the world instead of the screen. Off (strength 0) unless the spatial option is on.
+    {   float strength = Sys_GetOption("video.fog_spatial", 0) ? 1.0f : 0.0f;
+        const float p11 = (float)CGraphics::m_projection11;
+        FixVector o = {0, 0, 0}, fz = {0, 0, 0x10000}, rx = {0x10000, 0, 0}, wo, wf, wr;
+        FixMatrix_TransformPoint(&wo, &o, &view->world);
+        FixMatrix_TransformPoint(&wf, &fz, &view->world);
+        FixMatrix_TransformPoint(&wr, &rx, &view->world);
+        const float k = 1.0f / 65536.0f;
+        Gfx_SetFogCamera(wo.x * k, wo.z * k, (wf.x - wo.x) * k, (wf.z - wo.z) * k, (wr.x - wo.x) * k, (wr.z - wo.z) * k,
+                         p11 > 0.0f ? 1.0f / p11 : 0.0f, p11 > 0.0f ? strength : 0.0f);
+    }
     StageObject_GetRotatedStageLightVector(&vR);
     StageObject_GetCurrentObjectPosition(&vP);
     vR.x += vP.x;

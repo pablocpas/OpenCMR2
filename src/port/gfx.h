@@ -319,6 +319,8 @@ struct GfxFogLight {
 };
 // Up to 8 car lights for the fog pass; count 0 clears. Called per view per frame.
 void Gfx_SetFogLights(const GfxFogLight *lights, int count);
+/* World-anchored fog banks (video.fog_spatial): camera horizontal position, forward and right axes (horizontal parts), 1/projection x scale and bank strength 0..1 (0 = uniform fog). Called per view per frame. */
+void Gfx_SetFogCamera(float posX, float posZ, float fwdX, float fwdZ, float rightX, float rightZ, float invP11, float strength);
 void Gfx_SetShadowQuality(int resolution, int softness);
 /* OpenCMR2: color grading. `temperature` (-100..100) cool->warm,
    `tint` (-100..100) green->magenta, `saturation` (0..200) color strength,
