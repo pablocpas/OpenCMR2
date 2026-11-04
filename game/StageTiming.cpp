@@ -3262,6 +3262,11 @@ void StageTiming_FlagCarPartBreaks(Car *pCar, int param_2)
                     StageObject_SetModelSubmeshVisibility(pCar, 2, i);
                     pRecord->partBroken[i] = 1;
                     pRecord->partDamaged[i] = 1;
+                    if (Sys_GetOption("video.diag_replay_glass", 0) != 0 && CGameInfo::GetConfiguredGameMode() == 4)
+                        Sys_Log("replay-glass-diag: break car %d slot %d part %d dmg %x thr %x src %s clock %d",
+                                (int)pCar->index, (int)i, (int)part, pRecord->damageValues[i + 26],
+                                g_timingPartHitThresholds[i], param_2 == 0 ? "impact" : "restore",
+                                StageTiming_GetClockTime());
                     if (param_2 == 0) {
                         Car_QueueWindowBreak(pRecord, pCar, part);
                         carIndex = pCar->index;
@@ -3287,6 +3292,11 @@ void StageTiming_FlagCarPartBreaks(Car *pCar, int param_2)
                 else if (pRecord->damageValues[i + 26] > g_unk0x0051bfcc[i] && pRecord->partDamaged[i] == 0 && pRecord->partBroken[i] == 0) {
                     StageObject_SetModelSubmeshVisibility(pCar, 1, i);
                     pRecord->partDamaged[i] = 1;
+                    if (Sys_GetOption("video.diag_replay_glass", 0) != 0 && CGameInfo::GetConfiguredGameMode() == 4)
+                        Sys_Log("replay-glass-diag: damage-flag car %d slot %d part %d dmg %x thr %x src %s clock %d",
+                                (int)pCar->index, (int)i, (int)part, pRecord->damageValues[i + 26],
+                                g_unk0x0051bfcc[i], param_2 == 0 ? "impact" : "restore",
+                                StageTiming_GetClockTime());
                     if (param_2 == 0) {
                         carIndex = pCar->index;
                         state = RallyDataState();
