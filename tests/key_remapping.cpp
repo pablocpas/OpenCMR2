@@ -1,4 +1,5 @@
 #include "platform/key_remapping.h"
+#include "platform/testing.h"
 #include "Input.h"
 #include "GameInfo.h"
 #include "Menu.h"
@@ -28,9 +29,18 @@ int main(){
  for(auto value:{"left=Escape","fly=A","3:left=A","left=not-a-key","left="}){error.clear();CHECK(parse(bad,value,error)&&!error.empty());}
  error.clear();char a[]="test",b[]="--bind-key";char *args[]={a,b};int i=1;CHECK(bad.Consume(i,2,args,error)&&!error.empty());
  // Actual gameplay/menu routing does not mutate device bindings or control table.
- DeviceInfo &device=CInput::m_availableDevices[0];memcpy(&device.keyboard.steerLeftKey,base,9);
- memset(CInput::m_keyboardState,0,256);CInput::m_keyboardState[0xcb]=0x80;CGameInfo::m_fixedMenuKeys=0;CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);CHECK(!memcmp(&device.keyboard.steerLeftKey,base,9));
- CGameInfo::m_fixedMenuKeys=1;CInput::m_keyboardState[0x1c]=0x80;CInput::ReadKeyboardDevice(&device);CHECK(device.held==(1|0x10));
+ // The merged input layer reads keys through Input_Update (SDL state); the
+ // test keyboard feeds it. Menu bits come from the default keyboard profile.
+ DeviceInfo &device=CInput::m_availableDevices[0];
+ CInput::m_deviceCounts.nextDevice=0;CInput::m_deviceCounts.keyboardCount=2;CInput::m_deviceCounts.joystickCount=0;
+ for(DeviceInfo &d:CInput::m_availableDevices){d.type=(DWORD)-1;d.joystickIndex=-1;}
+ CInput::SetupKeyboard();
+ memcpy(&device.keyboard.steerLeftKey,base,9);
+ BYTE keys[256]={};keys[0xcb]=0x80;
+ Platform_SetTestKeyboard(keys);
+ CGameInfo::m_fixedMenuKeys=0;CInput::UpdateDevice(0);CHECK(device.held==1);CHECK(!memcmp(&device.keyboard.steerLeftKey,base,9));
+ keys[0x1c]=0x80;CGameInfo::m_fixedMenuKeys=1;CInput::UpdateDevice(0);CHECK((device.held&(1|0x10))==(1|0x10)); // UpdateDevice also sets its 0x10000 "any button" flag
+ Platform_SetTestKeyboard(nullptr);
  // Nine keys/labels followed by a tenth button action: no overwrite of names.
  ControllerData data={};memset(data.keyNames,'Z',sizeof data.keyNames);data.keys[0]=data.keys[8]=0x11;data.actionMasks[0]=data.actionMasks[8]=1;
  FrontendControls_ClearDuplicateBinding(&data,8);CHECK(data.keys[0]==0&&data.keyNames[0][0]==0);CHECK(data.keyNames[8][0]=='Z');CHECK(data.actionMasks[0]==0);CHECK(data.keys[8]==0x11);
