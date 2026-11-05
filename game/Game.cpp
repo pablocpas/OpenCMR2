@@ -2165,8 +2165,9 @@ static void DrawCarScopedLOD(SceneNode*node,Mesh*mesh,int bit){
  int noZ=0;
  if(bit>=0&&bit<2&&CarBodyDirt::drawingCar>=0){
   int viewType=0,viewDrone=0;AttractCapture_ViewSignature(bit,&viewType,&viewDrone);
-  if((node->flags&0xff)==0x14)g_cockpitWindowGate[0]++;
-  noZ=CockpitWindow_SkipDepthWrite(node->flags&0xff,1,viewType,Sys_GetOption("video.cockpit_glass_fog",1))?1:0;
+  const bool interiorNode = CockpitWindow_InInterior(node, g_carInteriorRoots[CarBodyDirt::drawingCar]);
+  if((node->flags&0xff)==0x14&&!interiorNode)g_cockpitWindowGate[0]++;
+  noZ=CockpitWindow_SkipDepthWrite(node->flags&0xff,1,viewType,Sys_GetOption("video.cockpit_glass_fog",1),interiorNode)?1:0;
   if(noZ)g_cockpitWindowGate[1]++;
  }
  if(noZ&&CGraphics::GetZWriteEnable()==1){

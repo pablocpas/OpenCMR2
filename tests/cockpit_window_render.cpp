@@ -75,10 +75,13 @@ static void fillQuad(GfxVertexBuffer *vb, float xl, float xr, float z, DWORD dif
 // outcome, and a bright "crack" strip behind the glass (z 1.5 -> raw depth
 // 0.75) drawn with the production crack pane's states (depth tested, no
 // depth write, alpha blend). The fog pass then samples the depth buffer.
-static void drawScene(DWORD *pixels, int viewType, int optionOn, int fogOn)
+static void drawScene(DWORD *pixels, int viewType, int optionOn, int fogOn, int shellMode = 0, bool beamOn = false)
 {
     if (fogOn) Gfx_SetPostFog(TRUE, 100, 65);   // his F10 settings: amount 100, glow 65 (re-arm per frame: one-shot)
     else Gfx_SetPostFog(FALSE, 0, 0);
+    GfxFogLight lamp={};lamp.x=.05f;lamp.y=.5f;lamp.intensity=1;lamp.r=1;lamp.g=1;lamp.b=.8f;
+    lamp.beamX=1;lamp.beamY=0;lamp.beamLen=.6f;lamp.beamFade=1;lamp.depthRef=.8f;lamp.beamEndRef=.9f;
+    Gfx_SetFogLights(beamOn?&lamp:nullptr,beamOn?1:0);
     Gfx_SetRaceWorld(TRUE);
     Gfx_Clear(GFX_CLEAR_TARGET | GFX_CLEAR_ZBUFFER, 0xff101418, 1.0f);
 
@@ -95,7 +98,7 @@ static void drawScene(DWORD *pixels, int viewType, int optionOn, int fogOn)
     // Translucent states like the production glass/crack path: blend +
     // modulated texture*diffuse for BOTH color and alpha (without the alpha
     // stage the fragment is opaque and hides the interaction under test).
-    bool skipDepth = CockpitWindow_SkipDepthWrite(0x14, true, viewType, optionOn);
+    bool skipDepth = CockpitWindow_SkipDepthWrite(0x14, true, viewType, optionOn, shellMode == 2);
     Gfx_SetDepthWrite(skipDepth ? FALSE : TRUE);
     Gfx_SetAlphaBlend(TRUE);
     Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA);
@@ -106,6 +109,7 @@ static void drawScene(DWORD *pixels, int viewType, int optionOn, int fogOn)
     Gfx_SetStageAlphaOp(0, GFX_TOP_MODULATE);
     Gfx_SetStageAlphaArg1(0, GFX_TA_TEXTURE);
     Gfx_SetStageAlphaArg2(0, GFX_TA_DIFFUSE);
+    if (shellMode) Gfx_SetAlphaBlend(FALSE); // opaque shell, same reused node type
     Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, vbGlass, 0, 4);
     Gfx_SetDepthWrite(TRUE);
 
@@ -113,7 +117,7 @@ static void drawScene(DWORD *pixels, int viewType, int optionOn, int fogOn)
     // overlay: depth tested, no depth write, src-alpha blend). Bright white.
     Gfx_SetDepthTest(TRUE);
     Gfx_SetDepthWrite(FALSE);
-    Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, vbCrack, 0, 4);
+    if (!shellMode) Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, vbCrack, 0, 4);
     Gfx_SetAlphaBlend(FALSE);
 
     Gfx_EndWorldEffects();   // emits the race-world command that runs the fog pass
@@ -244,6 +248,16 @@ int main(int argc, char **argv)
         require(maxDelta <= 1, "chase view unchanged by the gate");
     }
 
-    printf("cockpit_window_render ok\n");
+    // Same type 0x14, but this quad represents the opaque interior root.
+    // Old classification removes its depth and beams paint over it. Fixed
+    // ancestry preserves the shell depth while the open road still lights.
+    static DWORD shellOldOff[W*H],shellOldOn[W*H],shellFixOff[W*H],shellFixOn[W*H];
+    drawScene(shellOldOff,3,1,1,1,false);drawScene(shellOldOn,3,1,1,1,true);
+    drawScene(shellFixOff,3,1,1,2,false);drawScene(shellFixOn,3,1,1,2,true);
+    require(lum(shellOldOn,20,32)>lum(shellOldOff,20,32)+10,"old type-only gate allows beam through opaque shell");
+    require(lum(shellFixOn,20,32)==lum(shellFixOff,20,32),"interior ancestry keeps shell beam-occluding");
+    require(lum(shellFixOn,52,32)>lum(shellFixOff,52,32)+5,"open road still receives beam, not disabled");
+    dumpPpm(prefix,"shell-old-beam",shellOldOn);dumpPpm(prefix,"shell-fixed-beam",shellFixOn);
+    printf("cockpit_window_render ok (including opaque interior shell beam occlusion)\n");
     return 0;
 }

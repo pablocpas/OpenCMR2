@@ -12,9 +12,18 @@
 // changing chase views, where the same node keeps writing depth. The node is
 // the window by classification, so no material (blend/vertex-alpha) guard is
 // applied: real cockpit glass assets may carry texture-only alpha.
-inline bool CockpitWindow_SkipDepthWrite(unsigned nodeFlagsLowByte, bool nodeBelongsToCar, int viewType, int optionOn)
+inline bool CockpitWindow_SkipDepthWrite(unsigned nodeFlagsLowByte, bool nodeBelongsToCar, int viewType, int optionOn, bool interiorNode = false)
 {
-    return optionOn != 0 && nodeBelongsToCar && nodeFlagsLowByte == 0x14 && viewType == 3;
+    return !interiorNode && optionOn != 0 && nodeBelongsToCar && nodeFlagsLowByte == 0x14 && viewType == 3;
 }
 
+// Interior and exterior files reuse low-byte node type 0x14. The Subaru
+// interior root is 0x1014 and contains the opaque 291-triangle cockpit shell,
+// so type alone cannot identify glass. Check actual interior-root ancestry.
+template<class Node> inline bool CockpitWindow_InInterior(Node *node, Node *root)
+{
+    if (!root) return false;
+    for (Node *p = node; p; p = p->pParent) if (p == root) return true;
+    return false;
+}
 #endif
