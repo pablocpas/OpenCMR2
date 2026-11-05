@@ -243,7 +243,7 @@ GLuint ApplyEffects()
         run(12, backDepth, u, sizeof(u));
     }
     if (depthBlurOn || tunnelOn) {
-        // Same 8-float DoFUniforms layout as SDL_GPU. Depth blur keeps the existing GL look (raw depth, no near/far recovery);
+        // Same 20-float DoFUniforms layout as SDL_GPU (incl. tunnelFocus at [16..19]). Depth blur keeps the existing GL look (raw depth, no near/far recovery);
         // tunnel vision adds the speed-driven peripheral blur with its own radius (kTunnelRadiusPerHeight x height px at full strength).
         float aspect = backHeight ? (float)backWidth / (float)backHeight : 1.0f;
         float focusRaw = glCarFocusRaw >= 0.0f ? glCarFocusRaw : dofFocus / 100.0f;

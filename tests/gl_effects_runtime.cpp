@@ -10,6 +10,7 @@ static int snowGlintSetting=-1;
 extern "C" int Sys_GetOption(const char*k,int fallback){return !strcmp(k,"video.sun_glare")?glareSetting:!strcmp(k,"video.snow_glint")&&snowGlintSetting>=0?snowGlintSetting:fallback;}
 extern "C" void Gfx_SetEffectStatus(unsigned,unsigned,int,int){}
 extern "C" void Gfx_SetDofStatus(GfxDofStatus){}
+extern "C" void Gfx_SetFogDepthStatus(GfxFogDepthStatus){}
 extern "C" void Gfx_SetRaysStatus(int){}
 SDL_Window *Platform_GetWindow() { return testWindow; }
 int Platform_GetSettingInt(const char *, int fallback) { return fallback; }
@@ -271,6 +272,79 @@ int main(int argc, char **argv)
         upload();require(read(e.ApplyEffects())==scene,"drone actual pixels have no tunnel or streak");
         e.SetSpeedEffectsSuppressed(false);e.SetSpeedFocus(1.3f);e.SetSpeedStreak(1);
         require(e.speedFocusTarget>1&&e.speedStreakTarget==1,"classic speed effects restore");e.ClearSpeedEffects();
+
+        // Tunnel road tracking (video.tunnel_track), actual pixels: the tunnel-vision clear
+        // circle and the speed-streak centre follow the fed focus, the GL v pre-flip lands the
+        // focus in the right half of the frame, and a never-fed/centre focus is pixel-identical
+        // to the old fixed-centre look. Synthetic 320x200 scene, constant 0.9 depth.
+        {
+            const int tw=320,th=200; e.SetVideoMode(tw,th,false);
+            std::vector<unsigned char> tscene(tw*th*4);
+            for(int y=0;y<th;y++)for(int x=0;x<tw;x++){size_t i=((size_t)y*tw+x)*4;
+                tscene[i]=x*255/(tw-1);tscene[i+1]=y*255/(th-1);tscene[i+2]=(x/4+y/4)%2?230:20;tscene[i+3]=255;}
+            auto tupload=[&](){gl.ActiveTexture(GL_TEXTURE0);gl.BindTexture(GL_TEXTURE_2D,e.backColor);
+                gl.TexSubImage2D(GL_TEXTURE_2D,0,0,0,tw,th,GL_RGBA,GL_UNSIGNED_BYTE,tscene.data());
+                gl.BindFramebuffer(GL_FRAMEBUFFER,e.backFramebuffer);gl.DepthMask(GL_TRUE);gl.ClearDepth(.9);gl.Clear(GL_DEPTH_BUFFER_BIT);e.ForgetEffectState();};
+            auto tread=[&](GLuint fbo){std::vector<unsigned char> out(tscene.size());gl.BindFramebuffer(GL_FRAMEBUFFER,fbo);
+                gl.ReadPixels(0,0,tw,th,GL_RGBA,GL_UNSIGNED_BYTE,out.data());e.ForgetEffectState();return out;};
+            auto diffAt=[&](const std::vector<unsigned char>&f,float ux,float uy){   // uy in read (bottom-up) coords
+                int x=(int)(ux*(tw-1)),y=(int)(uy*(th-1));size_t i=((size_t)y*tw+x)*4;
+                return std::abs(int(f[i])-int(tscene[i]))+std::abs(int(f[i+1])-int(tscene[i+1]))+std::abs(int(f[i+2])-int(tscene[i+2]));};
+            e.SetDepthOfField(true,20,10,0); e.effectsRaceFrame=true;   // depth blur 0: isolates the tunnel term (maxBlur 0 inside the circle)
+            auto focusFrame=[&](float u,float v,float strength){
+                e.SetTunnelFocus(u,v,1);e.tunnelFocusU=u;e.tunnelFocusV=v;   // eased == target: no drift inside the frame
+                e.SetSpeedFocus(strength);e.speedFocusSmooth=strength;e.speedFocusTarget=strength;
+                tupload();return tread(e.ApplyEffects());};
+            // Horizontal: at tunnel 1 the sharp circle (inner edge 0.5, x scaled by aspect)
+            // covers 0.8w from a 0.7 focus but not from a 0.3 focus, and vice versa.
+            auto fRight=focusFrame(0.7f,0.5f,1.0f), fLeft=focusFrame(0.3f,0.5f,1.0f);
+            require(diffAt(fRight,0.8f,0.5f)+40<diffAt(fLeft,0.8f,0.5f),"clear circle follows the focus to the right");
+            require(diffAt(fLeft,0.2f,0.5f)+40<diffAt(fRight,0.2f,0.5f),"clear circle follows the focus to the left");
+            auto fUp=focusFrame(0.5f,0.35f,2.0f), fDn=focusFrame(0.5f,0.65f,2.0f);   // review frames (vertical circle response is gentle by design: the shader half-scales y)
+            // Legacy: never-fed focus (exact centre, ClearSpeedEffects state) and a fed exact
+            // centre are pixel-identical - tracking off/unfed is the old fixed look, exactly.
+            e.ClearSpeedEffects();e.SetSpeedFocus(1.0f);e.speedFocusSmooth=1.0f;e.speedFocusTarget=1.0f;
+            tupload();auto fLegacy=tread(e.ApplyEffects());
+            auto fFedCentre=focusFrame(0.5f,0.5f,1.0f);
+            require(fLegacy==fFedCentre,"never-fed and fed-centre focus are pixel-identical (legacy look preserved)");
+            require(diffAt(fLegacy,0.5f,0.5f)<diffAt(fLegacy,0.05f,0.5f),"legacy circle stays centred on the frame");
+            // Streak agreement: the speed-streak pattern radiates from the same focus, so its
+            // changed-pixel centroid sits on the focus side and moves with it (clock pinned).
+            e.SetSpeedStreak(1);
+            auto streakFrame=[&](float u,float v,bool on){
+                e.SetTunnelFocus(u,v,1);e.tunnelFocusU=u;e.tunnelFocusV=v;
+                e.speedFocusSmooth=0.0f;e.speedFocusTarget=0.0f;   // tunnel blur off: isolate the streak's own focus behaviour
+                e.speedStreakSmooth=on?1.0f:0.0f;e.speedStreakTarget=on?1.0f:0.0f;e.speedStreakClock=2.5f;
+                tupload();return tread(e.ApplyEffects());};
+            auto sOffR=streakFrame(0.7f,0.5f,false), sOnR=streakFrame(0.7f,0.5f,true);
+            auto sOffL=streakFrame(0.3f,0.5f,false), sOnL=streakFrame(0.3f,0.5f,true);
+            auto sOffU=streakFrame(0.5f,0.35f,false), sOnU=streakFrame(0.5f,0.35f,true);
+            auto sOffD=streakFrame(0.5f,0.65f,false), sOnD=streakFrame(0.5f,0.65f,true);
+            // Disc probes: the streak leaves an unchanged disc (r < INNER) around the focus and
+            // smears everything outside it, so the quiet point must sit at the fed focus, in
+            // both axes. This also proves the GL v pre-flip lands the focus in the right half.
+            auto sdiff=[&](const std::vector<unsigned char>&on,const std::vector<unsigned char>&off,float ux,float uy){
+                int x=(int)(ux*(tw-1)),y=(int)(uy*(th-1));size_t i=((size_t)y*tw+x)*4;
+                return std::abs(int(on[i])-int(off[i]))+std::abs(int(on[i+1])-int(off[i+1]))+std::abs(int(on[i+2])-int(off[i+2]));};
+            require(sdiff(sOnR,sOffR,0.75f,0.5f)+30<sdiff(sOnL,sOffL,0.75f,0.5f),"streak quiet disc follows the focus right");
+            require(sdiff(sOnL,sOffL,0.25f,0.5f)+30<sdiff(sOnR,sOffR,0.25f,0.5f),"streak quiet disc follows the focus left");
+            require(sdiff(sOnU,sOffU,0.5f,0.85f)+20<sdiff(sOnD,sOffD,0.5f,0.85f),"fed v-down 0.35 puts the streak disc in the UPPER half (GL v pre-flip orientation)");
+            require(sdiff(sOnD,sOffD,0.5f,0.15f)+20<sdiff(sOnU,sOffU,0.5f,0.15f),"fed v-down 0.65 puts the streak disc in the lower half");
+            e.SetSpeedStreak(0);e.speedStreakSmooth=0;e.speedStreakTarget=0;
+            if(argc>1){   // review frames: left|centre|right and up|centre|down triptychs
+                auto trip=[&](const char*tag,const std::vector<unsigned char>&a,const std::vector<unsigned char>&b,const std::vector<unsigned char>&c){
+                    FILE*f=fopen((std::string(argv[1])+tag).c_str(),"wb");
+                    if(f){fprintf(f,"P6\n%d %d\n255\n",tw*3,th);
+                        for(int y=th-1;y>=0;--y)for(auto*fr:{&a,&b,&c})for(int x=0;x<tw;++x)fwrite(fr->data()+((size_t)y*tw+x)*4,1,3,f);
+                        fclose(f);}};
+                auto fC=focusFrame(0.5f,0.5f,1.0f);
+                trip("-tunnel-track-h.ppm",fLeft,fC,fRight);
+                auto fC2=focusFrame(0.5f,0.5f,2.0f);
+                trip("-tunnel-track-v.ppm",fUp,fC2,fDn);
+            }
+            e.ClearSpeedEffects();e.SetDepthOfField(false,20,10,80);e.SetVideoMode(w,h,false);
+            fprintf(stderr,"tunnel road tracking pixels: circle follows focus, v orientation, streak agreement, legacy identity: pass\n");
+        }
         // Restrained glare: actual translated GLSL, depth occlusion, alpha, cap and zero identity.
         e.SetSunScreenPosition(.5f,.3f,true);glareSetting=100;e.sunGlare.response=1;
         gl.BindFramebuffer(GL_FRAMEBUFFER,e.backFramebuffer);gl.DepthMask(GL_TRUE);gl.ClearDepth(1);gl.Clear(GL_DEPTH_BUFFER_BIT);e.ForgetEffectState();
