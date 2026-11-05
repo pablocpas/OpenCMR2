@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build OpenCMR2.app from the macOS release zip (tools/package_release.py), ad-hoc sign it, wrap it in a
-# versioned DMG and verify the DMG. macOS only. The app holds the executable, SDL3, the preparation
+# Build OpenCMR2.app from the macOS release zip (tools/package_release.py), sign it (Developer ID when
+# APPLE_SIGNING_IDENTITY is set, otherwise ad-hoc), wrap it in a versioned DMG and verify the DMG. macOS only. The app holds the executable, SDL3, the preparation
 # helpers, the launch preset and the licences. No game assets. Usage: tools/make_dmg.sh ZIP VERSION OUT_DIR
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,7 +25,14 @@ cp "$ROOT/tools/all-mods.flags" "$app/Contents/Resources/all-mods.flags"
 minos=$(otool -l "$app/Contents/MacOS/opencmr2-game" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
 sed -e "s/@VERSION@/$version/g" -e "s/@MINOS@/${minos:-14.0}/" "$ROOT/tools/macos-app/Info.plist.in" > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist"
-codesign --force --deep --sign - "$app"      # ad-hoc: valid structure, NOT notarized
+identity="${APPLE_SIGNING_IDENTITY:-}"
+if [ -n "$identity" ]; then
+  codesign --force --deep --timestamp --sign "$identity" "$app"   # Developer ID, NOT notarized
+  signing_note="- The app is Developer ID signed, not notarized: macOS may still warn on first open."
+else
+  codesign --force --deep --sign - "$app"                         # ad-hoc: valid structure, NOT notarized
+  signing_note="- The app is ad-hoc signed, not notarized: macOS will warn on first open."
+fi
 codesign --verify --deep --strict --verbose=2 "$app"
 cat > "$stage/READ ME FIRST.txt" <<TXT
 OpenCMR2 $version (macOS, Apple silicon)
@@ -35,12 +42,16 @@ Drag OpenCMR2.app to Applications and open it.
   No game files are included here and your originals are never modified.
 - It prepares a private asset pack under ~/Library/Application Support/OpenCMR2 (first run can take several minutes).
 - Needs Python 3.10 or newer (Homebrew or python.org) once, plus internet once for Pillow and numpy.
-- The app is ad-hoc signed, not notarized: macOS will warn on first open.
+$signing_note
 - Logs: ~/Library/Logs/OpenCMR2/launcher.log. To be asked for the folders again, delete
   ~/Library/Application Support/OpenCMR2/launcher.conf.
 - Gameplay on macOS is not yet verified by the project.
 TXT
 ln -s /Applications "$stage/Applications"
 hdiutil create -volname "OpenCMR2 $version" -srcfolder "$stage" -fs HFS+ -format UDZO -ov "$dmg"
+if [ -n "$identity" ]; then
+  codesign --force --timestamp --sign "$identity" "$dmg"
+  codesign --verify --verbose=2 "$dmg"
+fi
 hdiutil verify "$dmg"
 shasum -a 256 "$dmg" | sed "s#$out/##" > "$dmg.sha256"; cat "$dmg.sha256"
