@@ -6924,7 +6924,8 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
         AttractCapture_ViewSignature(param2, &viewType, &drone);
         if (viewType == 3 && param3 != 0) {
             Windshield_UpdateView(maskedView, maskedView < 2 ? maskedView : 0);
-            Windshield_DrawOverlay(maskedView, g_viewScreenRect[2], g_viewScreenRect[3]);
+            // Draw is in Game_DrawSceneViewport AFTER world effects, before the HUD.
+            // This callback prepares the scene; drawing here gets covered by it.
         }
     }
     if (CGameInfo::IsInRaceMenuOpen() != 0 && InRaceMenu_IsPlayerEditingCarSetup(maskedView) == 0)
