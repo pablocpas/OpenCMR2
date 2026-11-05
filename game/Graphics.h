@@ -1210,6 +1210,7 @@ public:
     static void SetZEnable(int enable);
     static void SetTextureAddressClamp(int clamp);
     static void SetZWriteEnable(int enable);
+    static int GetZWriteEnable(void);
     static void SetTexCoordIndex(int stage, int index);
 
     // GLOBAL: CMR2 0x0059ce24

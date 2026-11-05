@@ -2284,6 +2284,13 @@ void CGraphics::SetZWriteEnable(int enable)
     }
 }
 
+// Current cached depth-write state, so scoped no-depth-write draws (cockpit
+// window glass) restore what the caller had instead of a hardcoded 1.
+int CGraphics::GetZWriteEnable(void)
+{
+    return m_zWriteEnable;
+}
+
 // FUNCTION: CMR2 0x0049ddf0
 void CGraphics::SetTexCoordIndex(int stage, int index)
 {
