@@ -191,6 +191,24 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     }
     Gfx_UnlockTexture(g_windshieldTex, 0, 0);
 
+    // Do not inherit the world's alpha test, disabled texture stages, fog,
+    // texgen or culling. Preserve the caller's complete state on return.
+    Gfx_PushState();
+    Gfx_SetDepthTest(FALSE);
+    Gfx_SetAlphaTest(FALSE);
+    Gfx_SetFog(FALSE);
+    Gfx_SetLighting(FALSE);
+    Gfx_SetCullMode(GFX_CULL_NONE);
+    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageAlphaOp(0, GFX_TOP_SELECTARG1);
+    Gfx_SetStageAlphaArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageTexCoordIndex(0, 0);
+    Gfx_SetStageTextureTransform(0, GFX_TTFF_DISABLE);
+    Gfx_SetStageAddress(0, GFX_ADDRESS_CLAMP);
     Gfx_SetTexture(0, g_windshieldTex);
     Gfx_SetAlphaBlend(TRUE);
     Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA);
@@ -206,9 +224,7 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     v[2].sx = 0;           v[2].sy = (float)resY; v[2].tu = 0; v[2].tv = 1;
     v[3].sx = (float)resX; v[3].sy = (float)resY; v[3].tu = 1; v[3].tv = 1;
     Gfx_DrawPrimitiveTL(GFX_TRIANGLESTRIP, v, 4);
-    Gfx_SetDepthWrite(TRUE);
-    Gfx_SetAlphaBlend(FALSE);
-    Gfx_SetTexture(0, NULL);
+    Gfx_PopState();
 }
 
 // Called from the 3D pass of a cockpit view (Game_DrawSceneViewport) so the

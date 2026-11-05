@@ -796,3 +796,7 @@ add_test(NAME tuned_defaults COMMAND tuned_defaults_test)
 add_executable(tunnel_road_projection_test tunnel_road_projection.cpp ${PROJECT_SOURCE_DIR}/game/FixedMatrixCore.cpp)
 target_include_directories(tunnel_road_projection_test PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/game)
 add_test(NAME tunnel_road_projection COMMAND tunnel_road_projection_test)
+
+if(Python3_EXECUTABLE)
+    add_test(NAME windshield_composition_wiring COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/windshield_composition_wiring.py)
+endif()

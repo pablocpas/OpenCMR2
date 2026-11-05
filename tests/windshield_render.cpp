@@ -27,6 +27,14 @@ extern "C" unsigned int Sys_GetTicks() { return 0; }
 extern "C" double Sys_GetTicksPrecise(void) { return 0; }
 extern "C" void Sys_GetDesktopSize(int *w, int *h) { *w = 96; *h = 64; }
 
+int WindshieldGlass_DrawCockpitExtension(int) { return 0; }
+int WindshieldGlass_GetInfo(int,int*,int*,unsigned*,int*,int*) {return 0;}
+CarPartSet *StageTiming_GetCarReplayRecord(int) {return nullptr;}
+void TouchOverlay_RecordFrame(int,int,bool) {}
+int WindshieldGlass_ApplyDamageState(int,int) {return 0;}
+int WindshieldGlass_DrawSidePanes(int,int,int) {return 0;}
+int WindshieldGlass_DrawCrackPane(int,int) {return 0;}
+
 // Stubs for WindshieldDirt.cpp's game-side externs (unused by the draw path).
 StageBlock g_stageBlock;
 int StageObject_GetViewWeatherField54(int) { return 0; }
@@ -60,13 +68,24 @@ static void putQuad()
     Gfx_UnlockVertexBuffer(vb);
 }
 
-static void drawAndRead(DWORD *pixels, bool withOverlay)
+static void drawAndRead(DWORD *pixels, bool withOverlay, bool beforeWorld = false, bool poisoned = false)
 {
     Gfx_Clear(GFX_CLEAR_TARGET | GFX_CLEAR_ZBUFFER, 0xff181c20, 1.0f);
+    if (withOverlay && beforeWorld) Windshield_DrawOverlay(0, W, H);
     Gfx_SetTexture(0, whiteTex);
     Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, vb, 0, 4);
-    if (withOverlay) Windshield_DrawOverlay(0, W, H);
     Gfx_EndWorldEffects();
+    if (withOverlay && !beforeWorld) {
+        Gfx_PushState();
+        if (poisoned) {
+            Gfx_SetStageColorOp(0, GFX_TOP_DISABLE);
+            Gfx_SetAlphaTest(TRUE);Gfx_SetAlphaFunc(GFX_CMP_NEVER);
+            Gfx_SetFog(TRUE);Gfx_SetFogColor(0xffffffff);
+            Gfx_SetCullMode(GFX_CULL_CW);
+        }
+        Windshield_DrawOverlay(0, W, H);
+        Gfx_PopState();
+    }
     DWORD dummy[4];
     (void)Gfx_ReadBackBuffer(0, 0, W, H, dummy);
     Gfx_Present(0);
@@ -163,12 +182,18 @@ int main(int argc, char **argv)
         *m = keep;
     }
 
+    static DWORD hidden[W*H],isolated[W*H];
+    drawAndRead(hidden,true,true);
+    require(memcmp(hidden,clean,sizeof hidden)==0,"old pre-world dirt is fully covered despite drawing");
+    drawAndRead(isolated,true,false,true);
+    require(memcmp(isolated,dirty,sizeof dirty)==0,"post-world dirt ignores inherited world alpha/stage/fog/cull state");
+    dumpPpm(prefix,"old-covered",hidden);
     dumpPpm(prefix, "clean", clean);
     dumpPpm(prefix, "dirty", dirty);
     dumpPpm(prefix, "representative", repr);
     // The map's dirt area darkens the scene toward the grime tint.
     // Glass centre, away from the wiped arc: px (48, 16) is inside the mask.
-    require(chan(dirty,48,16,16) < chan(clean,48,16,16) - 24, "dirt darkens the glass");
+    require(chan(dirty,48,16,0) < chan(clean,48,16,0) - 24, "dirt darkens the glass");
     // The wiped arc stays at the clean level: a cell on the blade's path.
     // Blade pivot (0.34,1.02), angle -0.25: cell u=0.216, v=0.536 -> px (21,34).
     require(chan(dirty,21,34,16) >= chan(clean,21,34,16) - 8, "wiped arc stays clean");
@@ -176,11 +201,11 @@ int main(int argc, char **argv)
     require(chan(dirty,48,60,16) == chan(clean,48,60,16), "dash band untouched");
     // Representative: sky through partial dirt stays readable (much closer to
     // clean than the saturated fixture), and both swept arcs sit between.
-    require(chan(repr,48,16,2) > chan(dirty,48,16,2) + 24, "representative dirt stays readable");
+    require(chan(repr,48,16,0) > chan(dirty,48,16,0) + 24, "representative dirt stays readable");
     {   int maxDark = 0;
         for (int y = 4; y < 56; y++)
             for (int x = 8; x < 88; x++) {
-                int d = chan(clean,x,y,2) - chan(repr,x,y,2);
+                int d = chan(clean,x,y,0) - chan(repr,x,y,0);
                 if (d > maxDark) maxDark = d;
             }
         require(maxDark >= 24, "representative dirt is visible");
