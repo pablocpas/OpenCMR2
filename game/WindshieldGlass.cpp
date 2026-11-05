@@ -659,8 +659,93 @@ void WindshieldGlass_ClearCockpitExtensions(void)
         g_wgCockpitExt[i].active = 0;
 }
 
+// ---- cockpit extension visibility probe (video.cockpit_extend_probe, default 0 = off) ----
+// One-shot diagnostic for the "extension registered and mutated but nothing visible" question:
+// projects the registered door-card rear edge and the rear-extension strip corners through the
+// production projection path (FixMatrix_ProjectWorldPointToView) at the crack-pane point of the
+// 3D pass - the live widening/FOV of this cockpit view - and logs where they land on screen,
+// plus the eye position in interior mesh space. Screen coordinates are full-frame centred, the
+// same convention as the helper: split-screen view rectangles are not offset (single-player
+// cockpit is exact; player 2 in split-screen reads shifted).
+void FixMatrix_ProjectWorldPointToView(int *pOut, FixVector *pPoint, SceneNode *pView);
+static void WindshieldGlass_ProbeCockpitExtension(int car)
+{
+    static int prevOpt = 0, armed = 0;
+    int opt = Sys_GetOption("video.cockpit_extend_probe", 0);
+    if (opt != 0 && prevOpt == 0) armed = 1;
+    prevOpt = opt;
+    if (opt == 0) armed = 0;
+    if (!armed || car < 0 || car >= WG_MAX_CARS || !g_wgCockpitExt[car].active)
+        return;
+    armed = 0;
+    WgCockpitExt *e = &g_wgCockpitExt[car];
+    SceneNode *view = g_viewNodes[car];
+    if (view == NULL) {
+        Sys_Log("cockpit extension probe: car %d has no view node; probe skipped", car);
+        return;
+    }
+    int len = Sys_GetOption("video.cockpit_extend_rear", 0);
+    int door = Sys_GetOption("video.cockpit_door_extend", 0);
+    if (len > 150) len = 150;
+    float L = len > 0 ? len / 100.0f : 0.0f;
+    float xr = e->x - L;
+    float yTopR = e->yTop + e->slope * (xr - e->x);
+    // Eye in interior mesh space (inverse of the interior node's world times the camera position).
+    FixMatrix invWorld;
+    FixVector eyeMesh;
+    FixMatrix_Invert(&invWorld, &e->node->world);
+    FixMatrix_TransformPoint(&eyeMesh, (FixVector *)&view->world.position, &invWorld);
+    Sys_Log("cockpit extension probe: view %d eye in interior mesh (x %.3f, y %.3f, z %.3f; -x is rearward); card rear cut at x %.3f (door-extend %d/100 moves it to x %.3f), strips run to x %.3f (extend-rear %d/100)",
+            car, eyeMesh.x / 65536.0, eyeMesh.y / 65536.0, eyeMesh.z / 65536.0,
+            e->x, door, e->x - door / 100.0f, xr, len);
+    // Corners: card rear edge, then (when strips exist) the strip far edge and floor far corners.
+    float corner[8][3] = {
+        {e->x, e->yTop, e->z}, {e->x, e->yBot, e->z},
+        {xr, yTopR, e->z}, {xr, e->yBot, e->z},
+        {xr, e->yBot, e->floorZ0}, {e->x, e->yBot, e->floorZ0},
+        {e->x, e->yTop, e->z}, {e->x, e->yBot, e->z}};
+    const char *label[8] = { "card-top", "card-bottom", "strip-far-top", "strip-far-bottom",
+                             "floor-far-inner", "floor-near-inner", "card-top-dup", "card-bottom-dup" };
+    int n = L > 0.0f ? 6 : 2;
+    int inFront = 0, inFrame = 0;
+    int sx[8], sy[8];
+    for (int k = 0; k < n; k++) {
+        FixVector pm;
+        pm.x = (int)(corner[k][0] * 65536.0f);
+        pm.y = (int)(corner[k][1] * 65536.0f);
+        pm.z = (int)(corner[k][2] * 65536.0f);
+        FixVector pw;
+        FixMatrix_TransformPoint(&pw, &pm, &e->node->world);
+        int out[2];
+        FixMatrix_ProjectWorldPointToView(out, &pw, view);
+        sx[k] = out[0];
+        sy[k] = out[1];
+        if (out[0] != -0x640000 || out[1] != -0x640000) {
+            inFront++;
+            if (out[0] >= 0 && out[0] < g_pGraphics->resX && out[1] >= 0 && out[1] < g_pGraphics->resY)
+                inFrame++;
+        }
+        Sys_Log("cockpit extension probe: %s (mesh %.3f %.3f %.3f) -> screen (%d, %d)%s",
+                label[k], corner[k][0], corner[k][1], corner[k][2], out[0], out[1],
+                (out[0] == -0x640000 && out[1] == -0x640000) ? " BEHIND the eye plane" : "");
+    }
+    const char *verdict;
+    if (inFront == 0)
+        verdict = "ALL extension geometry is behind the eye plane: a forward cockpit view cannot show it";
+    else if (inFrame == 0)
+        verdict = "extension geometry is in front of the eye but fully OUTSIDE the frame at the current FOV/widening";
+    else
+        verdict = "extension geometry lands IN FRAME: it should be visible at the logged coordinates (a paint/depth/ordering issue, not coverage)";
+    Sys_Log("cockpit extension probe: verdict: %s (%d/%d corners in front, %d in frame of %dx%d; full-frame centred, split-screen rect not offset)",
+            verdict, inFront, n, inFrame, g_pGraphics->resX, g_pGraphics->resY);
+    if (door > 0 && len > 0)
+        Sys_Log("cockpit extension probe: note: with door-extend %d/100 the card itself reaches x %.3f, so the strip overlaps the stretched card for %.2f model units (same blue gradient, hidden seam)",
+                door, e->x - door / 100.0f, door / 100.0f);
+}
+
 int WindshieldGlass_DrawCockpitExtension(int car)
 {
+    WindshieldGlass_ProbeCockpitExtension(car);
     int len = Sys_GetOption("video.cockpit_extend_rear", 0);
     if (len <= 0 || car < 0 || car >= WG_MAX_CARS || !g_wgCockpitExt[car].active)
         return 0;
