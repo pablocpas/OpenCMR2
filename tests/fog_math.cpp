@@ -61,6 +61,15 @@ int main(){
         Fog_VoteProjection(full, 0.1f, 500.f);                           // fifth pair dropped, still ambiguous
         CHECK(Fog_ResolveProjectionVote(full, &n, &f) == 0);
     }
+    // Probe verdict: projection state gates first, then pollution, curve strength, output shift.
+    CHECK(Fog_ProbeVerdict(false, 1.0f, 0.9f, 0.0f) == 5);
+    CHECK(Fog_ProbeVerdict(true, 1.0f, 0.9f, 0.0f) == 1);    // near depth wins over every later check
+    CHECK(Fog_ProbeVerdict(true, 2.99f, 0.0f, 0.0f) == 1);
+    CHECK(Fog_ProbeVerdict(true, 3.0f, 0.1f, 0.0f) == 2);    // far, but the curve predicts almost nothing
+    CHECK(Fog_ProbeVerdict(true, 50.0f, 0.14f, 0.5f) == 2);
+    CHECK(Fog_ProbeVerdict(true, 50.0f, 0.5f, 0.01f) == 3);  // expected fog, no output shift
+    CHECK(Fog_ProbeVerdict(true, 50.0f, 0.5f, 0.02f) == 4);  // shift at the threshold: active
+    CHECK(Fog_ProbeVerdict(true, 50.0f, 0.9f, 0.6f) == 4);
     // Raw-depth fallback: nothing below depth 0.990, heavier toward the far plane, zero density zero.
     CHECK(Fog_FactorRawDepth(0.989f, 0.03f) == 0.f);
     CHECK(Fog_FactorRawDepth(1.0f, 0.f) == 0.f);

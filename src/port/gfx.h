@@ -369,6 +369,17 @@ void Gfx_SetDofStatus(GfxDofStatus status);
 typedef struct GfxFogDepthStatus {int mode,pairs,votes;float nearZ,farZ;} GfxFogDepthStatus;
 void Gfx_SetFogDepthStatus(GfxFogDepthStatus status);
 GfxFogDepthStatus Gfx_GetFogDepthStatus(void);
+/* Fog depth probe (video.fog_probe, SDL_GPU only, opt-in one-shot): the verdict of the last
+   probe readback - what depth the fog pass actually saw over a windscreen-centred region versus
+   the fog factor that depth should have produced and the color shift the pass actually applied.
+   state: 0 no probe run yet, 1 near depth across the region (residual pollution), 2 far depth but
+   the density curve is weak there, 3 far depth and a strong expected factor but no output shift
+   (pass/compositing failure), 4 output shift consistent with fog, 5 projection unknown (raw-depth
+   ramp active, distances not recoverable). viewZ = median recovered view distance, expected =
+   mean expected fog factor (banks/beams excluded), measured = mean before/after color shift 0..1. */
+typedef struct GfxFogProbeStatus {int state; float viewZ, expected, measured;} GfxFogProbeStatus;
+void Gfx_SetFogProbeStatus(GfxFogProbeStatus status);
+GfxFogProbeStatus Gfx_GetFogProbeStatus(void);
 GfxDofStatus Gfx_GetDofStatus(void);
 /* Diagnostic read of the current draw state: out[0..9] = depthTest, depthWrite, depthFunc, alphaBlend, srcBlend, destBlend, alphaTest, alphaRef, fog, lighting. */
 void Gfx_GetBlendDepthState(int *out);

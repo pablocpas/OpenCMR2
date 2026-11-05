@@ -93,6 +93,18 @@ inline float Fog_CullDistance(int amountPercent, float clearDist) {
     if (floor < 150.f) floor = 150.f;
     return z < floor ? floor : z;
 }
+// Fog depth probe verdict (video.fog_probe readback analysis, gfx_gpu.cpp): classifies one
+// captured region from its median recovered view distance, the mean fog factor the curve
+// predicts there and the mean before/after color shift the pass actually applied.
+// 1 = near depth (residual pollution), 2 = weak density curve, 3 = strong expected factor
+// but no output shift (pass/compositing failure), 4 = fog active, 5 = projection unknown.
+inline int Fog_ProbeVerdict(bool haveProj, float medianViewZ, float meanExpected, float meanMeasured) {
+    if (!haveProj) return 5;
+    if (medianViewZ < 3.f) return 1;
+    if (meanExpected < 0.15f) return 2;
+    if (meanMeasured < 0.02f) return 3;
+    return 4;
+}
 // Fallback when the projection is unknown: raw hardware depth is hyperbolic, so with a
 // near 0.1 / far 150 projection depth 0.990 is about 9 units, 0.9993 about 60, 1.0 the far
 // plane. Ramp over that top slice; the curve is a stand-in, not a measured distance.

@@ -21,7 +21,7 @@ struct EnhancementOptions {
         if(equal==key.npos && key=="--asset-upgrades"){trees="shell";treeCoverage="all";spectators="animated";textures="uprez";roads="finland1";return true;}
         if(equal==key.npos && key=="--prepare-only"){prepareOnly=true;return true;}
         if(equal==key.npos && key=="--install-enhancement-deps"){installDependencies=true;return true;}
-        if(key!="--camera-roll"&&key!="--sun-glare"&&key!="--textures"&&key!="--roads"&&key!="--tree-wind"&&key!="--car-names"&&key!="--trees"&&key!="--spectators"&&key!="--driver-names"&&key!="--cars"&&key!="--mods-dir"&&key!="--effect"&&key!="--attract-capture"&&key!="--capture-interval"&&key!="--capture-count"&&key!="--speed-fov"&&key!="--tunnel-vision"&&key!="--tunnel-lines"&&key!="--speed-motes-stretch"&&key!="--speed-motes-amount"&&key!="--speed-motes-size"&&key!="--dof-blur-max-px"&&key!="--speed-streak"&&key!="--speed-hold"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--cockpit-eye-shift"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--camera-move-chase"&&key!="--camera-move-cockpit"&&key!="--camera-move-car"&&key!="--fov-dolly-curve"&&key!="--tire-debris"&&key!="--tree-rustle"&&key!="--spectator-irregular"&&key!="--tire-track-length"&&key!="--tire-track-history"&&key!="--camera-move-type"&&key!="--fov-preview"&&key!="--dof-focus-car"&&key!="--drone-speed-drop"&&key!="--drone-distance"&&key!="--speed-fov-cockpit"&&key!="--cockpit-blur-clear"&&key!="--test-preset"&&key!="--fog-amount"&&key!="--fog-glow"&&key!="--fog-clear"&&key!="--fog-lights"&&key!="--fog-cull"&&key!="--fog-spatial"&&key!="--brush-volume"&&key!="--fog-evolve"&&key!="--air-motes-amount"&&key!="--snow-glint"&&key!="--cockpit-door-extend"&&key!="--cockpit-extend-rear"&&key!="--windshield-crack-overlay"&&key!="--diag-replay-glass"&&key!="--replay-export")return false;
+        if(key!="--camera-roll"&&key!="--sun-glare"&&key!="--textures"&&key!="--roads"&&key!="--tree-wind"&&key!="--car-names"&&key!="--trees"&&key!="--spectators"&&key!="--driver-names"&&key!="--cars"&&key!="--mods-dir"&&key!="--effect"&&key!="--attract-capture"&&key!="--capture-interval"&&key!="--capture-count"&&key!="--speed-fov"&&key!="--tunnel-vision"&&key!="--tunnel-lines"&&key!="--speed-motes-stretch"&&key!="--speed-motes-amount"&&key!="--speed-motes-size"&&key!="--dof-blur-max-px"&&key!="--speed-streak"&&key!="--speed-hold"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--cockpit-eye-shift"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--camera-move-chase"&&key!="--camera-move-cockpit"&&key!="--camera-move-car"&&key!="--fov-dolly-curve"&&key!="--tire-debris"&&key!="--tree-rustle"&&key!="--spectator-irregular"&&key!="--tire-track-length"&&key!="--tire-track-history"&&key!="--camera-move-type"&&key!="--fov-preview"&&key!="--dof-focus-car"&&key!="--drone-speed-drop"&&key!="--drone-distance"&&key!="--speed-fov-cockpit"&&key!="--cockpit-blur-clear"&&key!="--test-preset"&&key!="--fog-amount"&&key!="--fog-glow"&&key!="--fog-clear"&&key!="--fog-lights"&&key!="--fog-cull"&&key!="--fog-probe"&&key!="--fog-spatial"&&key!="--brush-volume"&&key!="--fog-evolve"&&key!="--air-motes-amount"&&key!="--snow-glint"&&key!="--cockpit-door-extend"&&key!="--cockpit-extend-rear"&&key!="--windshield-crack-overlay"&&key!="--diag-replay-glass"&&key!="--replay-export")return false;
         if(equal==std::string::npos && i+1>=argc){error="Missing value for "+key;return true;}
         std::string value=equal==std::string::npos?argv[++i]:inlineValue;
         if(key=="--camera-roll"){char*end=nullptr;long n=strtol(value.c_str(),&end,10);if(value.empty()||*end||n<0||n>100)error="--camera-roll expects 0..100";else overrides["video.camera_roll"]=(int)n;}
@@ -107,6 +107,11 @@ struct EnhancementOptions {
         if(key=="--fog-cull"){
             char *end=nullptr;long n=strtol(value.c_str(),&end,10);
             if(value.empty()||*end||n<0||n>1)error="--fog-cull expects 0 or 1";else overrides["video.fog_cull"]=(int)n;
+        }
+        if(key=="--fog-probe"){
+            // One-shot fog depth readback diagnostic (video.fog_probe, SDL_GPU only); see docs/ATMOSPHERE.md.
+            char *end=nullptr;long n=strtol(value.c_str(),&end,10);
+            if(value.empty()||*end||n<0||n>1)error="--fog-probe expects 0 or 1";else overrides["video.fog_probe"]=(int)n;
         }
         if(key=="--brush-volume"){   // EXPERIMENTAL Greece1 brush-wall extrusion (visual only, away from the road, collision untouched); default 0
             if(value!="0"&&value!="1")error="--brush-volume expects 0 or 1";else overrides["video.brush_volume"]=value=="1"?1:0;
@@ -287,6 +292,7 @@ inline const char *EnhancementHelp(){return
 "  --fog-glow 0..100           Sun-ward brightening of the fog, percent (default 60)\n"
 "  --air-motes-amount 0..300   Floating dust motes percent (needs --effect air_motes=on; default 100; live cap 48 at 100)\n"
 "  --fog-lights 0..200         Fog brightening inside head/rear light beams, percent (default 100)\n"
+"  --fog-probe 0|1             One-shot fog depth readback diagnostic on the next fogged frame (SDL_GPU only; logs depth vs expected fog vs actual shift with a verdict; default 0)\n"
 "  --snow-glint 0..200         Ice-crystal glints on snowbanks and falling snow, percent (default 100)\n"
 "  --diag-replay-glass 0|1   Diagnostic: in replays, log part break-flag transitions and the saved-damage restore (default 0; log only, no behaviour change)\n"
 "  --test-preset overdo        Exaggerated diagnostic look for speed lines/streak, FOV, DoF, tunnel vision 130 with lines (legacy motes off; add --effect speed_motes=on)\n"

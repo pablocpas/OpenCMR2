@@ -353,6 +353,12 @@ struct Executor : GfxExecutor {
     SDL_GPUTexture *dofBuf1 = nullptr;  // depth-aware disk blur output
     SDL_GPUTexture *godRaysBuf1 = nullptr; // normalized light-shaft output
     SDL_GPUTexture *fogBuf1 = nullptr;       // atmosphere fog output
+    // OpenCMR2: fog depth probe (video.fog_probe). One-shot opt-in readback for the
+    // cockpit-fog investigation; see FogProbeCapture/FogProbeReadback.
+    SDL_GPUTexture *fogProbePre = nullptr, *fogProbePost = nullptr;   // region snapshots
+    int fogProbeW = 0, fogProbeH = 0, fogProbeX = 0, fogProbeY = 0;   // snapshot size + backbuffer origin
+    int fogProbePrevOpt = 0, fogProbeArmed = 0, fogProbeCaptured = 0;
+    float fogProbeNear = 0.0f, fogProbeFar = 0.0f, fogProbeDensity = 0.0f, fogProbeClear = 0.0f;
     // OpenCMR2: depth of field state.
     bool dofEnabled = false;
     int dofFocalDistance = 50;   // 0..100, focus plane depth
@@ -682,6 +688,11 @@ struct Executor : GfxExecutor {
             SDL_ReleaseGPUTexture(device, dofBuf1);
             SDL_ReleaseGPUTexture(device, godRaysBuf1);
             SDL_ReleaseGPUTexture(device, fogBuf1);
+            SDL_ReleaseGPUTexture(device, fogProbePre);
+            fogProbePre = nullptr;
+            SDL_ReleaseGPUTexture(device, fogProbePost);
+            fogProbePost = nullptr;
+            fogProbeCaptured = 0;
             SDL_ReleaseGPUTexture(device, gradingTarget);
             SDL_ReleaseGPUTexture(device, shadowMap);
             SDL_ReleaseGPUTexture(device, shadowDepth);
@@ -1594,6 +1605,182 @@ struct Executor : GfxExecutor {
         if (godRaysPipeline == NULL)
             Sys_Log("gfx: god rays pipeline: %s", SDL_GetError());
         return godRaysPipeline;
+    }
+
+    // OpenCMR2: fog depth probe (video.fog_probe, SDL_GPU only, opt-in one-shot). Diagnostic for
+    // the cockpit-fog investigation: on the option's 0->1 edge the next fogged frame snapshots the
+    // fog pass input, the fog pass output and (at readback) the raw depth buffer over a small
+    // windscreen-centred region, then logs what depth the pass actually saw per cell against the
+    // fog factor that depth should have produced and the color shift the pass actually applied.
+    // Separates the remaining hypotheses: near depth in the region (residual pollution), far depth
+    // with a weak density curve (strength), or far depth with a strong expected factor but no
+    // output shift (Metal pass/compositing failure). Zero cost while off; the single armed frame
+    // stalls on a readback fence after submit. Snapshot copies (not later downloads) for the two
+    // color stages because the post-fog chain can reuse the input buffer within the same frame;
+    // backDepth is written only by the world pass, so its region is still valid after submit.
+    void FogProbeCapture(SDL_GPUCommandBuffer *cmd, SDL_GPUTexture *fogInput, float nearZ, float farZ, float density, float clearDist)
+    {
+        int opt = Sys_GetOption("video.fog_probe", 0);
+        if (opt != 0 && fogProbePrevOpt == 0) fogProbeArmed = 1;
+        fogProbePrevOpt = opt;
+        if (opt == 0) fogProbeArmed = 0;
+        if (!fogProbeArmed || fogProbeCaptured) return;
+        int pw = backWidth < 480 ? backWidth : 480;
+        int ph = backHeight < 270 ? backHeight : 270;
+        if (fogProbePre == nullptr || fogProbeW != pw || fogProbeH != ph) {
+            SDL_ReleaseGPUTexture(device, fogProbePre);
+            fogProbePre = nullptr;
+            SDL_ReleaseGPUTexture(device, fogProbePost);
+            fogProbePost = nullptr;
+            fogProbePre = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, pw, ph, 1, 1,
+                                        SDL_GPU_TEXTUREUSAGE_SAMPLER);
+            fogProbePost = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, pw, ph, 1, 1,
+                                         SDL_GPU_TEXTUREUSAGE_SAMPLER);
+            fogProbeW = pw;
+            fogProbeH = ph;
+        }
+        if (fogProbePre == nullptr || fogProbePost == nullptr) {
+            Sys_Log("fog probe: snapshot texture allocation failed; probe skipped this edge");
+            fogProbeArmed = 0;
+            return;
+        }
+        SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
+        if (copy == nullptr) { fogProbeArmed = 0; return; }
+        int px = (backWidth - pw) / 2, py = (backHeight - ph) / 2;
+        SDL_GPUTextureLocation src = {}, dst = {};
+        src.x = px;
+        src.y = py;
+        src.texture = fogInput;
+        dst.texture = fogProbePre;
+        SDL_CopyGPUTextureToTexture(copy, &src, &dst, pw, ph, 1, false);
+        src.texture = fogBuf1;
+        dst.texture = fogProbePost;
+        SDL_CopyGPUTextureToTexture(copy, &src, &dst, pw, ph, 1, false);
+        SDL_EndGPUCopyPass(copy);
+        fogProbeCaptured = 1;
+        fogProbeX = px;
+        fogProbeY = py;
+        fogProbeNear = nearZ;
+        fogProbeFar = farZ;
+        fogProbeDensity = density;
+        fogProbeClear = clearDist;
+    }
+
+    // Runs after the captured frame's command buffer was submitted. Downloads the two snapshots
+    // and the matching raw-depth region in one dedicated command buffer, waits on its fence (the
+    // one armed frame stalls; nothing else is in flight from this thread) and analyses an 8x8
+    // grid: raw depth, recovered view distance, the fog factor the shader's own curve predicts
+    // (render/fog_math.h, world-anchored banks and car-light beams excluded) and the actual
+    // before/after color shift.
+    void FogProbeReadback()
+    {
+        const int pw = fogProbeW, ph = fogProbeH;
+        const size_t colorBytes = (size_t)pw * ph * 4;   // B8G8R8A8
+        const size_t depthBytes = (size_t)pw * ph * 4;   // D32_FLOAT
+        SDL_GPUTransferBufferCreateInfo tbi = { SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+                                                (Uint32)(2 * colorBytes + depthBytes), 0 };
+        SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(device, &tbi);
+        if (tb == nullptr) { Sys_Log("fog probe: transfer buffer failed: %s", SDL_GetError()); return; }
+        SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(device);
+        SDL_GPUCopyPass *copy = cmd != nullptr ? SDL_BeginGPUCopyPass(cmd) : nullptr;
+        if (copy == nullptr) {
+            Sys_Log("fog probe: readback command buffer failed: %s", SDL_GetError());
+            if (cmd != nullptr) SDL_CancelGPUCommandBuffer(cmd);
+            SDL_ReleaseGPUTransferBuffer(device, tb);
+            return;
+        }
+        SDL_GPUTextureRegion src = {};
+        SDL_GPUTextureTransferInfo dst = {};
+        dst.transfer_buffer = tb;
+        src.texture = fogProbePre;
+        src.w = pw; src.h = ph; src.d = 1;
+        dst.offset = 0;
+        SDL_DownloadFromGPUTexture(copy, &src, &dst);
+        src.texture = fogProbePost;
+        dst.offset = (Uint32)colorBytes;
+        SDL_DownloadFromGPUTexture(copy, &src, &dst);
+        src.texture = backDepth;
+        src.x = fogProbeX; src.y = fogProbeY;
+        dst.offset = (Uint32)(2 * colorBytes);
+        SDL_DownloadFromGPUTexture(copy, &src, &dst);
+        SDL_EndGPUCopyPass(copy);
+        SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+        if (fence == nullptr) {
+            Sys_Log("fog probe: readback submit failed: %s", SDL_GetError());
+            SDL_ReleaseGPUTransferBuffer(device, tb);
+            return;
+        }
+        SDL_WaitForGPUFences(device, true, &fence, 1);
+        SDL_ReleaseGPUFence(device, fence);
+        const uint8_t *map = (const uint8_t *)SDL_MapGPUTransferBuffer(device, tb, false);
+        if (map == nullptr) {
+            Sys_Log("fog probe: transfer buffer map failed: %s", SDL_GetError());
+            SDL_ReleaseGPUTransferBuffer(device, tb);
+            return;
+        }
+        const uint8_t *pre = map, *post = map + colorBytes;
+        const float *dep = (const float *)(map + 2 * colorBytes);
+        const bool haveProj = fogProbeNear > 0.0f && fogProbeFar > fogProbeNear;
+        double viewZ[64], expected[64], measured[64], rawDepth[64];
+        double sumExpected = 0.0, sumMeasured = 0.0;
+        Sys_Log("fog probe: region %dx%d at (%d,%d) of %dx%d, projection near %.3f far %.1f%s, density %.4f, clear %.0f; cells are raw-depth/view-distance/expected-factor/measured-shift (banks and beams excluded from expected)",
+                pw, ph, fogProbeX, fogProbeY, backWidth, backHeight, fogProbeNear, fogProbeFar,
+                haveProj ? "" : " (UNKNOWN: raw-depth ramp active, distances not recoverable)",
+                fogProbeDensity, fogProbeClear);
+        for (int gy = 0; gy < 8; gy++) {
+            char row[640];
+            int n = snprintf(row, sizeof row, "fog probe: row %d:", gy);
+            for (int gx = 0; gx < 8; gx++) {
+                int x0 = gx * pw / 8, x1 = (gx + 1) * pw / 8;
+                int y0 = gy * ph / 8, y1 = (gy + 1) * ph / 8;
+                double dsum = 0.0, ssum = 0.0;
+                long count = 0;
+                for (int y = y0; y < y1; y++)
+                    for (int x = x0; x < x1; x++) {
+                        size_t i = (size_t)y * pw + x;
+                        dsum += dep[i];
+                        const uint8_t *a = pre + i * 4, *b = post + i * 4;
+                        ssum += (std::fabs((double)a[0] - b[0]) + std::fabs((double)a[1] - b[1]) +
+                                 std::fabs((double)a[2] - b[2])) / (3.0 * 255.0);
+                        count++;
+                    }
+                double d = dsum / count, shift = ssum / count;
+                double vz = haveProj ? Fog_ViewZ((float)d, fogProbeNear, fogProbeFar) : 0.0;
+                float vCenter = (fogProbeY + (gy + 0.5f) * ph / 8.0f) / (float)backHeight;
+                float f = haveProj ? Fog_Factor((float)vz, fogProbeDensity)
+                                   : Fog_FactorRawDepth((float)d, fogProbeDensity);
+                if (haveProj) f *= Fog_ClearScale((float)vz, fogProbeClear);
+                f *= Fog_HeightScale(vCenter);
+                if (f > 1.0f) f = 1.0f;
+                f = Fog_SkyCap(f, (float)d);
+                int cell = gy * 8 + gx;
+                rawDepth[cell] = d;
+                viewZ[cell] = vz;
+                expected[cell] = f;
+                measured[cell] = shift;
+                sumExpected += f;
+                sumMeasured += shift;
+                n += snprintf(row + n, sizeof row - n, " %.3f/%.0f/%.2f/%.3f", d, vz, (double)f, shift);
+            }
+            Sys_Log("%s", row);
+        }
+        SDL_UnmapGPUTransferBuffer(device, tb);
+        SDL_ReleaseGPUTransferBuffer(device, tb);
+        double sorted[64];
+        memcpy(sorted, viewZ, sizeof sorted);
+        std::sort(sorted, sorted + 64);
+        double medianViewZ = (sorted[31] + sorted[32]) * 0.5;
+        double meanExpected = sumExpected / 64.0, meanMeasured = sumMeasured / 64.0;
+        int state = Fog_ProbeVerdict(haveProj, (float)medianViewZ, (float)meanExpected, (float)meanMeasured);
+        const char *verdict =
+            state == 5 ? "projection unknown: raw-depth ramp active, depth-vs-output comparison above stands on raw values" :
+            state == 1 ? "NEAR depth across the region: residual depth pollution in front of the windscreen, the fog pass correctly sees nothing to fog" :
+            state == 2 ? "far depth but a weak expected factor: the density curve/clear distance is too weak at these distances" :
+            state == 3 ? "far depth, strong expected factor, NO output shift: the pass output is not reaching the frame (Metal pass/compositing failure)" :
+                         "output shift present where fog is expected: fog is active in the sampled region";
+        Sys_Log("fog probe: verdict: %s (median view distance %.1f world units, mean expected %.2f, mean measured shift %.3f)",
+                verdict, medianViewZ, meanExpected, meanMeasured);
+        Gfx_SetFogProbeStatus(GfxFogProbeStatus{ state, (float)medianViewZ, (float)meanExpected, (float)meanMeasured });
     }
 
     // Atmosphere fog pipeline: full-screen scene+depth pass, no blending (fog.frag).
@@ -2761,9 +2948,11 @@ struct Executor : GfxExecutor {
             SDL_GPUTextureSamplerBinding fogBindings[2] = {
                 { presentSource, linearSampler }, { backDepth, depthSampler }
             };
+            SDL_GPUTexture *fogInput = presentSource;
             if (PostProcessPass(cmd, FogPipeline(), fogBuf1, fogBindings, 2,
                                 fogUniforms, sizeof(fogUniforms)))
-                { presentSource = fogBuf1; encoded |= 512; }
+                { presentSource = fogBuf1; encoded |= 512;
+                  FogProbeCapture(cmd, fogInput, sceneNear, sceneFar, fogP.density, fogP.clearDistance); }
         }
         // Tunnel vision is independent of the depth blur (see render/dof_gate.h): it still runs with DoF off or dof_blur 0.
         DofGate dofGate = Dof_Gate(dofEnabled, dofFocalRange, dofMaxBlur, speedFocusTarget, speedFocusSmooth, sampledDepth && backDepth, raceWorld);
@@ -3083,6 +3272,11 @@ struct Executor : GfxExecutor {
             reading->serial = ++readbackSerial;
             submitted = reading->fence != nullptr;
         } else submitted = SDL_SubmitGPUCommandBuffer(cmd);
+        if (fogProbeCaptured) {
+            fogProbeCaptured = 0;
+            fogProbeArmed = 0;
+            if (submitted) FogProbeReadback();
+        }
         static int lastSubmission=-1;
         if(lastSubmission!=(int)submitted){
             Sys_Log("effects: SDL_GPU command submission=%s (accepted is not completed/pixel verification)%s",submitted?"accepted":"FAILED",submitted?"":SDL_GetError());

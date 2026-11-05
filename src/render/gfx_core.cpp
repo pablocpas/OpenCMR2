@@ -1517,6 +1517,9 @@ extern "C" GfxDofStatus Gfx_GetDofStatus(void){return dofStatus;}
 static GfxFogDepthStatus fogDepthStatus={};
 extern "C" void Gfx_SetFogDepthStatus(GfxFogDepthStatus status){fogDepthStatus=status;}
 extern "C" GfxFogDepthStatus Gfx_GetFogDepthStatus(void){return fogDepthStatus;}
+static GfxFogProbeStatus fogProbeStatus={};
+extern "C" void Gfx_SetFogProbeStatus(GfxFogProbeStatus status){fogProbeStatus=status;}
+extern "C" GfxFogProbeStatus Gfx_GetFogProbeStatus(void){return fogProbeStatus;}
 
 static int raysStatus=GFX_RAYS_UNKNOWN;
 extern "C" void Gfx_SetRaysStatus(int reason){raysStatus=reason;}
