@@ -35,13 +35,13 @@ unsigned int g_quad2DCountB;
 
 // Screen-space quads of each sprite layer, four vertices per sprite.
 // GLOBAL: CMR2 0x005a2858
-GfxTLVertex g_spriteVerts1[1024 * 4];
+GfxTLVertex g_spriteVerts1[(SPRITE_LAYER_MAX + 1) * 4];
 // GLOBAL: CMR2 0x005c2858
-GfxTLVertex g_spriteVerts2[1024 * 4];
+GfxTLVertex g_spriteVerts2[(SPRITE_LAYER_MAX + 1) * 4];
 // GLOBAL: CMR2 0x005fe858
-GfxTLVertex g_spriteVerts4[1024 * 4];
+GfxTLVertex g_spriteVerts4[(SPRITE_LAYER_MAX + 1) * 4];
 // GLOBAL: CMR2 0x0061e858
-GfxTLVertex g_spriteVerts3[1024 * 4];
+GfxTLVertex g_spriteVerts3[(SPRITE_LAYER_MAX + 1) * 4];
 
 void Graphics_InvalidateTextureStageCache(void);
 
@@ -340,8 +340,14 @@ void Tri2D_Queue(int *pA, int *pB, int *pC, BYTE *pColour, int layer)
 
 // The original repeats the same block for each of the four layers.
 #define QUEUE_SPRITE(arr, count, n)                                             \
-    if (count >= SPRITE_LAYER_MAX)                                              \
+    if (count >= SPRITE_LAYER_MAX) {                                            \
+        static bool loggedFull = false;                                         \
+        if (!loggedFull) {                                                      \
+            loggedFull = true;                                                  \
+            Sys_Log("sprite layer " #n " full at %u sprites; further draws this frame dropped (SPRITE_LAYER_MAX)", (unsigned)SPRITE_LAYER_MAX); \
+        }                                                                       \
         return;                                                                 \
+    }                                                                           \
     p = &arr[count];                                                            \
     count++;                                                                    \
     p->src = *pSrc;                                                             \

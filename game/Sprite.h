@@ -10,7 +10,11 @@ struct SpriteRect {
     short h;
 };
 
-// Queued 2D sprite (0x38 bytes); four layers of up to 0x3ff sprites each.
+// Queued 2D sprite (0x38 bytes); four layers of up to 0x1fff sprites each. Raised from the
+// original 0x3ff: the F10 diagnostic panel queues one sprite per glyph and is up to 41 rows
+// of up to 159 characters (about 6.5k sprites on layer 1 with the HUD), so 0x3ff silently
+// truncated it mid-row (the panel died at "fla" on a native screenshot). The matching
+// vertex buffers in Sprite.cpp scale with the same constant.
 struct Sprite {
     SpriteRect src;         // 0x0  u, v, w, h in the texture
     SpriteRect dst;         // 0x8  x, y, w, h on screen
@@ -24,7 +28,7 @@ struct Sprite {
     int param;              // 0x34
 };
 
-#define SPRITE_LAYER_MAX 0x3ff
+#define SPRITE_LAYER_MAX 0x1fff
 
 // GLOBAL: CMR2 0x005f0858
 extern Sprite g_spriteLayer1[SPRITE_LAYER_MAX];

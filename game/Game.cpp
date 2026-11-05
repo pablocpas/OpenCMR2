@@ -2152,6 +2152,11 @@ static int CarPaintOwner(SceneNode *node){
  return -1;
 }
 void AttractCapture_ViewSignature(int view, int *type, int *drone);   // Car.cpp
+// Monotonic engagement totals for the F10 panel (delta-computed there, like
+// g_interiorDiag): [0] car-owned exterior window nodes (flag low byte 0x14)
+// drawn through a player view, [1] of those switched to no-depth-write in a
+// cockpit view. Makes gate engagement visible without a log grep.
+unsigned g_cockpitWindowGate[2] = {0, 0};
 // bit: view index of the current viewport draw, or -1 when the draw is not
 // tied to a player view (full-scene passes). Cockpit window glass skips depth
 // writes per cockpit view only; every other view and pass is unchanged.
@@ -2160,7 +2165,9 @@ static void DrawCarScopedLOD(SceneNode*node,Mesh*mesh,int bit){
  int noZ=0;
  if(bit>=0&&bit<2&&CarBodyDirt::drawingCar>=0){
   int viewType=0,viewDrone=0;AttractCapture_ViewSignature(bit,&viewType,&viewDrone);
+  if((node->flags&0xff)==0x14)g_cockpitWindowGate[0]++;
   noZ=CockpitWindow_SkipDepthWrite(node->flags&0xff,1,viewType,Sys_GetOption("video.cockpit_glass_fog",1))?1:0;
+  if(noZ)g_cockpitWindowGate[1]++;
  }
  if(noZ&&CGraphics::GetZWriteEnable()==1){
   static Mesh*logged[8];static int logCount=0,li;for(li=0;li<logCount;li++)if(logged[li]==mesh)break;

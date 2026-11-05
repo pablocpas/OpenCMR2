@@ -6696,7 +6696,10 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
         BYTE colour[4] = {240, 246, 255, 255};
         unsigned long long tick=0;unsigned frame=0,changes=0;
         bool spectator=SceneryPack_GetAnimationStatus(&tick,&frame,&changes);
-        auto layout=DebugOverlayLayout::For(g_pGraphics->resX,g_pGraphics->resY,(spectator?6:5)+11+5+2+5+2+2);   // +5: the Speed FOV, FOV dolly, FOV preview and footer rows were drawn below the panel in the 12:04 native screenshot (panel ended at "Measured")
+        auto layout=DebugOverlayLayout::For(g_pGraphics->resX,g_pGraphics->resY,(spectator?7:6)+34);   // header rows + one entry per line() row below
+        // (the launch-summary for-loop is 3 rows from one call site; FOV preview and cockpit eye shift are conditional).
+        // Keep the count in sync when adding a row - debug_panel_budget_wiring checks it. The earlier
+        // (spectator?6:5)+11+5+2+5+2+2 undercounted by 7, so rows after the fog block had no panel behind them.
         short panel[4] = {(short)layout.x,(short)layout.y,(short)layout.width,(short)layout.height};
         Sprite_FillRect(NULL, panel, background, 1);
         char text[160];
@@ -6836,6 +6839,14 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
                 line(text,fd.mode==1?lit:dim);
                 snprintf(text,sizeof text,"Flagged-interior draws (last change; counts, not windscreen proof): no-depth-write %u, blend-off %u, no-semi-alpha %u, batch-path meshes %u (cockpit_glass_fog=%d)",delta[0],delta[1],delta[2],delta[3],Sys_GetOption("video.cockpit_glass_fog",1));
                 line(text,delta[0]>0?lit:dim);
+                {   // Exterior window gate (video.cockpit_glass_fog, Game.cpp DrawCarScopedLOD): engagement counters,
+                    // so the panel itself settles whether the cockpit window depth-write gate fired (no log grep needed).
+                    extern unsigned g_cockpitWindowGate[2];
+                    static unsigned wprev[2]={0,0},wdelta[2]={0,0};
+                    if(memcmp(wprev,g_cockpitWindowGate,sizeof wprev)!=0){for(int wi=0;wi<2;++wi){wdelta[wi]=g_cockpitWindowGate[wi]-wprev[wi];wprev[wi]=g_cockpitWindowGate[wi];}}
+                    snprintf(text,sizeof text,"Window gate: exterior window draws %u | no depth write %u (last change; cockpit view only)",wdelta[0],wdelta[1]);
+                    line(text,wdelta[1]>0?lit:dim);
+                }
             }
             }
             {
