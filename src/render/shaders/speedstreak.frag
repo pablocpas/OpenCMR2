@@ -10,6 +10,7 @@ layout(std140, set = 3, binding = 0) uniform SpeedStreakUniforms {
     vec4 depthInfo;    // x near plane, y far plane (0 = no depth: trails off), z depth tolerance (world units, the car's own surface), w fade width (world units)
     vec4 cockpitDepth; // x clear distance (0 disabled), y near, z far, w reserved
     vec4 tunnelLines;  // x tunnel vision strength 0..2 (eased, same as dof.frag), y 1 = radial lines inside the tunnel vision zone
+    vec4 tunnelFocus;  // x focus u, y focus v in gl_FragCoord space (the upload pre-flips per runtime), z 1.0 = valid (0/unset = screen centre, the old look), w reserved
 };
 // Mirrors src/render/speed_streak.h. Directional radial streak: samples run from the pixel toward the screen centre, so the
 // scenery smears outward. The clear inner zone is a radial exclusion, not a car mask.
@@ -81,7 +82,8 @@ void main()
 {
     vec2 uv = gl_FragCoord.xy / vec2(textureSize(scene, 0));
     vec4 base = texture(scene, uv);
-    vec2 c = uv - vec2(0.5);
+    vec2 focusUv = tunnelFocus.z > 0.5 ? tunnelFocus.xy : vec2(0.5);   // road tracking: streak direction and tunnel-lines zone share the dof clear circle's focus
+    vec2 c = uv - focusUv;
     float r = length(c * vec2(settings.y, 1.0));
     float w = smoothstep(INNER, INNER + RAMP, r) * clamp(settings.x, 0.0, 1.0);
     // The radial streak runs after tunnel blur. Preserve the same nearby cockpit
