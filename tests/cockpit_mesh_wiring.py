@@ -1,5 +1,6 @@
-import re
-def read(p): return open(p).read()
+from pathlib import Path
+root=Path(__file__).resolve().parents[1]
+def read(p): return (root/p).read_text()
 wd=read('game/WindshieldDirt.cpp'); wg=read('game/WindshieldGlass.cpp'); en=read('src/platform/enhancements.h')
 assert 'WindshieldGlass_DrawCockpitMesh(mview)' in wd, 'cockpit mesh must draw in the cockpit 3D pass'
 for k in ('video.cockpit_mesh','video.dump_interior'):
