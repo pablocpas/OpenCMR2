@@ -367,6 +367,14 @@ struct Executor : GfxExecutor {
     GfxDofStatus dofStatus = {0, 0, 0, 0, 0};
     bool speedEffectsSuppressed=false;
     float speedFocusTarget = 0.0f, speedFocusSmooth = 0.0f; // 0..1 tunnel vision; smoothed per frame
+    // OpenCMR2: tunnel road tracking (video.tunnel_track): eased screen-uv focus for the tunnel
+    // clear circle and the streak/lines centre. Eases toward the fed road point when valid,
+    // back to the centre otherwise (0.4 s); starts centred, so the old look is unchanged until
+    // a valid feed moves it. See shaders/dof.frag tunnelFocus.
+    float tunnelFocusU = 0.5f, tunnelFocusV = 0.5f;
+    float tunnelFocusTargetU = 0.5f, tunnelFocusTargetV = 0.5f;
+    int tunnelFocusTargetValid = 0;
+    Uint64 tunnelFocusTicks = 0;
     Uint64 speedFocusTicks = 0;
     float speedStreakTarget = 0.0f, speedStreakSmooth = 0.0f, speedStreakClock = 0.0f; Uint64 speedStreakTicks = 0; // 0..1, smoothed in real time
     float vaporTarget = 0.0f, vaporSmooth = 0.0f; Uint64 vaporTicks = 0; VaporHistory vaporHistory; float vaporPrevCentre[3] = {}, vaporDir[3] = {}; bool vaporHavePrev = false, vaporHaveDir = false;
@@ -893,7 +901,9 @@ struct Executor : GfxExecutor {
     }
 
     void SetSpeedEffectsSuppressed(bool v) override {speedEffectsSuppressed=v;if(v)ClearSpeedEffects();}
-    void ClearSpeedEffects() override { speedFocusTarget = speedFocusSmooth = 0.0f; speedStreakTarget = speedStreakSmooth = 0.0f; }
+    void ClearSpeedEffects() override { speedFocusTarget = speedFocusSmooth = 0.0f; speedStreakTarget = speedStreakSmooth = 0.0f;
+        tunnelFocusU = tunnelFocusV = tunnelFocusTargetU = tunnelFocusTargetV = 0.5f; tunnelFocusTargetValid = 0; }
+    void SetTunnelFocus(float u, float v, int valid) override { tunnelFocusTargetU = u; tunnelFocusTargetV = v; tunnelFocusTargetValid = valid; }
     void ClearVaporTrail() override { vaporTarget = vaporSmooth = 0.0f; vaporHistory.Reset(); vaporHavePrev = vaporHaveDir = false; }   // no fade-out and no stored trail points
 
     // OpenCMR2: god rays / volumetric lighting. `enabled` turns it on/off,
@@ -2954,6 +2964,19 @@ struct Executor : GfxExecutor {
                 { presentSource = fogBuf1; encoded |= 512;
                   FogProbeCapture(cmd, fogInput, sceneNear, sceneFar, fogP.density, fogP.clearDistance); }
         }
+        // Tunnel road tracking: ease the focus toward the fed road point (or back to the centre
+        // on an invalid feed), 0.4 s so it follows bends without snapping. Runs whenever a race
+        // world is on screen, so the speed-streak pass gets the eased focus even when the DoF
+        // pass itself is off. Menu/non-race frames keep the last value; ClearSpeedEffects resets.
+        if (raceWorld) {
+            Uint64 nowTicks = SDL_GetTicksNS();
+            float fdt = tunnelFocusTicks ? (float)(nowTicks - tunnelFocusTicks) * 1e-9f : 0.0f;
+            tunnelFocusTicks = nowTicks;
+            if (fdt > 0.25f) fdt = 0.25f;
+            float k = 1.0f - std::exp(-fdt / 0.4f);
+            tunnelFocusU += ((tunnelFocusTargetValid ? tunnelFocusTargetU : 0.5f) - tunnelFocusU) * k;
+            tunnelFocusV += ((tunnelFocusTargetValid ? tunnelFocusTargetV : 0.5f) - tunnelFocusV) * k;
+        }
         // Tunnel vision is independent of the depth blur (see render/dof_gate.h): it still runs with DoF off or dof_blur 0.
         DofGate dofGate = Dof_Gate(dofEnabled, dofFocalRange, dofMaxBlur, speedFocusTarget, speedFocusSmooth, sampledDepth && backDepth, raceWorld);
         dofStatus={dofGate.reason,speedFocusTarget,0.0f,0.0f,0.0f};
@@ -3005,7 +3028,7 @@ struct Executor : GfxExecutor {
             float carPosMin = 0.0f, carPosMax = 0.0f;
             if (blurMode == 1 && carRegion.Valid() && DofFocus_Position(carRegion.zMin, sceneNear, sceneFar, &carPosMin) && DofFocus_Position(carRegion.zMax, sceneNear, sceneFar, &carPosMax)) blurShown = 1;
             else blurMode = 0;
-            float uniforms[16] = { focusPos,
+            float uniforms[20] = { focusPos,
                                   dofFocalRange / 100.0f * (1.0f - 0.5f * std::min(speedFocusSmooth, 1.0f)),
                                   !dofGate.depthBlur ? 0.0f : dofMaxBlur / 100.0f * (float)(Sys_GetOption("video.dof_blur_max_px", 4) < 1 ? 1 : Sys_GetOption("video.dof_blur_max_px", 4) > 40 ? 40 : Sys_GetOption("video.dof_blur_max_px", 4)), speedFocusSmooth,
                                   aspect, kTunnelRadiusPerHeight * (float)backHeight, sceneNear, sceneFar,
@@ -3013,6 +3036,9 @@ struct Executor : GfxExecutor {
                                   (float)blurShown, carPosMin, carPosMax, 0.02f };
             if (!blurShown) for (int k = 8; k < 16; ++k) uniforms[k] = 0.0f;
             if (!blurShown) uniforms[8] = Gfx_GetTunnelNearClear();   // peripheral mode: cockpit interior depth clear (see dof.frag)
+            // tunnelFocus: eased road-tracking focus (uv, v downwards - this runtime's gl_FragCoord
+            // orientation); z 1 = use it (the eased value sits at the centre when tracking is off).
+            uniforms[16] = tunnelFocusU; uniforms[17] = tunnelFocusV; uniforms[18] = 1.0f; uniforms[19] = 0.0f;
             static int blurLogCounter = 0;
             if (Sys_GetOption("video.blur_mode", 0) != 0 && (blurLogCounter++ % 120) == 0)
                 Sys_Log("blur mode: whole scene except car requested, %s; car rect u %.3f..%.3f v %.3f..%.3f (0..1, v downwards), view depth %.2f..%.2f world units, %d vertices; native pixels unverified",
@@ -3023,7 +3049,7 @@ struct Executor : GfxExecutor {
             if (PostProcessPass(cmd, DofPipeline(), dofBuf1, bindings, 2,
                                 uniforms, sizeof(uniforms)))
                 {presentSource = dofBuf1;encoded|=8;
-                 dofStatus={5,speedFocusTarget,speedFocusSmooth,uniforms[1],uniforms[2],focusPos,carDepth,Sys_GetOption("video.blur_mode", 0) != 0 ? (blurShown ? 1 : -1) : 0,carRegion.u0,carRegion.v0,carRegion.u1,carRegion.v1};}
+                 dofStatus={5,speedFocusTarget,speedFocusSmooth,uniforms[1],uniforms[2],focusPos,carDepth,Sys_GetOption("video.blur_mode", 0) != 0 ? (blurShown ? 1 : -1) : 0,carRegion.u0,carRegion.v0,carRegion.u1,carRegion.v1,tunnelFocusU,tunnelFocusV,tunnelFocusTargetValid};}
         }
         if (godRaysEnabled && sunVisible && sampledDepth && godRaysIntensity > 0 &&
             godRaysBuf1 != nullptr && backDepth != nullptr && GodRaysPipeline() != nullptr) {
@@ -3122,7 +3148,7 @@ struct Executor : GfxExecutor {
         bool tunnelLinesOn = Sys_GetOption("video.tunnel_lines", 1) != 0 && speedFocusSmooth > 0.01f;   // radial lines inside the tunnel vision zone
         if ((speedStreakSmooth > 0.01f || vaporDraw || tunnelLinesOn) && raceWorld && gradingTarget != nullptr && presentSource != nullptr &&
             presentSource != gradingTarget && SpeedStreakPipeline() != nullptr) {
-            float uniforms[4 + 60 * 4 + 4 + 4 + 4] = {};   // cockpitDepth and tunnelLines, after depthInfo
+            float uniforms[4 + 60 * 4 + 4 + 4 + 4 + 4] = {};   // cockpitDepth, tunnelLines and tunnelFocus, after depthInfo
             uniforms[0] = speedStreakSmooth; uniforms[1] = backHeight ? (float)backWidth / (float)backHeight : 1.0f; uniforms[2] = speedStreakClock;
             uniforms[3] = Sys_GetOption("video.speed_lines", 1) != 0 ? speedStreakSmooth : 0.0f;   // radial lines have their own toggle
             memcpy(uniforms + 4, vaporUniforms, sizeof(vaporUniforms));
@@ -3135,6 +3161,7 @@ struct Executor : GfxExecutor {
             uniforms[4 + 60 * 4 + 5] = cockpitNear;
             uniforms[4 + 60 * 4 + 6] = cockpitFar;
             uniforms[4 + 60 * 4 + 8] = speedFocusSmooth; uniforms[4 + 60 * 4 + 9] = tunnelLinesOn ? 1.0f : 0.0f;
+            uniforms[4 + 60 * 4 + 12] = tunnelFocusU; uniforms[4 + 60 * 4 + 13] = tunnelFocusV; uniforms[4 + 60 * 4 + 14] = 1.0f; uniforms[4 + 60 * 4 + 15] = 0.0f;   // tunnelFocus: same eased focus as dof.frag
             SDL_GPUTextureSamplerBinding binding[2] = { { presentSource, linearSampler }, (vaporDraw || cockpitDepth) ? SDL_GPUTextureSamplerBinding{ backDepth, depthSampler } : SDL_GPUTextureSamplerBinding{ presentSource, linearSampler } };   // No trails or cockpit depth mask: the second sampler just needs some texture
             if (PostProcessPass(cmd, SpeedStreakPipeline(), gradingTarget, binding, 2, uniforms, sizeof(uniforms)))
                 {presentSource = gradingTarget;encoded|=256;streakApplied = true;}

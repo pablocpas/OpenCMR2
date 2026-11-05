@@ -8,8 +8,8 @@ assert 'cockpitClear > 0.0f && sampledDepth && backDepth != nullptr'in g
 assert 'ResolveProjection(&cockpitNear, &cockpitFar)'in g
 assert '(vaporDraw || cockpitDepth)'in g
 assert 'uniforms[4 + 60 * 4 + 8] = speedFocusSmooth'in g
-assert 'float uniforms[4 + 60 * 4 + 4 + 4 + 4] = {}'in g
-assert 'SpeedStreakUniforms is 1024 bytes'in gl
-# GL is deliberately unchanged: absent trailing uniforms disable the new mask.
-assert 'run(10, 0, u, sizeof(u))'in gl
+assert 'float uniforms[4 + 60 * 4 + 4 + 4 + 4 + 4] = {}'in g
+assert 'SpeedStreakUniforms is 1040 bytes'in gl
+# GL now also uploads the trailing tunnel focus (zeroed trail/depth fields keep the mask off).
+assert 'float u[260]'in gl and 'u[256] = tunnelFocusU' in gl and 'run(10, 0, u, sizeof(u))'in gl
 print('cockpit streak mask wiring, depth validity, uniform offsets, GL disabled fallback: pass')

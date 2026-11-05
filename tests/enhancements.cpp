@@ -92,6 +92,7 @@ CHECK(run({"t","--camera-move-chase","-60"})&&e2.empty()&&t.overrides["video.cam
    {EnhancementOptions b;t=b;CHECK(run({"t","--brush-volume","2"})&&!e2.empty());}
    {EnhancementOptions b;t=b;CHECK(run({"t"})&&e2.empty());t.Apply();CHECK(t.overrides.count("video.brush_volume")==0);}   // default stays off
    EnhancementOptions q4;t=q4;CHECK(run({"t","--tunnel-vision","201"})&&!e2.empty());CHECK(run({"t","--tunnel-lines","2"})&&!e2.empty());
+   {EnhancementOptions q6;t=q6;CHECK(run({"t","--tunnel-track","0"})&&e2.empty());t.Apply();CHECK(t.overrides["video.tunnel_track"]==0);CHECK(run({"t","--tunnel-track","2"})&&!e2.empty());}
    EnhancementOptions q5;t=q5;CHECK(run({"t","--speed-fov","500"})&&e2.empty());CHECK(t.overrides["video.speed_fov"]==500);}
   EnhancementOptions q;t=q;CHECK(run({"t","--effect","bloom=on"})&&e2.empty());t.Apply();CHECK(!t.overrides.count("video.speed_fov")&&!t.overrides.count("video.dof_blur"));}
  auto root=fs::temp_directory_path()/(std::string("cmr-enhancements-")+std::to_string(SDL_GetPerformanceCounter()));

@@ -10,6 +10,7 @@ layout(std140, set = 3, binding = 0) uniform DoFUniforms {
     vec4 extra;    // x aspect ratio, y peripheral (tunnel) blur radius in pixels at full tunnel, z near plane, w far plane (0 = unknown)
     vec4 carRect;  // car screen rectangle (uv, v downwards): x0 y0 x1 y1, from the car's own projected vertices; zeros when unused
     vec4 carMode;  // x blur mode (0 peripheral = the old look, 1 whole scene except the car), y car depth min, z car depth max (log depth position), w feather
+    vec4 tunnelFocus; // x focus u, y focus v in gl_FragCoord space (the upload pre-flips per runtime), z 1.0 = valid (0/unset = screen centre, the old look), w reserved
 };
 float edge01(float a, float b, float x) { float t = clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
 void main()
@@ -34,7 +35,8 @@ void main()
     // Tunnel vision: blur grows with distance from the screen centre, and the sharp circle
     // closes as speed rises. The car sits low in the frame (r about 0.5) and stays sharp.
     if (tunnel > 0.0) {
-        vec2 centered = (uv - 0.5) * 2.0;
+        vec2 focusUv = tunnelFocus.z > 0.5 ? tunnelFocus.xy : vec2(0.5);   // road tracking: clear zone follows the road ahead (cockpit); centre otherwise
+        vec2 centered = (uv - focusUv) * 2.0;
         centered.x *= extra.x;
         centered.y *= 0.5; // mirrors kTunnelVerticalScale: bonnet and car (low, centred) stay sharp, the sides blur
         float edge = length(centered);

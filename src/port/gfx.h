@@ -290,6 +290,8 @@ void Gfx_ClearSpeedEffects(void);
 void Gfx_ClearVaporTrail(void);
 /* OpenCMR2 cockpit view: pixels nearer than this view distance (world units, the interior) stay out of the tunnel-vision blur. 0 = off. SDL_GPU only. */
 void Gfx_SetTunnelNearClear(float worldUnits);
+/* OpenCMR2: tunnel road tracking (video.tunnel_track). u/v = the road-ahead point in screen uv (v downwards), valid 1 when the projection succeeded this frame; invalid eases the focus back to the centre. */
+void Gfx_SetTunnelFocus(float u, float v, int valid);
 float Gfx_GetTunnelNearClear(void);
 /* OpenCMR2: speed streak strength 0..1 (visual only; directional radial streak, SDL_GPU backend). */
 void Gfx_SetSpeedStreak(float strength);
@@ -360,7 +362,7 @@ enum {GFX_RAYS_UNKNOWN, GFX_RAYS_OFF, GFX_RAYS_ENCODED, GFX_RAYS_NO_WORLD,
    unavailable, 5 encoded. `target` is the requested speed amount 0..1, `smooth` the amount actually
    sent to the shader, `range` the effective focus range 0..1, `blur` the effective blur radius.
    Encoded means submitted to the GPU, not proof of pixels. */
-typedef struct GfxDofStatus {int reason;float target,smooth,range,blur;float focus,carDepth;int blurMode;float carU0,carV0,carU1,carV1;} GfxDofStatus;   /* blurMode 0 peripheral, 1 whole scene except the car (SDL_GPU only), -1 requested but the car region was unavailable (peripheral used); car* = the car rectangle (uv) */ /* carDepth > 0: focus follows the car (view-space depth); 0: fixed plane */
+typedef struct GfxDofStatus {int reason;float target,smooth,range,blur;float focus,carDepth;int blurMode;float carU0,carV0,carU1,carV1;float trackU,trackV;int trackValid;} GfxDofStatus;   /* track* = the eased tunnel road-tracking focus (uv, v downwards); trackValid 0 = screen centre (tracking off or unavailable) */   /* blurMode 0 peripheral, 1 whole scene except the car (SDL_GPU only), -1 requested but the car region was unavailable (peripheral used); car* = the car rectangle (uv) */ /* carDepth > 0: focus follows the car (view-space depth); 0: fixed plane */
 void Gfx_SetDofStatus(GfxDofStatus status);
 /* Diagnostic only (cockpit fog investigation): how the last fog pass recovered view distance.
    mode: 0 no fog pass this frame, 1 single projection (true view distance), 2 ambiguous (>1 near/far pair,
