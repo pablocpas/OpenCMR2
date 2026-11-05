@@ -857,6 +857,7 @@ int g_unk0x00537198[2];
 
 #include "Car.h"
 #include "CameraOperator.h"
+#include "TunnelRoadProjection.h"
 #include "FogBeamProjection.h"
 #include "RallyRoute.h"
 
@@ -4703,32 +4704,11 @@ void AttractCapture_ViewSignature(int view, int *type, int *drone);
 int Race_GetPlayerRecordField4(BYTE index);
 void ReplayControls_Update(void);
 bool View_IsDroneCamera(int view);   // Car.cpp: the camera operator's drone is the active camera of that player
-void Race_ApplySpeedEffectParams(void)
+// Called from the live race viewport after camera blending and projection setup.
+// Simulation updates run before View_BlendCameraStates and can still carry the
+// prior render/reflection projection, so screen-space road focus belongs here.
+void Race_ApplyTunnelFocus(void)
 {
-    {
-        int viewType = 0, viewDrone = 0; AttractCapture_ViewSignature(0, &viewType, &viewDrone);
-        if (SpeedLook_VaporOff(Race_GetPlayerRecordField4(0) != 0)) Gfx_ClearVaporTrail();   // replay: air vortices off in every view, saved setting untouched
-        // Replay: only the interior view (type 3) keeps the effects. Drone camera: never. See SpeedLookPolicy.h. Settings are not rewritten.
-        if (SpeedLook_ScreenEffectsOff(viewType, Race_GetPlayerRecordField4(0) != 0, View_IsDroneCamera(0), Sys_GetOption("video.speed_effects", 1) != 0)) {
-            Gfx_ClearSpeedEffects();   // targets and eased values to 0: no residual blur or lines after a camera switch
-            if (!SpeedLook_VaporOff(Race_GetPlayerRecordField4(0) != 0)) Gfx_SetVaporTrail(SpeedStreak_Strength((float)Car_Get(0)->speed / 65536.0f / 1.5f, Sys_GetOption("video.speed_fov_hold", 0), Sys_GetOption("video.vapor_trails", 0) != 0 ? 100 : 0)); // world-space trails: off in replay, as set while driving
-            return;
-        }
-    }
-    {   // Cockpit (camera type 3) only, opt-in: interior nearer than this stays out of the tunnel-vision blur. Unit: tenths of a world unit, default 0 = off.
-        // Default was 16 (1.6): an offline depth render of the Subaru cockpit shell from the driver eye put ~99 percent of the blur zone (pillars, doors, roof) nearer than 1.6, so tunnel vision never showed in the cockpit.
-        int type = 0, drone = 0; AttractCapture_ViewSignature(0, &type, &drone);
-        int tenths = Sys_GetOption("video.cockpit_blur_clear", 0); if (tenths < 0) tenths = 0; if (tenths > 60) tenths = 60;
-        Gfx_SetTunnelNearClear(type == 3 ? tenths / 10.0f : 0.0f);
-    }
-    // OpenCMR2: speed-driven tunnel vision (visual only; reads speed, changes nothing in the sim).
-    {
-        float speedUnits = SpeedFov_HeldRatio((float)Car_Get(0)->speed / 65536.0f / 1.5f, Sys_GetOption("video.speed_fov_hold", 0)); // hold: overdo test only
-        int strength = Sys_GetOption("video.tunnel_vision", 130); // 0..200, adjustable; 0 = off; above 100 is the experimental overdrive
-        if (strength < 0) strength = 0;
-        if (strength > 200) strength = 200;
-        Gfx_SetSpeedFocus(speedUnits * (float)strength / 100.0f);
-    }
     {   // OpenCMR2: tunnel road tracking (video.tunnel_track, default 1): in the cockpit view the
         // tunnel-vision clear circle and the speed-streak/lines centre follow the road ahead
         // instead of sitting at the screen centre. Single player only: with two views on one
@@ -4759,20 +4739,39 @@ void Race_ApplySpeedEffectParams(void)
                 int groundHeight = 0;
                 if (Track_CameraGroundHeight(&farPoint, &groundHeight))
                     farPoint.y = groundHeight;
-                int projected[2];
-                FixMatrix_ProjectWorldPointToView(projected, &farPoint, g_viewNodes[0]);
-                if (!(projected[0] == -0x640000 && projected[1] == -0x640000)) {
-                    focusU = projected[0] / (float)g_pGraphics->resX;
-                    focusV = projected[1] / (float)g_pGraphics->resY;
-                    if (focusU < 0.25f) focusU = 0.25f;
-                    if (focusU > 0.75f) focusU = 0.75f;
-                    if (focusV < 0.30f) focusV = 0.30f;
-                    if (focusV > 0.70f) focusV = 0.70f;
-                    focusValid = 1;
-                }
+                focusValid = TunnelRoad_ProjectPoint(&farPoint, g_viewNodes[0],
+                    g_pGraphics->resX, g_pGraphics->resY, &focusU, &focusV);
             }
         }
         Gfx_SetTunnelFocus(focusU, focusV, focusValid);
+    }
+}
+
+void Race_ApplySpeedEffectParams(void)
+{
+    {
+        int viewType = 0, viewDrone = 0; AttractCapture_ViewSignature(0, &viewType, &viewDrone);
+        if (SpeedLook_VaporOff(Race_GetPlayerRecordField4(0) != 0)) Gfx_ClearVaporTrail();   // replay: air vortices off in every view, saved setting untouched
+        // Replay: only the interior view (type 3) keeps the effects. Drone camera: never. See SpeedLookPolicy.h. Settings are not rewritten.
+        if (SpeedLook_ScreenEffectsOff(viewType, Race_GetPlayerRecordField4(0) != 0, View_IsDroneCamera(0), Sys_GetOption("video.speed_effects", 1) != 0)) {
+            Gfx_ClearSpeedEffects();   // targets and eased values to 0: no residual blur or lines after a camera switch
+            if (!SpeedLook_VaporOff(Race_GetPlayerRecordField4(0) != 0)) Gfx_SetVaporTrail(SpeedStreak_Strength((float)Car_Get(0)->speed / 65536.0f / 1.5f, Sys_GetOption("video.speed_fov_hold", 0), Sys_GetOption("video.vapor_trails", 0) != 0 ? 100 : 0)); // world-space trails: off in replay, as set while driving
+            return;
+        }
+    }
+    {   // Cockpit (camera type 3) only, opt-in: interior nearer than this stays out of the tunnel-vision blur. Unit: tenths of a world unit, default 0 = off.
+        // Default was 16 (1.6): an offline depth render of the Subaru cockpit shell from the driver eye put ~99 percent of the blur zone (pillars, doors, roof) nearer than 1.6, so tunnel vision never showed in the cockpit.
+        int type = 0, drone = 0; AttractCapture_ViewSignature(0, &type, &drone);
+        int tenths = Sys_GetOption("video.cockpit_blur_clear", 0); if (tenths < 0) tenths = 0; if (tenths > 60) tenths = 60;
+        Gfx_SetTunnelNearClear(type == 3 ? tenths / 10.0f : 0.0f);
+    }
+    // OpenCMR2: speed-driven tunnel vision (visual only; reads speed, changes nothing in the sim).
+    {
+        float speedUnits = SpeedFov_HeldRatio((float)Car_Get(0)->speed / 65536.0f / 1.5f, Sys_GetOption("video.speed_fov_hold", 0)); // hold: overdo test only
+        int strength = Sys_GetOption("video.tunnel_vision", 130); // 0..200, adjustable; 0 = off; above 100 is the experimental overdrive
+        if (strength < 0) strength = 0;
+        if (strength > 200) strength = 200;
+        Gfx_SetSpeedFocus(speedUnits * (float)strength / 100.0f);
     }
     // OpenCMR2: speed streak (visual only): directional radial streak, 0 = off (default). Same speed ratio and overdo hold as above.
     Gfx_SetSpeedStreak(SpeedStreak_Strength((float)Car_Get(0)->speed / 65536.0f / 1.5f, Sys_GetOption("video.speed_fov_hold", 0), Sys_GetOption("video.speed_streak", 0)));

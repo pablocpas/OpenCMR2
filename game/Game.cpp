@@ -2990,6 +2990,8 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
             if (paneType == 3)
                 Windshield_DrawCrackPane(bit);
         }
+        if (bit == 0 && pCamera == g_viewNodes[0])
+            Race_ApplyTunnelFocus(); // this frame's view matrix/projection, not the previous simulation frame
         Gfx_FlushDustVolume(); // completed world depth/projection, before HUD
     }
     Flare_SampleVisibility(NULL, NULL, 0);

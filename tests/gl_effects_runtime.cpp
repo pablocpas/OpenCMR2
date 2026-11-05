@@ -1,6 +1,15 @@
 // Actual GL Executor regression with synthetic pixels, no original game data.
 // Linux/software GL execution is NOT native Mac OpenGL acceptance.
 #include "../src/render/gfx_gl.cpp"
+#include "../game/FixedMatrixCore.cpp"
+#include "TunnelRoadProjection.h"
+#include "CameraOperator.h"
+Graphics *g_pGraphics;
+double CGraphics::m_oneOver65536 = 1.0 / 65536.0;
+double CGraphics::m_65536 = 65536.0;
+static D3DTextureManager trackTexManager;
+D3DTextureManager *CGraphics::m_pTextureManager = &trackTexManager;
+extern const float g_floatHalf = 0.5f;
 #include <cstdio>
 #include <cstdarg>
 #include <cstdlib>
@@ -301,6 +310,25 @@ int main(int argc, char **argv)
             require(diffAt(fRight,0.8f,0.5f)+40<diffAt(fLeft,0.8f,0.5f),"clear circle follows the focus to the right");
             require(diffAt(fLeft,0.2f,0.5f)+40<diffAt(fRight,0.2f,0.5f),"clear circle follows the focus to the left");
             auto fUp=focusFrame(0.5f,0.35f,2.0f), fDn=focusFrame(0.5f,0.65f,2.0f);   // review frames (vertical circle response is gentle by design: the shader half-scales y)
+            // Integration regression: actual route preview -> actual fixed projector ->
+            // normalized feed -> executor uniform upload -> shader pixels. The old raw
+            // 16.16 division pins both left/right routes at .75,.70 and fails here.
+            static Graphics trackGfx={};trackGfx.resX=tw;trackGfx.resY=th;g_pGraphics=&trackGfx;
+            trackTexManager.fixedProjection[0]=65536;trackTexManager.fixedProjection[5]=65536;
+            trackTexManager.fixedProjection[10]=65536;trackTexManager.fixedProjection[11]=65536;
+            SceneNode trackView={};FixMatrix_Identity(&trackView.world);
+            auto roadFrame=[&](float bend){
+                CameraOperator::V3 nodes[]={{0,0,0},{bend,0,20},{bend*2,0,40},{bend*3,0,60}};
+                auto road=CameraOperator::PreviewRoad({0,0,0},1,4,false,[&](int i){return nodes[i];});
+                require(road.valid,"rendered route preview valid");
+                FixVector point={(int)std::lround(road.far.x*65536),-3*65536,(int)std::lround(road.far.z*65536)};
+                float u,v;require(TunnelRoad_ProjectPoint(&point,&trackView,tw,th,&u,&v),"rendered road point projects");
+                require(v>.54f&&v<.6f,"rendered road feed retains 16.16 units and v-down");
+                return focusFrame(u,v,1.0f);
+            };
+            auto roadLeft=roadFrame(-8),roadStraight=roadFrame(0),roadRight=roadFrame(8);
+            require(diffAt(roadRight,.8f,.45f)+30<diffAt(roadLeft,.8f,.45f),"projected right-bend road, not a fed UV, moves the clear zone right");
+            require(diffAt(roadLeft,.2f,.45f)+30<diffAt(roadRight,.2f,.45f),"projected left-bend road moves the clear zone left");
             // Legacy: never-fed focus (exact centre, ClearSpeedEffects state) and a fed exact
             // centre are pixel-identical - tracking off/unfed is the old fixed look, exactly.
             e.ClearSpeedEffects();e.SetSpeedFocus(1.0f);e.speedFocusSmooth=1.0f;e.speedFocusTarget=1.0f;
@@ -339,11 +367,12 @@ int main(int argc, char **argv)
                         fclose(f);}};
                 auto fC=focusFrame(0.5f,0.5f,1.0f);
                 trip("-tunnel-track-h.ppm",fLeft,fC,fRight);
+                trip("-route-to-pixels.ppm",roadLeft,roadStraight,roadRight);
                 auto fC2=focusFrame(0.5f,0.5f,2.0f);
                 trip("-tunnel-track-v.ppm",fUp,fC2,fDn);
             }
             e.ClearSpeedEffects();e.SetDepthOfField(false,20,10,80);e.SetVideoMode(w,h,false);
-            fprintf(stderr,"tunnel road tracking pixels: circle follows focus, v orientation, streak agreement, legacy identity: pass\n");
+            fprintf(stderr,"tunnel road tracking pixels: route projection-to-pixels, circle follows focus, v orientation, streak agreement, legacy identity: pass\n");
         }
         // Restrained glare: actual translated GLSL, depth occlusion, alpha, cap and zero identity.
         e.SetSunScreenPosition(.5f,.3f,true);glareSetting=100;e.sunGlare.response=1;

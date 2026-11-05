@@ -792,3 +792,7 @@ add_test(NAME tree_wind_radius COMMAND tree_wind_radius)
 add_executable(tuned_defaults_test tuned_defaults.cpp)
 target_include_directories(tuned_defaults_test PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/game)
 add_test(NAME tuned_defaults COMMAND tuned_defaults_test)
+
+add_executable(tunnel_road_projection_test tunnel_road_projection.cpp ${PROJECT_SOURCE_DIR}/game/FixedMatrixCore.cpp)
+target_include_directories(tunnel_road_projection_test PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/game)
+add_test(NAME tunnel_road_projection COMMAND tunnel_road_projection_test)

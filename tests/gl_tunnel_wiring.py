@@ -19,4 +19,12 @@ need("Gfx_SetDofStatus(GfxDofStatus{5," in x, "overlay status must be reported o
 g = rd("src/render/gfx_gpu.cpp")
 need(re.search(r"kTunnelRadiusPerHeight \* \(float\)backHeight", g) is not None, "SDL_GPU radius constant moved: keep GL in sync")
 need("Tunnel vision: n/a (OpenGL backend)" in rd("game/RallyData.cpp") and "bool gl=false" in rd("game/RallyData.cpp"), "overlay must no longer be n/a on GL")
-print("gl tunnel wiring ok" if ok else "FAILED"); sys.exit(0 if ok else 1)
+print("gl tunnel wiring ok" if ok else "FAILED");
+
+# The road projection must happen inside this frame's world draw, after camera
+# blending/projection setup, not from the earlier simulation update.
+race=rd("game/Race.cpp"); game=rd("game/Game.cpp")
+need("Race_ApplyTunnelFocus();" not in race[race.index("void Race_UpdateFrameEffects(int param_1)"):race.index("void Race_UpdateFrameEffects(int param_1)")+2000],"no stale simulation focus feed")
+need(game.index("CGraphics::SetProjection(0, 0, farPlane, 0);") < game.index("Race_ApplyTunnelFocus();") < game.index("Gfx_EndWorldEffects(); // world FX"),"focus feed belongs to completed live projection before world effects")
+need("TunnelRoad_ProjectPoint(&farPoint" in race,"runtime must use tested 16.16 projection adapter")
+sys.exit(0 if ok else 1)

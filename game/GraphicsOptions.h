@@ -428,6 +428,7 @@ void TuningPanel_NotePausedDraw(const char *what);
 void View_RefreshForTuning(void);
 void View_GetCameraCarOffset(unsigned view, double *dist, double *fwd, double *side, double *up);
 void Race_ApplySpeedEffectParams(void);
+void Race_ApplyTunnelFocus(void);
 void TuningPanel_Draw(void);
 void DebugOverlays_DrawLate(void);
 void DebugOverlays_RequestView(int view);
