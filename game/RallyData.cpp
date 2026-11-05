@@ -6805,7 +6805,8 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             if(gl)snprintf(text,sizeof text,"Tunnel vision: n/a (OpenGL backend)");
             else if(!dofOn)snprintf(text,sizeof text,"Tunnel vision: off (needs DoF pass)");
             else if(tv<=0)snprintf(text,sizeof text,"Tunnel vision: off (video.tunnel_vision=0)");
-            else snprintf(text,sizeof text,"Tunnel vision: %s %d%% (speed target %d%%)",tvOn?"encoded":"idle",(int)(dof.smooth*100.0f+0.5f),(int)(dof.target*100.0f+0.5f));
+            else snprintf(text,sizeof text,"Tunnel vision: %s %d%% (speed target %d%%), tracking %s",tvOn?"encoded":"idle",(int)(dof.smooth*100.0f+0.5f),(int)(dof.target*100.0f+0.5f),
+                          Sys_GetOption("video.tunnel_track",1)==0?"off":dof.trackValid?"on":"centre (no route point)");
             line(text,tvOn?lit:dim);
             if(Sys_GetOption("video.blur_mode",0)!=0){
                 if(dof.blurMode==1)snprintf(text,sizeof text,"Blur mode: whole scene except car; car rect u %.2f..%.2f v %.2f..%.2f (bounding rectangle + depth range, not a silhouette)",dof.carU0,dof.carU1,dof.carV0,dof.carV1);

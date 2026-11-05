@@ -6,7 +6,7 @@ static int fails;
 #define CHECK(c) do{ if(!(c)){ std::printf("FAIL %d: %s\n", __LINE__, #c); ++fails; } }while(0)
 int main(){
     int n; const TuningRow *r = Tuning_Rows(n);
-    CHECK(n == 44);   // includes the fog clear/cull/spatial/evolve, fog lights, snow glint, dust plume, spray, exhaust smoke, splash, backfire and weather sidecar rows
+    CHECK(n == 45);   // includes the fog clear/cull/spatial/evolve, fog lights, snow glint, dust plume, spray, exhaust smoke, splash, backfire and weather sidecar rows
     CHECK(n <= kTuningMaxRows);   // RallyData.cpp snapshot/preset arrays are sized kTuningMaxRows - outgrowing 32 crashed the drone lock toggle
     { int bi = -1; for (int i = 0; i < n; ++i) if (!std::strcmp(r[i].key, "video.blur_mode")) bi = i; CHECK(bi >= 0 && r[bi].lo == 0 && r[bi].hi == 1 && r[bi].fallback == 0); }
     { int si = -1, di = -1; for (int i = 0; i < n; ++i) { if (!std::strcmp(r[i].key, "video.drone_spring")) si = i; if (!std::strcmp(r[i].key, "video.drone_speed_drop")) di = i; }

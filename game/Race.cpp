@@ -856,6 +856,12 @@ int g_unk0x0053708c[2];
 int g_unk0x00537198[2];
 
 #include "Car.h"
+#include "CameraOperator.h"
+#include "FogBeamProjection.h"
+#include "RallyRoute.h"
+
+bool Track_CameraGroundHeight(FixVector*, int*);
+int RallyData_GetRouteAdditionalState(void);
 #include "RallyRouteNode.h"
 #include "AttractCapture.h"
 #include "ReplayExport.h"
@@ -4722,6 +4728,51 @@ void Race_ApplySpeedEffectParams(void)
         if (strength < 0) strength = 0;
         if (strength > 200) strength = 200;
         Gfx_SetSpeedFocus(speedUnits * (float)strength / 100.0f);
+    }
+    {   // OpenCMR2: tunnel road tracking (video.tunnel_track, default 1): in the cockpit view the
+        // tunnel-vision clear circle and the speed-streak/lines centre follow the road ahead
+        // instead of sitting at the screen centre. Single player only: with two views on one
+        // frame a single focus would be wrong for one of them, so split-screen keeps the centre.
+        // The point comes from the stage route 30 world units ahead, projected through the live
+        // view node (the production projection path, so widening/FOV apply), clamped to the
+        // central half of the frame so the clear zone can never leave the road area. Any failure
+        // (no route, point behind the camera) feeds the centre, easing the effect back to the
+        // old fixed look rather than snapping.
+        float focusU = 0.5f, focusV = 0.5f;
+        int focusValid = 0;
+        int trackType = 0, trackDrone = 0;
+        AttractCapture_ViewSignature(0, &trackType, &trackDrone);
+        if (Sys_GetOption("video.tunnel_track", 1) != 0 && trackType == 3 &&
+            CGameInfo::GetConfiguredPlayerCount() == 1 && g_viewNodes[0] != NULL && g_routeNodes != NULL && g_routeNodeCount >= 2) {
+            Car *pPlayer = Car_Get(0);
+            CameraOperator::V3 carPos = { pPlayer->position.x / 65536.0f, pPlayer->position.y / 65536.0f, pPlayer->position.z / 65536.0f };
+            CameraOperator::RoadPreview road = CameraOperator::PreviewRoad(carPos,
+                RallyData_GetActiveCarRaceRecordField0(pPlayer), g_routeNodeCount,
+                RallyData_GetRouteAdditionalState() != 0,
+                [](int i) { auto &np = g_routeNodes[i].position; return CameraOperator::V3{ np.x / 65536.0f, 0, np.z / 65536.0f }; },
+                1.0f);   // fixed 12/30 world unit preview: the tracking point must not zoom with speed
+            if (road.valid) {
+                FixVector farPoint;
+                farPoint.x = (int)std::lround(road.far.x * 65536.0f);
+                farPoint.y = pPlayer->position.y;   // route nodes carry no height; corrected below
+                farPoint.z = (int)std::lround(road.far.z * 65536.0f);
+                int groundHeight = 0;
+                if (Track_CameraGroundHeight(&farPoint, &groundHeight))
+                    farPoint.y = groundHeight;
+                int projected[2];
+                FixMatrix_ProjectWorldPointToView(projected, &farPoint, g_viewNodes[0]);
+                if (!(projected[0] == -0x640000 && projected[1] == -0x640000)) {
+                    focusU = projected[0] / (float)g_pGraphics->resX;
+                    focusV = projected[1] / (float)g_pGraphics->resY;
+                    if (focusU < 0.25f) focusU = 0.25f;
+                    if (focusU > 0.75f) focusU = 0.75f;
+                    if (focusV < 0.30f) focusV = 0.30f;
+                    if (focusV > 0.70f) focusV = 0.70f;
+                    focusValid = 1;
+                }
+            }
+        }
+        Gfx_SetTunnelFocus(focusU, focusV, focusValid);
     }
     // OpenCMR2: speed streak (visual only): directional radial streak, 0 = off (default). Same speed ratio and overdo hold as above.
     Gfx_SetSpeedStreak(SpeedStreak_Strength((float)Car_Get(0)->speed / 65536.0f / 1.5f, Sys_GetOption("video.speed_fov_hold", 0), Sys_GetOption("video.speed_streak", 0)));

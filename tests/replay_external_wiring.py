@@ -18,7 +18,7 @@ need("SpeedLook_ScreenEffectsOff(viewType, Race_GetPlayerRecordField4(0) != 0, V
 need("Gfx_SetVaporTrail(" in race.split("Gfx_ClearSpeedEffects();")[1].split("return;")[0], "vapor trails must stay on the world-space path")
 need("virtual void ClearSpeedEffects()" in rd("src/render/gfx_internal.h"), "executor hook missing")
 for f in ("src/render/gfx_gpu.cpp", "src/render/gfx_gl.cpp"):
-    need(re.search(r"void ClearSpeedEffects\(\) override \{ speedFocusTarget = speedFocusSmooth = 0\.0f; speedStreakTarget = speedStreakSmooth = 0\.0f; \}", rd(f)), f + " must zero targets and eased values")
+    need(re.search(r"void ClearSpeedEffects\(\) override \{ speedFocusTarget = speedFocusSmooth = 0\.0f; speedStreakTarget = speedStreakSmooth = 0\.0f;", rd(f)) and "tunnelFocusTargetValid = 0;" in rd(f), f + " must zero targets and eased values (incl. the tunnel tracking focus)")
 need("Gfx_ClearSpeedEffects" in rd("src/port/gfx.h") and "Gfx_ClearSpeedEffects" in rd("src/render/gfx_core.cpp"), "C entry point missing")
 print("replay external wiring ok" if ok else "FAILED"); sys.exit(0 if ok else 1)
 

@@ -107,8 +107,8 @@ bool EffectPass(int effect, int target, GLuint source, GLuint second, const void
     }
     // std140 blocks are padded, including shaders whose public argument is one float.
     if(effect==6||effect==11){gl.ActiveTexture(GL_TEXTURE0+2);gl.BindTexture(GL_TEXTURE_2D,cloudMask?cloudMask:white2D);gl.BindSampler(2,Sampler(linear));}
-    // SpeedStreakUniforms is 1024 bytes (trail data the GL path never fills): keep the zeroed buffer at least that large so the block is never read out of range. Zero depth info = trails off.
-    unsigned char block[sizeof(CloudUniforms) > 1024 ? sizeof(CloudUniforms) : 1024] = {};
+    // SpeedStreakUniforms is 1040 bytes (trail data the GL path never fills): keep the zeroed buffer at least that large so the block is never read out of range. Zero depth info = trails off.
+    unsigned char block[sizeof(CloudUniforms) > 1040 ? sizeof(CloudUniforms) : 1040] = {};
     if (bytes > sizeof(block)) { ForgetEffectState(); return false; }
     memcpy(block, data, bytes);
     gl.BindBuffer(GL_UNIFORM_BUFFER, effectUbo);
@@ -138,6 +138,16 @@ GLuint ApplyEffects()
         if (dt > 0.25f) dt = 0.25f;
         speedFocusSmooth += (speedFocusTarget - speedFocusSmooth) * (1.0f - std::exp(-dt / 0.8f));
         if (!effectsRaceFrame) speedFocusSmooth = 0.0f;
+    }
+    {   // tunnel road tracking easing (0.4 s), race frames only; mirrors the SDL_GPU path
+        auto now = std::chrono::steady_clock::now();
+        float dt = tunnelFocusTimed ? std::chrono::duration<float>(now - tunnelFocusTime).count() : 0.0f;
+        tunnelFocusTime = now; tunnelFocusTimed = true;
+        if (dt > 0.25f) dt = 0.25f;
+        float k = 1.0f - std::exp(-dt / 0.4f);
+        tunnelFocusU += ((tunnelFocusTargetValid ? tunnelFocusTargetU : 0.5f) - tunnelFocusU) * k;
+        tunnelFocusV += ((tunnelFocusTargetValid ? tunnelFocusTargetV : 0.5f) - tunnelFocusV) * k;
+        if (!effectsRaceFrame) { tunnelFocusU = 0.5f; tunnelFocusV = 0.5f; }
     }
     bool depthBlurOn = effectsRaceFrame && dofOn && dofRange > 0 && dofBlur > 0;
     bool tunnelOn = effectsRaceFrame && (speedFocusTarget > 0.0f || speedFocusSmooth > 0.001f);
@@ -237,17 +247,23 @@ GLuint ApplyEffects()
         // tunnel vision adds the speed-driven peripheral blur with its own radius (kTunnelRadiusPerHeight x height px at full strength).
         float aspect = backHeight ? (float)backWidth / (float)backHeight : 1.0f;
         float focusRaw = glCarFocusRaw >= 0.0f ? glCarFocusRaw : dofFocus / 100.0f;
-        float u[8] = {focusRaw, dofRange / 100.0f * (1.0f - 0.5f * std::min(speedFocusSmooth, 1.0f)), depthBlurOn ? dofBlur * 0.04f : 0.0f,
+        float u[20] = {focusRaw, dofRange / 100.0f * (1.0f - 0.5f * std::min(speedFocusSmooth, 1.0f)), depthBlurOn ? dofBlur * 0.04f : 0.0f,
                       speedFocusSmooth, aspect, kTunnelRadiusPerHeight * (float)backHeight, 0.0f, 0.0f};
+        // tunnelFocus at [16..19]: the eased road-tracking focus. GL's gl_FragCoord is bottom-up,
+        // so the v-downwards feed is pre-flipped here (SDL_GPU uploads it unchanged). z 1 = use it.
+        u[16] = tunnelFocusU; u[17] = 1.0f - tunnelFocusV; u[18] = 1.0f; u[19] = 0.0f;
         if (run(5, backDepth, u, sizeof(u)))
-            Gfx_SetDofStatus(GfxDofStatus{5, speedFocusTarget, speedFocusSmooth, u[1], u[2], focusRaw, glCarFocusRaw >= 0.0f ? glCarDepth : 0.0f});
+            Gfx_SetDofStatus(GfxDofStatus{5, speedFocusTarget, speedFocusSmooth, u[1], u[2], focusRaw, glCarFocusRaw >= 0.0f ? glCarDepth : 0.0f, 0, 0.0f, 0.0f, 0.0f, 0.0f, tunnelFocusU, tunnelFocusV, tunnelFocusTargetValid});
     }
     if (raysOn && raysAmount > 0 && sunVisible) {
         float u[4] = {raysAmount / 255.0f, sunX, sunY, 0};
         run(6, backDepth, u, sizeof(u));
     }
     if (streakOn) {
-        float u[4] = {speedStreakSmooth, backHeight ? (float)backWidth / (float)backHeight : 1.0f, speedStreakClock, speedStreakSmooth};
+        // SpeedStreakUniforms: settings + zeroed trail/depth fields + tunnelFocus at [256..259]
+        // (same eased focus as the DoF pass, v pre-flipped for GL's bottom-up gl_FragCoord).
+        float u[260] = {speedStreakSmooth, backHeight ? (float)backWidth / (float)backHeight : 1.0f, speedStreakClock, speedStreakSmooth};
+        u[256] = tunnelFocusU; u[257] = 1.0f - tunnelFocusV; u[258] = 1.0f; u[259] = 0.0f;
         run(10, 0, u, sizeof(u));
     }
     if (grade[0] || grade[1] || grade[2] != 1 || grade[3] != 1) run(7, 0, grade, sizeof(grade));

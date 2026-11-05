@@ -298,6 +298,10 @@ struct Executor : GfxExecutor {
     bool motionOn = false, bloomOn = false, dofOn = false, raysOn = false, fogOn = false;
     bool speedEffectsSuppressed=false;
     float speedFocusTarget = 0.0f, speedFocusSmooth = 0.0f; std::chrono::steady_clock::time_point speedFocusTime{}; bool speedFocusTimed = false; // tunnel vision, same easing as SDL_GPU
+    // OpenCMR2: tunnel road tracking (video.tunnel_track): eased screen-uv focus (v downwards),
+    // 0.4 s toward the fed road point or back to the centre; starts centred. See shaders/dof.frag.
+    float tunnelFocusU = 0.5f, tunnelFocusV = 0.5f, tunnelFocusTargetU = 0.5f, tunnelFocusTargetV = 0.5f;
+    int tunnelFocusTargetValid = 0; std::chrono::steady_clock::time_point tunnelFocusTime{}; bool tunnelFocusTimed = false;
     float speedStreakTarget = 0.0f, speedStreakSmooth = 0.0f, speedStreakClock = 0.0f; std::chrono::steady_clock::time_point speedStreakTime{}; bool speedStreakTimed = false;
     float glCarFocusRaw = -1.0f, glCarDepth = 0.0f;   // dof_focus_car: raw GL depth of the followed car this frame (-1 none)
     float glFogNearZ = 0.0f, glFogFarZ = 0.0f;   // race-camera projection recovery for the GL fog pass (0 = unknown)
@@ -601,7 +605,9 @@ struct Executor : GfxExecutor {
     }
     void SetSpeedFocus(float speed) override { speedFocusTarget = speedEffectsSuppressed || !(speed > 0.0f) ? 0.0f : speed > kTunnelMaxStrength ? kTunnelMaxStrength : speed; }
     void SetSpeedEffectsSuppressed(bool v) override {speedEffectsSuppressed=v;if(v)ClearSpeedEffects();}
-    void ClearSpeedEffects() override { speedFocusTarget = speedFocusSmooth = 0.0f; speedStreakTarget = speedStreakSmooth = 0.0f; }
+    void ClearSpeedEffects() override { speedFocusTarget = speedFocusSmooth = 0.0f; speedStreakTarget = speedStreakSmooth = 0.0f;
+        tunnelFocusU = tunnelFocusV = tunnelFocusTargetU = tunnelFocusTargetV = 0.5f; tunnelFocusTargetValid = 0; tunnelFocusTimed = false; }
+    void SetTunnelFocus(float u, float v, int valid) override { tunnelFocusTargetU = u; tunnelFocusTargetV = v; tunnelFocusTargetValid = valid; }
     void SetSpeedStreak(float strength) override { speedStreakTarget = speedEffectsSuppressed || !(strength > 0.0f) ? 0.0f : strength > 1.0f ? 1.0f : strength; }
     void SetGodRays(BOOL on, int amount) override { raysOn = on != 0; raysAmount = std::clamp(amount, 0, 255); }
     void SetPostFog(BOOL on, int amount, int glow) override { fogOn = on != 0; fogAmount = std::clamp(amount, 0, 200); fogGlow = std::clamp(glow, 0, 100); }

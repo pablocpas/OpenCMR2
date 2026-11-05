@@ -19,6 +19,7 @@ inline const TuningRow *Tuning_Rows(int &count)
         {"Blur mode (0 peripheral, 1 whole scene minus car)", "video.blur_mode", 0, 1, 1, 0},
         {"Tunnel vision %", "video.tunnel_vision", 0, 200, 10, 130},
         {"Radial lines inside the tunnel vision zone (0/1)", "video.tunnel_lines", 0, 1, 1, 1},
+        {"Tunnel road tracking, cockpit (0/1)", "video.tunnel_track", 0, 1, 1, 1},
         {"Motion blur (0/1)", "video.motion_blur", 0, 1, 1, 0},
         {"Motion blur %", "video.motion_blur_amount", 0, 100, 10, 60},
         {"Vapor trails behind car (0/1)", "video.vapor_trails", 0, 1, 1, 1},

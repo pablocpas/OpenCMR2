@@ -201,6 +201,7 @@ struct GfxExecutor {
     // is how wide the in-focus band is, `maxBlur` (0..100) is the blur radius.
     virtual void SetDepthOfField(BOOL, int, int, int) {}
     virtual void SetSpeedFocus(float) {}
+    virtual void SetTunnelFocus(float, float, int) {}
     virtual void ClearSpeedEffects() {}
     virtual void SetSpeedEffectsSuppressed(bool) {}
     virtual void ClearVaporTrail() {}

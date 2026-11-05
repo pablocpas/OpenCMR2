@@ -578,6 +578,12 @@ extern "C" void Gfx_SetSpeedFocus(float speed)
         s_executor->SetSpeedFocus(speed);
 }
 
+extern "C" void Gfx_SetTunnelFocus(float u, float v, int valid)
+{
+    if (s_executor != NULL)
+        s_executor->SetTunnelFocus(u, v, valid);
+}
+
 extern "C" void Gfx_ClearVaporTrail(void)
 {
     if (s_executor != NULL)
