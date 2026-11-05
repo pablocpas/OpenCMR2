@@ -1,7 +1,9 @@
-// Windshield dirt overlay rendered-pixel regression (video.windscreen_dirt):
-// the REAL production draw (game/WindshieldDirt.cpp: Windshield_DrawOverlay)
-// runs over a real dirt map through gfx_core -> the real GL executor's TL
-// path with readback. Linux/software GL is NOT native Mac OpenGL/Metal
+// Windshield dirt pane rendered-pixel regression (video.windscreen_dirt):
+// the REAL production draw (game/WindshieldDirt.cpp: Windshield_DrawCrackPane
+// -> the dirt pane) runs over a real dirt map through gfx_core -> the real GL
+// executor with readback. The glass mesh itself (game/WindshieldGlass.cpp)
+// needs the game's car data, so this harness stands in a trapezoid glass
+// polygon with glass-local uv: dirt must appear on it and nowhere else. Linux/software GL is NOT native Mac OpenGL/Metal
 // acceptance; the SDL_GPU path draws the same TL command stream.
 #include "../src/render/gfx_core.cpp"
 #include "../src/render/gfx_gl.cpp"
@@ -29,6 +31,43 @@ extern "C" void Sys_GetDesktopSize(int *w, int *h) { *w = 96; *h = 64; }
 
 int WindshieldGlass_DrawCockpitExtension(int) { return 0; }
 int WindshieldGlass_GetInfo(int,int*,int*,unsigned*,int*,int*) {return 0;}
+// Stand-in glass: a trapezoid in the upper part of the frame, uv = position
+// inside its bounds (u across, v down), like WsGlassFrame_UV on a real glass.
+static const float kGlassTop = 0.8f, kGlassBottom = -0.4f, kGlassL = -0.8f, kGlassR = 0.8f;
+static const float kAspect = 0.42f;
+int WindshieldGlass_GetFrontFrame(int, WsGlassFrame *out) {
+    out->valid = 1; out->zMin = kGlassL; out->zMax = kGlassR; out->yMin = kGlassBottom; out->yMax = kGlassTop;
+    out->widthUnits = kGlassR - kGlassL; out->heightUnits = (kGlassTop - kGlassBottom);
+    out->aspect = kAspect;
+    return 1;
+}
+int WindshieldGlass_DrawDirtPane(int, GfxTexture *tex) {
+    // Trapezoid: the top edge is narrower than the bottom (raked pillars).
+    static const float inset = 0.2f;
+    GfxVertex gv[6];
+    const float px[6] = { kGlassL + inset, kGlassR - inset, kGlassL,   kGlassR - inset, kGlassR, kGlassL };
+    const float py[6] = { kGlassTop,       kGlassTop,       kGlassBottom, kGlassTop,     kGlassBottom, kGlassBottom };
+    for (int i = 0; i < 6; i++) {
+        memset(&gv[i], 0, sizeof gv[i]);
+        gv[i].x = px[i]; gv[i].y = py[i]; gv[i].z = 1.0f;
+        gv[i].nz = -1.f; gv[i].diffuse = 0xffffffff;
+        gv[i].u0 = (px[i] - kGlassL) / (kGlassR - kGlassL);
+        gv[i].v0 = (kGlassTop - py[i]) / (kGlassTop - kGlassBottom);
+    }
+    Gfx_PushState();
+    Gfx_SetLighting(FALSE); Gfx_SetFog(FALSE); Gfx_SetAlphaTest(FALSE);
+    Gfx_SetDepthTest(TRUE); Gfx_SetDepthWrite(FALSE); Gfx_SetCullMode(GFX_CULL_NONE);
+    Gfx_SetAlphaBlend(TRUE); Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA); Gfx_SetDestBlend(GFX_BLEND_INVSRCALPHA);
+    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE); Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE); Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageAlphaOp(0, GFX_TOP_SELECTARG1); Gfx_SetStageAlphaArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE); Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageAddress(0, GFX_ADDRESS_CLAMP);
+    Gfx_SetTexture(0, tex);
+    Gfx_DrawPrimitive(GFX_TRIANGLELIST, gv, 6);
+    Gfx_SetTexture(0, NULL);
+    Gfx_PopState();
+    return 1;
+}
 CarPartSet *StageTiming_GetCarReplayRecord(int) {return nullptr;}
 void TouchOverlay_RecordFrame(int,int,bool) {}
 int WindshieldGlass_ApplyDamageState(int,int) {return 0;}
@@ -68,14 +107,12 @@ static void putQuad()
     Gfx_UnlockVertexBuffer(vb);
 }
 
-static void drawAndRead(DWORD *pixels, bool withOverlay, bool beforeWorld = false, bool poisoned = false)
+static void drawAndRead(DWORD *pixels, bool withOverlay, bool poisoned = false)
 {
     Gfx_Clear(GFX_CLEAR_TARGET | GFX_CLEAR_ZBUFFER, 0xff181c20, 1.0f);
-    if (withOverlay && beforeWorld) Windshield_DrawOverlay(0, W, H);
     Gfx_SetTexture(0, whiteTex);
     Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, vb, 0, 4);
-    Gfx_EndWorldEffects();
-    if (withOverlay && !beforeWorld) {
+    if (withOverlay) {
         Gfx_PushState();
         if (poisoned) {
             Gfx_SetStageColorOp(0, GFX_TOP_DISABLE);
@@ -83,14 +120,19 @@ static void drawAndRead(DWORD *pixels, bool withOverlay, bool beforeWorld = fals
             Gfx_SetFog(TRUE);Gfx_SetFogColor(0xffffffff);
             Gfx_SetCullMode(GFX_CULL_CW);
         }
-        Windshield_DrawOverlay(0, W, H);
+        Windshield_DrawCrackPane(0);   // the production 3D-pass call: crack pane + dirt pane
         Gfx_PopState();
     }
+    Gfx_EndWorldEffects();
     DWORD dummy[4];
     (void)Gfx_ReadBackBuffer(0, 0, W, H, dummy);
     Gfx_Present(0);
     require(Gfx_ReadBackBuffer(0, 0, W, H, pixels), "readback");
 }
+
+// Pixel of a glass-local uv on the stand-in glass (the trapezoid's bounding box).
+static int glassPx(float u) { return (int)((kGlassL + u * (kGlassR - kGlassL) + 1.f) * 0.5f * W); }
+static int glassPy(float v) { return (int)((1.f - (kGlassTop - v * (kGlassTop - kGlassBottom))) * 0.5f * H); }
 
 static int chan(const DWORD *f, int x, int y, int shift) { return (int)((f[y * W + x] >> shift) & 0xff); }
 
@@ -182,26 +224,31 @@ int main(int argc, char **argv)
         *m = keep;
     }
 
-    static DWORD hidden[W*H],isolated[W*H];
-    drawAndRead(hidden,true,true);
-    require(memcmp(hidden,clean,sizeof hidden)==0,"old pre-world dirt is fully covered despite drawing");
-    drawAndRead(isolated,true,false,true);
-    require(memcmp(isolated,dirty,sizeof dirty)==0,"post-world dirt ignores inherited world alpha/stage/fog/cull state");
-    dumpPpm(prefix,"old-covered",hidden);
+    static DWORD isolated[W*H];
+    *m = saved;
+    putQuad();
+    drawAndRead(isolated, true, true);
+    require(memcmp(isolated, dirty, sizeof dirty) == 0, "dirt pane ignores inherited alpha/stage/fog/cull state");
     dumpPpm(prefix, "clean", clean);
     dumpPpm(prefix, "dirty", dirty);
     dumpPpm(prefix, "representative", repr);
-    // The map's dirt area darkens the scene toward the grime tint.
-    // Glass centre, away from the wiped arc: px (48, 16) is inside the mask.
-    require(chan(dirty,48,16,0) < chan(clean,48,16,0) - 24, "dirt darkens the glass");
-    // The wiped arc stays at the clean level: a cell on the blade's path.
-    // Blade pivot (0.34,1.02), angle -0.25: cell u=0.216, v=0.536 -> px (21,34).
-    require(chan(dirty,21,34,16) >= chan(clean,21,34,16) - 8, "wiped arc stays clean");
-    // The dash band takes no dirt at all: px (48, 60) is below the mask.
-    require(chan(dirty,48,60,16) == chan(clean,48,60,16), "dash band untouched");
+    // The glass centre, away from the wiped arc, darkens toward the grime tint.
+    require(chan(dirty,glassPx(0.5f),glassPy(0.2f),0) < chan(clean,glassPx(0.5f),glassPy(0.2f),0) - 24, "dirt darkens the glass");
+    // The wiped arc stays at the clean level: blade pivot (0.34,1.02), angle -0.25 -> cell u=0.216, v=0.536.
+    require(chan(dirty,glassPx(0.216f),glassPy(0.536f),16) >= chan(clean,glassPx(0.216f),glassPy(0.536f),16) - 8, "wiped arc stays clean");
+    // Nothing outside the glass polygon changes: below the glass (the dash), and
+    // the trapezoid's cut-off top corners, even though the map has dirt there.
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            float nx = (x + 0.5f) / W * 2.f - 1.f, ny = 1.f - (y + 0.5f) / H * 2.f;
+            bool outside = ny > kGlassTop + 0.03f || ny < kGlassBottom - 0.03f || nx < kGlassL - 0.03f || nx > kGlassR + 0.03f;
+            if (outside) require(dirty[y * W + x] == clean[y * W + x], "no dirt outside the glass");
+        }
+    // Top-left corner cut by the raked pillar: glass bounds contain it, the polygon does not.
+    require(dirty[glassPy(0.03f) * W + glassPx(0.02f)] == clean[glassPy(0.03f) * W + glassPx(0.02f)], "no dirt on the cut-off corner");
     // Representative: sky through partial dirt stays readable (much closer to
     // clean than the saturated fixture), and both swept arcs sit between.
-    require(chan(repr,48,16,0) > chan(dirty,48,16,0) + 24, "representative dirt stays readable");
+    require(chan(repr,glassPx(0.5f),glassPy(0.2f),0) > chan(dirty,glassPx(0.5f),glassPy(0.2f),0) + 24, "representative dirt stays readable");
     {   int maxDark = 0;
         for (int y = 4; y < 56; y++)
             for (int x = 8; x < 88; x++) {

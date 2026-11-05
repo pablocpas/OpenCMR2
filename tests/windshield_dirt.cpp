@@ -2,8 +2,10 @@
 // glass masking, wetness ramp, dry vs wet wipe behaviour, decay,
 // determinism. Pure CPU, no renderer.
 #include "WindshieldDirt.h"
+#include "WindshieldGlassFrame.h"
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 
 static int fails = 0;
 #define CHECK(c) do{ if(!(c)){ std::printf("FAIL %d: %s\n", __LINE__, #c); ++fails; } }while(0)
@@ -60,6 +62,91 @@ int main()
     int removedWet = Windshield_Wipe(&s, 0.34f, 1.02f, 0.72f, -0.25f, 0.05f, 1);
     CHECK(removedWet < removed);   // wet glass keeps more dirt behind
     CHECK(s.dirt[cy * WINDSHIELD_MAP_W + cx] <= 200 / 8 + 1);
+
+
+    // Glass-local frame: built from the glass vertices, u across Z, v down the
+    // glass (top = 0), aspect from the raked surface height over the width.
+    {
+        // A raked windscreen: 1.2 wide (Z), 0.4 tall (Y), 0.3 deep (X).
+        const float quad[12] = { 0.f, 1.0f, -0.6f,   0.f, 1.0f, 0.6f,
+                                 0.3f, 0.6f, 0.6f,   0.3f, 0.6f, -0.6f };
+        WsGlassFrame f = WsGlassFrame_FromVertices(quad, 4);
+        CHECK(f.valid == 1);
+        CHECK(std::fabs(f.widthUnits - 1.2f) < 1e-5f);
+        CHECK(std::fabs(f.heightUnits - 0.5f) < 1e-5f);   // sqrt(0.4^2 + 0.3^2)
+        CHECK(std::fabs(f.aspect - 0.5f / 1.2f) < 1e-5f);
+        float u, v;
+        WsGlassFrame_UV(&f, 1.0f, -0.6f, &u, &v);   // top edge, one side
+        CHECK(std::fabs(u) < 1e-5f && std::fabs(v) < 1e-5f);
+        WsGlassFrame_UV(&f, 0.6f, 0.6f, &u, &v);    // bottom edge, other side
+        CHECK(std::fabs(u - 1.0f) < 1e-5f && std::fabs(v - 1.0f) < 1e-5f);
+        // Every glass vertex maps inside [0,1]^2: dirt never leaves the pane.
+        for (int i = 0; i < 4; i++) {
+            WsGlassFrame_UV(&f, quad[i * 3 + 1], quad[i * 3 + 2], &u, &v);
+            CHECK(u >= -1e-5f && u <= 1.00001f && v >= -1e-5f && v <= 1.00001f);
+        }
+        // Degenerate glass (no lateral or vertical extent) is rejected.
+        const float flat[9] = { 0.f, 1.f, 0.f,  0.f, 1.f, 0.f,  0.f, 1.f, 0.f };
+        CHECK(WsGlassFrame_FromVertices(flat, 3).valid == 0);
+        CHECK(WsGlassFrame_FromVertices(nullptr, 0).valid == 0);
+    }
+
+    // Mask: only the thin rim of the glass bounds is excluded.
+    CHECK(Windshield_InsideGlass(0.5f, 0.5f));
+    CHECK(Windshield_InsideGlass(0.05f, 0.05f));
+    CHECK(!Windshield_InsideGlass(0.0f, 0.5f));
+    CHECK(!Windshield_InsideGlass(0.5f, 1.0f));
+
+    // Wiper reach: the blade reaches every glass cell. Regression for the
+    // upper-frame blobs the wipers never cleared (the old radius was 0.72 of
+    // the glass HEIGHT vertically, ending at v ~ 0.3).
+    {
+        const float aspect = 0.42f, pivotV = 1.04f;
+        for (int b = 0; b < 2; b++) {
+            float pivotU = b == 0 ? 0.34f : 0.66f;
+            float reach = Windshield_BladeReach(aspect, pivotU, pivotV);
+            for (int c = 0; c < 4; c++) {
+                float du = (c & 1 ? 1.0f : 0.0f) - pivotU;
+                float dv = ((c & 2 ? 1.0f : 0.0f) - pivotV) * aspect;
+                CHECK(std::sqrt(du * du + dv * dv) <= reach + 1e-5f);
+            }
+        }
+        // One wide sweep over the full blade range clears the top row on the
+        // blade's own side (the old geometry never reached it).
+        WindshieldMap a;
+        Windshield_Reset(&a, 11);
+        for (int i = 0; i < WINDSHIELD_MAP_W * WINDSHIELD_MAP_H; i++) a.dirt[i] = 200;
+        a.wet = 0;
+        float reach = Windshield_BladeReach(aspect, 0.34f, pivotV);
+        int top = 2, col = (int)(0.20f * WINDSHIELD_MAP_W);   // upper frame, left of the left pivot
+        CHECK(a.dirt[top * WINDSHIELD_MAP_W + col] == 200);
+        Windshield_WipeSector(&a, aspect, 0.34f, pivotV, reach, -1.15f, 0.0f, 0.05f, 1);
+        CHECK(a.dirt[top * WINDSHIELD_MAP_W + col] <= 200 / 8 + 1);
+        // The old geometry (aspect 1, radius 0.72, pivot 1.02) misses that cell.
+        WindshieldMap o;
+        Windshield_Reset(&o, 11);
+        for (int i = 0; i < WINDSHIELD_MAP_W * WINDSHIELD_MAP_H; i++) o.dirt[i] = 200;
+        Windshield_WipeSector(&o, 1.0f, 0.34f, 1.02f, 0.72f, -1.15f, 0.0f, 0.05f, 1);
+        CHECK(o.dirt[top * WINDSHIELD_MAP_W + col] == 200);
+    }
+
+    // Sector sweep: a fast blade (big angle step between frames) leaves no
+    // uncleared stripe between the previous and the current angle.
+    {
+        WindshieldMap a;
+        Windshield_Reset(&a, 13);
+        for (int i = 0; i < WINDSHIELD_MAP_W * WINDSHIELD_MAP_H; i++) a.dirt[i] = 200;
+        a.wet = 0;
+        const float aspect = 0.42f, pivotV = 1.04f;
+        float reach = Windshield_BladeReach(aspect, 0.34f, pivotV);
+        Windshield_WipeSector(&a, aspect, 0.34f, pivotV, reach, -0.9f, -0.3f, 0.05f, 1);
+        // A cell at angle -0.6 (mid-interval, well beyond halfWidth of either end), mid-radius.
+        float r = reach * 0.6f, ang = -0.6f;
+        float cu = 0.34f + std::sin(ang) * r, cv = pivotV - std::cos(ang) * r / aspect;
+        int cx2 = (int)(cu * WINDSHIELD_MAP_W), cy2 = (int)(cv * WINDSHIELD_MAP_H);
+        CHECK(cx2 >= 0 && cx2 < WINDSHIELD_MAP_W && cy2 >= 0 && cy2 < WINDSHIELD_MAP_H);
+        CHECK(a.dirt[cy2 * WINDSHIELD_MAP_W + cx2] <= 200 / 8 + 1);
+    }
 
     // Decay: a dirty map slowly cleans on the 64-frame sweep.
     WindshieldMap e;

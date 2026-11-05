@@ -327,7 +327,7 @@ extern unsigned int g_windscreenDirt[8];
 // model's real sweep. Cockpit camera (type 3) only; the HUD draws over it.
 void Windshield_UpdateView(int view, int slot);
 void Windshield_AddDrivingSpatter(int view, int amount);
-void Windshield_DrawOverlay(int view, int resX, int resY);
+void Windshield_GetWipeDiag(int view, int *tPermille, int *cleared, int *aspectPermille);   // F10 diagnostics only
 void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason, int *glassState, int *dirtTotal);   // F10 diagnostics only
 void Windshield_ResetAll(void);
 // Cockpit windshield glass matching the car's real damage appearance
@@ -342,6 +342,12 @@ const char *WindshieldGlass_FailReason(int car);   // F10 diagnostics only
 int WindshieldGlass_ApplyDamageState(int car, int state);
 int WindshieldGlass_DrawCrackPane(int car, int state);
 int WindshieldGlass_DrawSidePanes(int car, int stateSlot2, int stateSlot3);
+struct WsGlassFrame;
+// Glass-local frame of the resolved front glass (0 when unresolved or degenerate).
+int WindshieldGlass_GetFrontFrame(int car, WsGlassFrame *out);
+// Draws the dirt texture on the real front-glass triangles in glass-local uv, depth tested; 0 when nothing was drawn.
+struct GfxTexture;
+int WindshieldGlass_DrawDirtPane(int car, GfxTexture *dirtTexture);
 struct SceneNode;
 void WindshieldGlass_SetCockpitExtension(int car, SceneNode *node, int texture, float u, float v, float x, float yTop, float yBot, float z, float slope, float floorZ0);
 struct CockpitExtensionProfile;

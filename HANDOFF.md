@@ -885,6 +885,25 @@ tint with a per-glass dirt map that only the real 3D wiper blades clear.
 - Pivot position and arc band are an approximation of the original blade
   sweep (profile maxAngle as the band); exact blade-tip tracking against
   the interior model is a follow-up.
+- **Glass-registered dirt (5 November 2026, native feedback on #336):** the
+  full-screen 2D quad is gone. Native reports: dirt looked like it was on the
+  driver's visor and appeared where there is no glass; wipers did not clear
+  it; cracked glass keeps it. Causes: the quad covered the whole frame with a
+  fixed screen-space trapezoid as the "glass", and the blade radius (0.72)
+  was applied to both u and v although the map is not square, so the reach
+  ended near v = 0.30 and the upper glass was never wiped. Now the dirt map is
+  glass-local (WindshieldGlassFrame.h, built from the real front-glass
+  triangles) and is drawn on those triangles in the 3D pass, depth tested
+  (WindshieldGlass_DrawDirtPane, called from Windshield_DrawCrackPane), so
+  the dash, pillars and wheel occlude it. Wipe maths use the glass aspect and
+  a reach computed from the glass corners, and sweep the interval between the
+  previous and current blade angle. F10 shows `wipe t.. clr.. asp..`. Cracked
+  (state 1) still keeps dirt, pending the user's decision. Open: blade pivots
+  and sweep direction are still the normalised-angle approximation (the area
+  between the two pivots may stay unswept); registering to the real wiper
+  node geometry needs native evidence. Verified: windshield_dirt unit test,
+  wiring tests. Integration compile by CI only; windshield_render (updated,
+  not in CTest) not run; native untested.
 
 ## Fog light beam stability and forward halo (1 November 2026, late)
 

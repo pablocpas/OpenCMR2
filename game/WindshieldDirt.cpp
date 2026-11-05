@@ -13,6 +13,7 @@
 #include "CarParts.h"
 #include "StageBlock.h"
 #include "WindshieldDirt.h"
+#include "WindshieldGlassFrame.h"
 #include "GraphicsOptions.h"
 #include "port/sys.h"
 
@@ -25,6 +26,20 @@ static int g_windshieldSideState[2][2];   // [view][slot 2/3]: 0 intact, 1 damag
 // (0 drawing, 1 broken glass, 2 no dirt). Counters only; no behaviour change.
 static unsigned g_wsDrawCalls[WINDSHIELD_MAX_VIEWS], g_wsDrawn[WINDSHIELD_MAX_VIEWS];
 static int g_wsLastReason[WINDSHIELD_MAX_VIEWS] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+
+// F10 wipe diagnostics: last blade progress (0..1000, -1 parked), dirt cleared by the last sweep, glass aspect (x1000, 0 = no glass frame).
+static int g_wsWipeT[WINDSHIELD_MAX_VIEWS] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+static int g_wsWipeCleared[WINDSHIELD_MAX_VIEWS];
+static int g_wsGlassAspect[WINDSHIELD_MAX_VIEWS];
+static float g_wsPrevT[WINDSHIELD_MAX_VIEWS] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+
+void Windshield_GetWipeDiag(int view, int *tPermille, int *cleared, int *aspectPermille)
+{
+    int v = view & (WINDSHIELD_MAX_VIEWS - 1);
+    if (tPermille) *tPermille = g_wsWipeT[v];
+    if (cleared) *cleared = g_wsWipeCleared[v];
+    if (aspectPermille) *aspectPermille = g_wsGlassAspect[v];
+}
 
 void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason, int *glassState, int *dirtTotal)
 {
@@ -40,13 +55,15 @@ void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason,
 int StageObject_GetViewWeatherField54(int index);
 CarPartSet *StageTiming_GetCarReplayRecord(int index);
 
-// Blade geometry in overlay uv: pivots below the dash line, a symmetric pair.
-// The models sweep their own nodes about their own pivots; this overlay
-// tracks their normalised angle, not their exact pivot - documented
-// approximation, the per-model pivot projection is a native-asset follow-up.
+// Blade geometry in glass-local uv (u across the glass, v down it, v > 1 is
+// below the glass): a symmetric pair pivoting just under the bottom edge. The
+// models sweep their own nodes about their own pivots; this tracks their
+// normalised angle, not their exact pivot - documented approximation, the
+// per-model pivot projection is a native-asset follow-up. The blade reach is
+// computed from the glass shape (Windshield_BladeReach) so it covers the whole
+// glass whatever its proportions.
 static const float kPivotU[2] = { 0.34f, 0.66f };
-static const float kPivotV = 1.02f;
-static const float kBladeRadius = 0.72f;
+static const float kPivotV = 1.04f;
 static const float kBladeHalfWidth = 0.05f;   // radians
 static const float kBladeMaxAngle = 1.15f;    // radians of sweep at full arc
 
@@ -109,24 +126,42 @@ void Windshield_UpdateView(int view, int slot)
         g_windshieldGlassState[mview] = glassState;
     }
 
+    g_wsWipeT[mview] = -1;
     if (Sys_GetOption("video.windscreen_wipers", 1) == 0 || slot < 0 || slot > 1)
         return;   // option off: the model's blades park; glass keeps its dirt
+    WsGlassFrame frame;
+    if (!WindshieldGlass_GetFrontFrame(slot, &frame) || !frame.valid) {
+        g_wsGlassAspect[mview] = 0;
+        return;   // no glass mesh to register to: nothing is drawn, nothing to clear
+    }
+    g_wsGlassAspect[mview] = (int)(frame.aspect * 1000.0f);
     const CarWiperState *w = &g_carWiperStates[slot];
     short *pMax = g_carInteriorProfilePointers[slot].firstWiperMaxAngle;
-    if (w->mode == 0 || w->angle == 0 || pMax == NULL || *pMax <= 0)
+    if (w->mode == 0 || w->angle == 0 || pMax == NULL || *pMax <= 0) {
+        g_wsPrevT[mview] = -1.0f;
         return;   // parked or no profile: no clearing
+    }
     float t = (float)w->angle / (float)*pMax;   // both blades share this t
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
+    float prevT = g_wsPrevT[mview] < 0.0f ? t : g_wsPrevT[mview];
+    g_wsPrevT[mview] = t;
+    g_wsWipeT[mview] = (int)(t * 1000.0f);
     int reversed = g_carWiperDirectionReversed[slot] != 0;
+    int cleared = 0;
     for (int b = 0; b < 2; b++) {
-        // Blades park pointing up; they sweep out toward their pillar.
-        float a = (b == 0 ? -1.0f : 1.0f) * t * kBladeMaxAngle;
-        if (reversed) a = -a;
-        int dir = (w->sweepingForward ? 1 : -1) * (a >= 0.0f ? 1 : -1);
+        // Blades park pointing up; they sweep out toward their pillar. The
+        // sector spans the previous to the current angle so nothing the blade
+        // crossed between two frames is skipped.
+        float sign = (b == 0 ? -1.0f : 1.0f) * (reversed ? -1.0f : 1.0f);
+        float a0 = sign * prevT * kBladeMaxAngle, a1 = sign * t * kBladeMaxAngle;
+        float aMin = a0 < a1 ? a0 : a1, aMax = a0 < a1 ? a1 : a0;
+        int dir = (w->sweepingForward ? 1 : -1) * (a1 >= 0.0f ? 1 : -1);
         if (dir == 0) dir = 1;
-        Windshield_Wipe(m, kPivotU[b], kPivotV, kBladeRadius, a, kBladeHalfWidth, dir);
+        float reach = Windshield_BladeReach(frame.aspect, kPivotU[b], kPivotV);
+        cleared += Windshield_WipeSector(m, frame.aspect, kPivotU[b], kPivotV, reach, aMin, aMax, kBladeHalfWidth, dir);
     }
+    g_wsWipeCleared[mview] = cleared;
 }
 
 // Adds driving spatters to a view's map (rain spray, mud, dust). The amount
@@ -142,22 +177,22 @@ void Windshield_AddDrivingSpatter(int view, int amount)
     Windshield_AddSpatter(m, drops, 110 + amount, 0.6f + amount / 255.0f);
 }
 
-// ---- overlay draw ---------------------------------------------------------
+// ---- glass pane draw ------------------------------------------------------
 
 static GfxTexture *g_windshieldTex;
 
-
-extern Graphics *g_pGraphics;
-
-// Draws the dirt map over the cockpit view. Called from the per-view race
-// draw only when the view's camera is the cockpit (type 3); the HUD draws
-// after this and stays clean. Alpha blend, the old tint's grime brown.
-void Windshield_DrawOverlay(int view, int resX, int resY)
+// Glass-registered dirt pane. The dirt map is a texture in glass-local uv and
+// is drawn ONLY on the real front-glass triangles (WindshieldGlass_DrawDirtPane),
+// depth tested in the 3D pass, so the dash, pillars, roof, wheel and hands
+// occlude it and nothing appears where there is no glass. Called from the 3D
+// pass of a cockpit view (Windshield_DrawCrackPane); the HUD stays clean.
+// Alpha blend, the old tint's grime brown.
+static void Windshield_DrawDirtPane(int view)
 {
     WindshieldMap *m = &g_windshieldMaps[view & (WINDSHIELD_MAX_VIEWS - 1)];
     int mview = view & (WINDSHIELD_MAX_VIEWS - 1);
     // Draw-gating diagnostics (low volume, transitions only): why the dirt
-    // overlay is not on screen - broken glass suppresses it, no dirt means
+    // pane is not on screen - broken glass suppresses it, no dirt means
     // the accumulation sources never landed.
     int reason = !Windshield_OverlayVisible(g_windshieldGlassState[mview]) ? 1
                : Windshield_TotalDirt(m) == 0 ? 2 : 0;
@@ -172,7 +207,6 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
     }
     if (reason != 0)
         return;
-    g_wsDrawn[mview]++;
     if (g_windshieldTex == NULL) {
         g_windshieldTex = Gfx_CreateTexture(WINDSHIELD_MAP_W, WINDSHIELD_MAP_H, GFX_FORMAT_BGRA8, 1, 0);
         if (g_windshieldTex == NULL) return;
@@ -190,41 +224,8 @@ void Windshield_DrawOverlay(int view, int resX, int resY)
         }
     }
     Gfx_UnlockTexture(g_windshieldTex, 0, 0);
-
-    // Do not inherit the world's alpha test, disabled texture stages, fog,
-    // texgen or culling. Preserve the caller's complete state on return.
-    Gfx_PushState();
-    Gfx_SetDepthTest(FALSE);
-    Gfx_SetAlphaTest(FALSE);
-    Gfx_SetFog(FALSE);
-    Gfx_SetLighting(FALSE);
-    Gfx_SetCullMode(GFX_CULL_NONE);
-    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE);
-    Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE);
-    Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
-    Gfx_SetStageAlphaOp(0, GFX_TOP_SELECTARG1);
-    Gfx_SetStageAlphaArg1(0, GFX_TA_TEXTURE);
-    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
-    Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
-    Gfx_SetStageTexCoordIndex(0, 0);
-    Gfx_SetStageTextureTransform(0, GFX_TTFF_DISABLE);
-    Gfx_SetStageAddress(0, GFX_ADDRESS_CLAMP);
-    Gfx_SetTexture(0, g_windshieldTex);
-    Gfx_SetAlphaBlend(TRUE);
-    Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA);
-    Gfx_SetDestBlend(GFX_BLEND_INVSRCALPHA);
-    Gfx_SetDepthWrite(FALSE);
-    GfxTLVertex v[4];
-    for (int i = 0; i < 4; i++) {
-        v[i].sz = 0; v[i].rhw = 1.0f;
-        v[i].color = 0xffffffff; v[i].specular = 0;
-    }
-    v[0].sx = 0;           v[0].sy = 0;           v[0].tu = 0; v[0].tv = 0;
-    v[1].sx = (float)resX; v[1].sy = 0;           v[1].tu = 1; v[1].tv = 0;
-    v[2].sx = 0;           v[2].sy = (float)resY; v[2].tu = 0; v[2].tv = 1;
-    v[3].sx = (float)resX; v[3].sy = (float)resY; v[3].tu = 1; v[3].tv = 1;
-    Gfx_DrawPrimitiveTL(GFX_TRIANGLESTRIP, v, 4);
-    Gfx_PopState();
+    if (WindshieldGlass_DrawDirtPane(mview, g_windshieldTex))
+        g_wsDrawn[mview]++;
 }
 
 // Called from the 3D pass of a cockpit view (Game_DrawSceneViewport) so the
@@ -235,6 +236,7 @@ void Windshield_DrawCrackPane(int view)
     int mview = view & (WINDSHIELD_MAX_VIEWS - 1);
     if (mview < 2) {
         WindshieldGlass_DrawCrackPane(mview, g_windshieldGlassState[mview]);
+        Windshield_DrawDirtPane(mview);
         if (g_windshieldGlassState[mview] >= 0)
             WindshieldGlass_DrawSidePanes(mview, g_windshieldSideState[mview][0], g_windshieldSideState[mview][1]);
         WindshieldGlass_DrawCockpitExtension(mview);

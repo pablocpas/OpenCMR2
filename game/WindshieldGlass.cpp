@@ -11,6 +11,7 @@
 #include "port/types.h"
 #include "WindshieldGlassSelect.h"
 #include "WindshieldGlass.h"
+#include "WindshieldGlassFrame.h"
 #include "FixedPoint.h"
 #include "SceneNode.h"
 #include "Car.h"
@@ -626,6 +627,128 @@ int WindshieldGlass_DrawGroupPane(int car, unsigned group, int state)
     return 1;
 }
 
+// ---- glass-registered dirt pane (windshield dirt) ---------------------------
+// The dirt map is drawn on the same exterior front-glass triangles the crack
+// pane uses (inner faces first, any face as the fallback), with glass-local uv
+// from WsGlassFrame, in the 3D pass with depth test on and depth write off.
+// Unlike the crack pane it needs no damage texture: the triangles only carry
+// the shape, the pane's texture is the dirt map.
+enum { WG_DIRT_MAX_TRIS = 96 };
+
+// Collects the front-glass triangles into `gv` (3 vertices each) with uv left
+// zero. Returns the triangle count; *nodeOut is the body node whose world
+// matrix places them.
+static int WgCollectDirtTriangles(int car, GfxVertex *gv, SceneNode **nodeOut)
+{
+    if (car < 0 || car >= WG_MAX_CARS || g_wgInfo[car].resolved != 1)
+        return 0;
+    CarPartSet *pParts = StageTiming_GetCarReplayRecord(car);
+    int mi = pParts != NULL ? StageTiming_FindModelPartByNodeType(7, pParts) : -1;
+    Mesh *pMesh = mi >= 0 ? pParts->geometry.meshes[mi] : NULL;
+    SceneNode *node = mi >= 0 ? pParts->geometry.nodes[mi] : NULL;
+    if (pMesh == NULL || node == NULL || pMesh->pVertexData == NULL || pMesh->pTriangles == NULL)
+        return 0;
+    const MeshVertexF *verts = (const MeshVertexF *)pMesh->pVertexData;
+    unsigned group = g_wgInfo[car].group;
+    int nt = 0;
+    for (int pass = 0; pass < 2 && nt == 0; pass++) {
+        for (int t = 0; t < pMesh->triangleCount && nt < WG_DIRT_MAX_TRIS; t++) {
+            MeshTriangle *tri = &pMesh->pTriangles[t];
+            if (!WgTriInGroup(tri->flags, group))
+                continue;
+            if (pass == 0 && (tri->flags & 0x8000) != 0)
+                continue;
+            int ok = 1;
+            for (int k = 0; k < 3; k++)
+                if (tri->vertexIndex[k] >= pMesh->field_0x10) ok = 0;
+            if (!ok) continue;
+            for (int k = 0; k < 3; k++) {
+                const MeshVertexF *v = &verts[tri->vertexIndex[k]];
+                GfxVertex *o = &gv[nt * 3 + k];
+                o->x = v->x; o->y = v->y; o->z = v->z;
+                o->nx = v->nx; o->ny = v->ny; o->nz = v->nz;
+                o->diffuse = 0xffffffff; o->specular = 0;
+                o->u0 = 0; o->v0 = 0; o->u1 = 0; o->v1 = 0;
+            }
+            nt++;
+        }
+    }
+    *nodeOut = node;
+    return nt;
+}
+
+static WsGlassFrame g_wgFrame[WG_MAX_CARS];
+static int g_wgFrameState[WG_MAX_CARS];   // 0 not built, 1 valid, -1 degenerate (do not retry every frame)
+
+int WindshieldGlass_GetFrontFrame(int car, WsGlassFrame *out)
+{
+    if (car < 0 || car >= WG_MAX_CARS || out == NULL)
+        return 0;
+    if (g_wgFrameState[car] == 0) {
+        GfxVertex gv[WG_DIRT_MAX_TRIS * 3];
+        SceneNode *node = NULL;
+        int nt = WgCollectDirtTriangles(car, gv, &node);
+        if (nt == 0)
+            return 0;   // exterior mesh not ready yet: try again next frame
+        float xyz[WG_DIRT_MAX_TRIS * 3 * 3];
+        for (int i = 0; i < nt * 3; i++) {
+            xyz[i * 3] = gv[i].x; xyz[i * 3 + 1] = gv[i].y; xyz[i * 3 + 2] = gv[i].z;
+        }
+        g_wgFrame[car] = WsGlassFrame_FromVertices(xyz, nt * 3);
+        g_wgFrameState[car] = g_wgFrame[car].valid ? 1 : -1;
+        Sys_Log("windshield glass: car %d dirt frame %s (%d triangles, width %.3f height %.3f aspect %.3f)",
+                car, g_wgFrame[car].valid ? "ok" : "degenerate", nt,
+                g_wgFrame[car].widthUnits, g_wgFrame[car].heightUnits, g_wgFrame[car].aspect);
+    }
+    if (g_wgFrameState[car] != 1)
+        return 0;
+    *out = g_wgFrame[car];
+    return 1;
+}
+
+int WindshieldGlass_DrawDirtPane(int car, GfxTexture *dirtTexture)
+{
+    WsGlassFrame frame;
+    if (dirtTexture == NULL || !WindshieldGlass_GetFrontFrame(car, &frame))
+        return 0;   // no glass mesh to register to: draw nothing rather than a screen layer
+    GfxVertex gv[WG_DIRT_MAX_TRIS * 3];
+    SceneNode *node = NULL;
+    int nt = WgCollectDirtTriangles(car, gv, &node);
+    if (nt == 0)
+        return 0;
+    for (int i = 0; i < nt * 3; i++)
+        WsGlassFrame_UV(&frame, gv[i].y, gv[i].z, &gv[i].u0, &gv[i].v0);
+    GfxMatrix wm;
+    float *wf = (float *)&wm;
+    WgWorldFromFixed((const int *)&node->world, wf);
+    Gfx_PushState();
+    Gfx_SetTransform(GFX_TRANSFORM_WORLD, &wm);
+    Gfx_SetLighting(FALSE);
+    Gfx_SetFog(FALSE);
+    Gfx_SetAlphaTest(FALSE);
+    Gfx_SetDepthTest(TRUE);
+    Gfx_SetDepthWrite(FALSE);
+    Gfx_SetCullMode(GFX_CULL_NONE);
+    Gfx_SetAlphaBlend(TRUE);
+    Gfx_SetSrcBlend(GFX_BLEND_SRCALPHA);
+    Gfx_SetDestBlend(GFX_BLEND_INVSRCALPHA);
+    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageAlphaOp(0, GFX_TOP_SELECTARG1);
+    Gfx_SetStageAlphaArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageTexCoordIndex(0, 0);
+    Gfx_SetStageTextureTransform(0, GFX_TTFF_DISABLE);
+    Gfx_SetStageAddress(0, GFX_ADDRESS_CLAMP);
+    Gfx_SetTexture(0, dirtTexture);
+    Gfx_DrawPrimitive(GFX_TRIANGLELIST, gv, nt * 3);
+    Gfx_SetTexture(0, NULL);
+    Gfx_PopState();
+    return 1;
+}
+
 // ---- cockpit rear extension (video.cockpit_extend_rear, default 0 = off) --------------------
 // The Subaru interior model stops behind the driver. This draws extra strips continuing the
 // both door cards rearward and the floor, in the same mesh space as the real door card
@@ -826,5 +949,6 @@ void WindshieldGlass_ResetCache(void)
         g_wgFailReason[i] = NULL;   // "never attempted" for the next stage; RetryPending only retries a miss from this stage
         g_wgGlassPartCount[i] = 0;
         g_wgAppliedState[i] = 0;
+        g_wgFrameState[i] = 0;
     }
 }

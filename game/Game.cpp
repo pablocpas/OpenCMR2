@@ -3009,15 +3009,9 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
     viewport.maxZ = 1.0f;
     Gfx_SetViewport(&viewport);
     CGraphics::SetCullMode(3);
-    // The per-view update happens BEFORE this world draw. Its old immediate
-    // dirt overlay was covered by the scenery. Compose only after world FX,
-    // before queued HUD layers so glass is visible and HUD remains clean.
-    if (flag != 0 && bit >= 0 && bit < 2 && pCamera == g_viewNodes[bit]) {
-        int glassType = 0, glassDrone = 0;
-        AttractCapture_ViewSignature(bit, &glassType, &glassDrone);
-        if (glassType == 3)
-            Windshield_DrawOverlay(bit, ((short *)pRect)[2], ((short *)pRect)[3]);
-    }
+    // The windshield dirt is a glass-registered pane drawn in the 3D pass above
+    // (Windshield_DrawCrackPane), not a screen-space layer here: dirt must only
+    // appear on the real glass triangles and stay behind the dash and pillars.
     ScreenLine2D_Draw(3);
     Tri2D_DrawLayer(3);
     Sprite_DrawLayer(3);
