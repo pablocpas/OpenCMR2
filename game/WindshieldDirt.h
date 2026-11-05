@@ -188,7 +188,7 @@ inline int Windshield_OverlayVisible(int glassState)
 // blades park (after finishing the sweep) once it falls below kDryWipeStop.
 static const int kDryWipeStart = 12;
 static const int kDryWipeStop = 3;
-inline int Windshield_DryWipeWanted(int totalDirt, int running)
+inline int Windshield_DryWipeWantedForTotal(int totalDirt, int running)
 {
     int mean = totalDirt / (WINDSHIELD_MAP_W * WINDSHIELD_MAP_H);
     return running ? mean >= kDryWipeStop : mean >= kDryWipeStart;

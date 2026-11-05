@@ -81,7 +81,7 @@ int Windshield_FrontGlassBroken(int slot)
 // Dry auto wipe decision for the wiper sweep (CarInterior_UpdateWiperSweep).
 int Windshield_DryWipeWanted(int slot, int running)
 {
-    return Windshield_DryWipeWanted(Windshield_TotalDirt(&g_windshieldMaps[slot & (WINDSHIELD_MAX_VIEWS - 1)]), running);
+    return Windshield_DryWipeWantedForTotal(Windshield_TotalDirt(&g_windshieldMaps[slot & (WINDSHIELD_MAX_VIEWS - 1)]), running);
 }
 
 // Per-frame update for one view's map. `slot` is the cockpit slot (the wiper
