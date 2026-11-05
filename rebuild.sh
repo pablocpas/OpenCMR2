@@ -31,6 +31,7 @@
 #                               (e.g. --test-preset atmosphere gives overdo,atmosphere: the usual look plus exaggerated fog/motes)
 #   --fog-clear N               Near-field fog clear distance 0-200 (0 = off): launch tuning passed straight to the game
 #   --fog-cull 0|1              Experimental fog culling past the far draw distance (default 0 = off); silhouettes may pop
+#   --fog-probe 0|1             One-shot fog depth readback diagnostic, next fogged frame (default 0 = off; log only)
 #   --fog-spatial 0|1           Fog pockets along the stage route (default 0 = off)
 #   --fog-lights 0..200        Fog response to head/rear lights, percent (default 100)
 #   --fog-evolve -100..100      Fog trend start to finish: negative clears, positive thickens (default 0)
@@ -95,9 +96,9 @@ while [ "$#" -gt 0 ]; do
         --brush-placement-output) need_value "$@"; BRUSH_OUT="$2"; shift 2 ;;
         --dry-run) DRY=1; shift ;;
         --fog-amount|--fog-glow|--fog-clear|--fog-lights|--air-motes-amount|--fog-evolve|--snow-glint|--snow-material|--cockpit-door-extend|--cockpit-extend-rear) need_value "$@"; TUNING+=("$1" "$2"); shift 2 ;;
-        --fog-cull|--fog-spatial|--brush-volume|--windshield-crack-overlay) need_value "$@"; case "$2" in 0|1) ;; *) die "$1 takes 0 or 1, got '$2'" ;; esac; TUNING+=("$1" "$2"); shift 2 ;;
+        --fog-cull|--fog-probe|--fog-spatial|--brush-volume|--windshield-crack-overlay) need_value "$@"; case "$2" in 0|1) ;; *) die "$1 takes 0 or 1, got '$2'" ;; esac; TUNING+=("$1" "$2"); shift 2 ;;
         --fog-amount=*|--fog-glow=*|--fog-clear=*|--fog-lights=*|--air-motes-amount=*|--fog-evolve=*|--snow-glint=*|--snow-material=*|--cockpit-door-extend=*|--cockpit-extend-rear=*) TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
-        --fog-cull=*|--fog-spatial=*|--brush-volume=*|--windshield-crack-overlay=*) case "${1#*=}" in 0|1) ;; *) die "${1%%=*} takes 0 or 1" ;; esac; TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
+        --fog-cull=*|--fog-probe=*|--fog-spatial=*|--brush-volume=*|--windshield-crack-overlay=*) case "${1#*=}" in 0|1) ;; *) die "${1%%=*} takes 0 or 1" ;; esac; TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
         *) die "unknown option '$1' (see --help)" ;;
     esac
 done
