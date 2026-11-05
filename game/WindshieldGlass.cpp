@@ -1,3 +1,4 @@
+#include "CockpitExtension.h"
 // Runtime wiring for the cockpit windshield glass (video.windshield_cracks):
 // resolves, per car, which CIN window quad is the front windshield, its
 // damage break slot and exterior material group, and the exterior mesh's
@@ -627,10 +628,10 @@ int WindshieldGlass_DrawGroupPane(int car, unsigned group, int state)
 
 // ---- cockpit rear extension (video.cockpit_extend_rear, default 0 = off) --------------------
 // The Subaru interior model stops behind the driver. This draws extra strips continuing the
-// driver-side door card rearward and the floor, in the same mesh space as the real door card
+// both door cards rearward and the floor, in the same mesh space as the real door card
 // (registered at interior load from the card's own vertices and its own texture/UV patch).
 // The UV patch of the door card is a smooth blue gradient (u 0.49-0.53, v 0.81-0.84 of texture 1),
-// so the strips sample that patch: this is a stretched gradient, not a repeating pattern.
+// so the strips repeat that source patch. It has no fabric pattern to invent.
 struct WgCockpitExt {
     int active;
     SceneNode *node;
@@ -639,6 +640,8 @@ struct WgCockpitExt {
     float x, yTop, yBot, z; // rear edge of the door card (mesh space)
     float slope;            // dy/dx of the card's top edge
     float floorZ0;          // floor strip inner z (the other floor edge)
+    CockpitExtensionProfile profiles[2];
+    bool bothSides;
 };
 static WgCockpitExt g_wgCockpitExt[WG_MAX_CARS];
 
@@ -649,8 +652,16 @@ void WindshieldGlass_SetCockpitExtension(int car, SceneNode *node, int texture, 
         return;
     WgCockpitExt *e = &g_wgCockpitExt[car];
     e->active = node != NULL && texture >= 0;
+    e->bothSides = false;
     e->node = node; e->texture = texture; e->u = u; e->v = v;
     e->x = x; e->yTop = yTop; e->yBot = yBot; e->z = z; e->slope = slope; e->floorZ0 = floorZ0;
+}
+
+void WindshieldGlass_SetCockpitExtensionProfiles(int car, const CockpitExtensionProfile *profiles)
+{
+    if(car<0||car>=WG_MAX_CARS||!profiles)return;
+    for(int i=0;i<2;i++)g_wgCockpitExt[car].profiles[i]=profiles[i];
+    g_wgCockpitExt[car].bothSides=true;
 }
 
 void WindshieldGlass_ClearCockpitExtensions(void)
@@ -718,6 +729,7 @@ static void WindshieldGlass_ProbeCockpitExtension(int car)
         FixMatrix_TransformPoint(&pw, &pm, &e->node->world);
         int out[2];
         FixMatrix_ProjectWorldPointToView(out, &pw, view);
+        if (out[0] != -0x640000 || out[1] != -0x640000) { out[0] >>= 16; out[1] >>= 16; }
         sx[k] = out[0];
         sy[k] = out[1];
         if (out[0] != -0x640000 || out[1] != -0x640000) {
@@ -736,7 +748,7 @@ static void WindshieldGlass_ProbeCockpitExtension(int car)
         verdict = "extension geometry is in front of the eye but fully OUTSIDE the frame at the current FOV/widening";
     else
         verdict = "extension geometry lands IN FRAME: it should be visible at the logged coordinates (a paint/depth/ordering issue, not coverage)";
-    Sys_Log("cockpit extension probe: verdict: %s (%d/%d corners in front, %d in frame of %dx%d; full-frame centred, split-screen rect not offset)",
+    Sys_Log("cockpit extension probe: DRIVER-EDGE legacy corner verdict: %s (%d/%d corners in front, %d in frame of %dx%d; does not measure triangle coverage/passenger side)",
             verdict, inFront, n, inFrame, g_pGraphics->resX, g_pGraphics->resY);
     if (door > 0 && len > 0)
         Sys_Log("cockpit extension probe: note: with door-extend %d/100 the card itself reaches x %.3f, so the strip overlaps the stretched card for %.2f model units (same blue gradient, hidden seam)",
@@ -756,27 +768,19 @@ int WindshieldGlass_DrawCockpitExtension(int car)
     if (len > 150) len = 150;
     float L = len / 100.0f;
     float xr = e->x - L;
-    float yTopR = e->yTop + e->slope * (xr - e->x);
-    // Door strip (vertical, plane z) then floor strip (plane yBot).
-    float P[12][3] = {
-        {e->x, e->yTop, e->z}, {xr, yTopR, e->z}, {xr, e->yBot, e->z},
-        {e->x, e->yTop, e->z}, {xr, e->yBot, e->z}, {e->x, e->yBot, e->z},
-        {e->x, e->yBot, e->z}, {xr, e->yBot, e->z}, {xr, e->yBot, e->floorZ0},
-        {e->x, e->yBot, e->z}, {xr, e->yBot, e->floorZ0}, {e->x, e->yBot, e->floorZ0}};
-    GfxVertex gv[12];
-    for (int k = 0; k < 12; k++) {
-        GfxVertex *o = &gv[k];
-        o->x = P[k][0]; o->y = P[k][1]; o->z = P[k][2];
-        o->nx = 0; o->ny = (k >= 6) ? 1.0f : 0.0f; o->nz = (k >= 6) ? 0.0f : -1.0f;
-        o->diffuse = 0xffc0c0c0; o->specular = 0;
-        o->u0 = e->u; o->v0 = e->v; o->u1 = 0; o->v1 = 0;
-    }
+    if (!e->bothSides) return 0; // no guessed coverage on unmatched models
+    std::vector<GfxVertex> gv;
+    CockpitExtension_Append(gv,e->profiles[0],xr);
+    CockpitExtension_Append(gv,e->profiles[1],xr);
+    if (gv.empty()) return 0;
     GfxMatrix wm;
     float *wf = (float *)&wm;
     WgWorldFromFixed((const int *)&e->node->world, wf);
     Gfx_PushState();
     Gfx_SetTransform(GFX_TRANSFORM_WORLD, &wm);
     Gfx_SetLighting(FALSE);
+    Gfx_SetFog(FALSE);
+    Gfx_SetAlphaTest(FALSE);
     Gfx_SetDepthTest(TRUE);
     Gfx_SetDepthWrite(TRUE);
     Gfx_SetCullMode(GFX_CULL_NONE);
@@ -787,8 +791,11 @@ int WindshieldGlass_DrawCockpitExtension(int car)
     Gfx_SetStageAlphaOp(0, GFX_TOP_DISABLE);
     Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
     Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageTexCoordIndex(0, 0);
+    Gfx_SetStageTextureTransform(0, GFX_TTFF_DISABLE);
+    Gfx_SetStageAddress(0, GFX_ADDRESS_CLAMP);
     Gfx_SetTexture(0, tx->pSurface);
-    Gfx_DrawPrimitive(GFX_TRIANGLELIST, gv, 12);
+    Gfx_DrawPrimitive(GFX_TRIANGLELIST, gv.data(), (int)gv.size());
     Gfx_SetTexture(0, NULL);
     Gfx_PopState();
     return 1;

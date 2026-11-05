@@ -1,3 +1,4 @@
+#include "CockpitExtension.h"
 // Declared before RallyData.h, as in the original: in an expression that calls
 // both, MSVC calls RallyDataState first.
 short Car_GetOrderCount(void);
@@ -13942,6 +13943,28 @@ static int StageObject_RegisterCockpitExtension(SceneNode *pNode, int car)
                 float vv = 0.5f * (v[top].textureCoordinates[0][1] + v[bot].textureCoordinates[0][1]);
                 float slope = (v[top].y - v[topNb].y) / (v[top].x - v[topNb].x);
                 WindshieldGlass_SetCockpitExtension(car, pNode, tex, u, vv, v[top].x, v[top].y, v[bot].y, v[top].z, slope, -0.108f);
+                // Passenger card ends much farther forward than the driver card.
+                // Match its real rear wall/floor corners before adding coverage.
+                int pt=-1,pb=-1,pf=-1,dbn=-1;
+                for(int k=0;k<n;k++) {
+                    if(fabsf(v[k].x-.6133f)<.004f&&fabsf(v[k].y+.0152f)<.004f&&fabsf(v[k].z+.6231f)<.004f)pt=k;
+                    if(fabsf(v[k].x-.5015f)<.004f&&fabsf(v[k].y+.4648f)<.004f&&fabsf(v[k].z+.6444f)<.004f)pb=k;
+                    if(fabsf(v[k].x-.3793f)<.004f&&fabsf(v[k].y+.4648f)<.004f&&fabsf(v[k].z+.1082f)<.004f)pf=k;
+                    if(fabsf(v[k].x-.379f)<.004f&&fabsf(v[k].y+.4648f)<.004f&&fabsf(v[k].z-.6444f)<.004f&&fabsf(v[k].textureCoordinates[0][0]-.5331f)<.004f)dbn=k;
+                }
+                if(pt>=0&&pb>=0&&pf>=0&&dbn>=0) {
+                    CockpitExtensionProfile profiles[2]={};
+                    auto copyP=[](float *p,const MeshVertexF&w){p[0]=w.x;p[1]=w.y;p[2]=w.z;};
+                    copyP(profiles[0].top,v[top]);copyP(profiles[0].bottom,v[bot]);
+                    profiles[0].floorInner[0]=v[bot].x;profiles[0].floorInner[1]=v[bot].y;profiles[0].floorInner[2]=-.1082f;
+                    copyP(profiles[1].top,v[pt]);copyP(profiles[1].bottom,v[pb]);copyP(profiles[1].floorInner,v[pf]);
+                    for(int side=0;side<2;side++) {
+                        int corners[4]={top,topNb,bot,dbn};
+                        for(int q=0;q<4;q++)for(int uv=0;uv<2;uv++)profiles[side].uv[q][uv]=v[corners[q]].textureCoordinates[0][uv];
+                        profiles[side].repeatLength=fabsf(v[topNb].x-v[top].x);
+                    }
+                    WindshieldGlass_SetCockpitExtensionProfiles(car,profiles);
+                }
                 Sys_Log("cockpit rear extension: car %d registered door-card rear edge x %.3f, part texture %d, uv %.3f %.3f", car, v[top].x, tex, u, vv);
                 found = 1;
             }
