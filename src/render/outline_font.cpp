@@ -10,7 +10,9 @@
 // The Helvetica fonts (hel_*) are drawn from TeX Gyre Heros, a Helvetica
 // with a free licence: its size, weight and baseline are fitted to a few of
 // the font's glyphs, and each glyph is centred where the original's ink is.
-// Other fonts, and glyphs Heros lacks, are reconstructed from their bitmaps.
+// Other fonts and non-ASCII glyphs are reconstructed from their bitmaps.
+// Localised editions can assign different letters to the same byte codes;
+// their font atlases, rather than a Western code page, define those letters.
 // Distances are measured on a coverage of the glyph oversampled again, so
 // the cubic outlines of the OpenType fonts are followed exactly.
 
@@ -54,35 +56,6 @@ struct Bitmap {
 struct Cell {
     int x, y, w, h;
 };
-
-// The game's character codes: Windows-1252, with Polish letters in place of
-// 16 of its symbols.
-uint32_t Unicode(BYTE c)
-{
-    switch (c) {
-    case 0x24: return 0x106;    // $ -> C acute
-    case 0x2a: return 0x118;    // * -> E ogonek
-    case 0x7b: return 0x15a;    // { -> S acute
-    case 0x7c: return 0x141;    // | -> L stroke
-    case 0x7d: return 0x179;    // } -> Z acute
-    case 0x7e: return 0x104;    // ~ -> A ogonek
-    case 0x99: return 0x17b;    // Z dot
-    case 0xa3: return 0x105;    // a ogonek
-    case 0xa9: return 0x107;    // c acute
-    case 0xae: return 0x119;    // e ogonek
-    case 0xb1: return 0x142;    // l stroke
-    case 0xbc: return 0x144;    // n acute
-    case 0xbd: return 0x15b;    // s acute
-    case 0xbe: return 0x17a;    // z acute
-    case 0xd7: return 0x17c;    // z dot
-    case 0xf7: return 0x143;    // N acute
-    }
-    static const uint16_t cp1252[32] = {
-        0x20ac, 0, 0x201a, 0x192, 0x201e, 0x2026, 0x2020, 0x2021, 0x2c6, 0x2030, 0x160, 0x2039, 0x152, 0, 0x17d, 0,
-        0, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x2dc, 0x2122, 0x161, 0x203a, 0x153, 0, 0x17e, 0x178,
-    };
-    return c >= 0x80 && c < 0xa0 ? cp1252[c - 0x80] : c;
-}
 
 struct Face {
     stbtt_fontinfo info;
@@ -322,7 +295,7 @@ Fit FitHeros(const Bitmap &bm, const std::vector<OutlineFontGlyph> &glyphs)
                 if (Measure(bm, c).mass <= 0)
                     break;
                 for (int f = 0; f < 2; f++)
-                    refs[f].push_back({ c, stbtt_FindGlyphIndex(&faces[f].info, Unicode(g.code)) });
+                    refs[f].push_back({ c, stbtt_FindGlyphIndex(&faces[f].info, g.code) });
                 if (flat == nullptr && strchr("H08", *p) != nullptr)
                     flat = &g;
                 break;
@@ -485,19 +458,39 @@ Built Build(const std::string &name, const Bitmap &bm, const std::vector<Outline
         built.pixels[i] = built.pixels[i + 1] = built.pixels[i + 2] = 255;
     const int up = texels * kOversample;
     // A cell's coverage at the field's samples: Heros's glyph, or the
-    // bitmap's for glyphs Heros lacks and other fonts. Returns whether the
+    // bitmap's for localised glyphs and other fonts. Returns whether the
     // glyph is Heros's.
     std::vector<float> coverage;
     auto draw = [&](const OutlineFontGlyph &g, const Cell &c, const Ink &ink) {
         coverage.assign((size_t)c.w * up * c.h * up, 0.0f);
         if (ink.mass <= 0)
             return false;
-        int glyph = fit.face != nullptr ? stbtt_FindGlyphIndex(&fit.face->info, Unicode(g.code)) : 0;
+        // Only ASCII letters and digits are candidates for outlines.
+        // In particular, CP1251 Cyrillic occupies the same byte codes as
+        // CP1252 accented Latin. Polish also repurposes ASCII punctuation.
+        const bool latin = (g.code >= 'A' && g.code <= 'Z') || (g.code >= 'a' && g.code <= 'z') ||
+                           (g.code >= '0' && g.code <= '9');
+        int glyph = fit.face != nullptr && latin ? stbtt_FindGlyphIndex(&fit.face->info, g.code) : 0;
         if (glyph == 0) {
             Upsample(bm, c, up, coverage);
             return false;
         }
         PlaceGlyph(fit, glyph, ink, true, up, c.w, c.h, coverage);
+        // Translation fonts can even replace ASCII letters. Reject an
+        // outline whose mean coverage error exceeds 35% of the source ink.
+        double error = 0;
+        for (int y = 0; y < c.h; y++)
+            for (int x = 0; x < c.w; x++) {
+                float alpha = 0;
+                for (int sy = 0; sy < up; sy++)
+                    for (int sx = 0; sx < up; sx++)
+                        alpha += coverage[(size_t)(y * up + sy) * c.w * up + x * up + sx];
+                error += fabs(alpha / (up * up) - bm.At(bm.a, c.x + x, c.y + y));
+            }
+        if (error > ink.mass * 0.35f) {
+            Upsample(bm, c, up, coverage);
+            return false;
+        }
         return true;
     };
     int outlined = 0;

@@ -86,6 +86,12 @@ add_executable(vector_sprites_test vector_sprites.cpp)
 target_link_libraries(vector_sprites_test PRIVATE opencmr2_platform)
 add_test(NAME vector_sprites COMMAND vector_sprites_test)
 
+add_executable(outline_font_test outline_font.cpp)
+target_include_directories(outline_font_test PRIVATE ${PROJECT_BINARY_DIR}/src/generated ${PROJECT_SOURCE_DIR}/third_party/stb)
+target_link_libraries(outline_font_test PRIVATE opencmr2_platform)
+add_test(NAME outline_font COMMAND outline_font_test)
+set_tests_properties(outline_font PROPERTIES TIMEOUT 30)
+
 add_executable(saved_game_test saved_game.cpp)
 target_link_libraries(saved_game_test PRIVATE opencmr2_platform)
 add_test(NAME saved_game COMMAND saved_game_test)

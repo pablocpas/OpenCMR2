@@ -22,9 +22,11 @@ typedef struct OutlineFontGlyph {
 
 /* Gives a font texture, named as the game names it (".\Fonts\general\
    hel_15pt.DDS"), a distance-field replacement with the same cells
-   (Gfx_SetTextureReplacement): the Helvetica fonts (hel_*) from the outlines
-   of TeX Gyre Heros, fitted to each glyph's size, weight and place, the
-   others from their bitmaps. Text keeps the original's layout and draws with
+   (Gfx_SetTextureReplacement): matching ASCII letters and digits in the
+   Helvetica fonts (hel_*) from TeX Gyre Heros, fitted to each glyph's size,
+   weight and place, the others from their bitmaps. Localised glyphs,
+   including Cyrillic, keep the shapes supplied by the game's fonts.
+   Text keeps the original's layout and draws with
    sharp edges however much it is scaled. [video] outline_fonts = 0 keeps the
    bitmaps. */
 void OutlineFont_Replace(const char *name, GfxTexture *texture, const OutlineFontGlyph *glyphs, int count);

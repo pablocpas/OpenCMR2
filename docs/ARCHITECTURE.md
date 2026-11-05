@@ -101,6 +101,14 @@ colours are retained. The renderer also binds the untouched source texture,
 which native-size and smaller draws sample directly. Enlarged draws use the
 traced fields. The distance transform is shared with the outlined fonts.
 
+Helvetica font atlases (`hel_*`) use TeX Gyre Heros outlines for ASCII letters
+and digits whose shapes match the original glyphs. Other cells, including
+Cyrillic in translated editions and Polish letters in repurposed symbol slots,
+get distance fields from their original pixels. The atlas defines the glyph
+for each byte; extended characters retain the translation's shapes, cell
+rectangles and spacing when enlarged. This uses the installed edition's fonts
+and text files; it does not supply a translation.
+
 Arcade HUD maps (`cha01` through `cha08`, 128x128) and their car markers
 (`chalblob`) use the same contour path. The selection maps retain their original 36x36 DMD cell
 grids and palette: only the shared `SmMatrix` point is replaced. Enlarged
