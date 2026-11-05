@@ -6836,6 +6836,11 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
                 GfxFogDepthStatus fd=Gfx_GetFogDepthStatus();
                 const char *mode=fd.mode==1?"single projection (true distance)":fd.mode==2?"AMBIGUOUS projection (raw-depth ramp)":fd.mode==3?"no usable projection (raw-depth ramp)":"no data";
                 snprintf(text,sizeof text,"Fog depth: %s, %d near/far pair(s), dominant near %.3f far %.1f (%d draws)",mode,fd.pairs,fd.nearZ,fd.farZ,fd.votes);
+                {   // Fog depth probe (video.fog_probe, SDL_GPU only): verdict of the last one-shot readback, when one has run.
+                    GfxFogProbeStatus fp=Gfx_GetFogProbeStatus();
+                    if(fp.state!=0){size_t l=strlen(text);const char *pv=fp.state==1?"NEAR-DEPTH pollution":fp.state==2?"weak curve":fp.state==3?"NO output shift":fp.state==4?"fog active":"projection unknown";
+                        snprintf(text+l,sizeof text-l,"; probe: %s (z %.0f, exp %.2f, shift %.3f)",pv,fp.viewZ,fp.expected,fp.measured);}
+                }
                 line(text,fd.mode==1?lit:dim);
                 snprintf(text,sizeof text,"Flagged-interior draws (last change; counts, not windscreen proof): no-depth-write %u, blend-off %u, no-semi-alpha %u, batch-path meshes %u (cockpit_glass_fog=%d)",delta[0],delta[1],delta[2],delta[3],Sys_GetOption("video.cockpit_glass_fog",1));
                 line(text,delta[0]>0?lit:dim);
