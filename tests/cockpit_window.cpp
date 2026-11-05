@@ -20,6 +20,14 @@ int main(void) {
     CHECK(!CockpitWindow_SkipDepthWrite(0x0e, true, 3, 1));
     CHECK(!CockpitWindow_SkipDepthWrite(0x05, true, 3, 1));
     CHECK(!CockpitWindow_SkipDepthWrite(0x00, true, 3, 1));
+    // Original Subaru interior root has the SAME type 0x14 as exterior
+    // glass but owns opaque door/dash/bodywork: preserve its depth.
+    CHECK(!CockpitWindow_SkipDepthWrite(0x14, true, 3, 1, true));
+    struct Node { Node *pParent; } body{nullptr}, interior{&body}, child{&interior}, exteriorGlass{&body};
+    CHECK(CockpitWindow_InInterior(&interior,&interior));
+    CHECK(CockpitWindow_InInterior(&child,&interior));
+    CHECK(!CockpitWindow_InInterior(&exteriorGlass,&interior));
+    CHECK(!CockpitWindow_InInterior(&child,(Node*)nullptr));
     // Option off: unchanged.
     CHECK(!CockpitWindow_SkipDepthWrite(0x14, true, 3, 0));
     if (fails) { std::printf("%d failures\n", fails); return 1; }
