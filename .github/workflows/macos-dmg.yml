@@ -48,7 +48,7 @@ jobs:
           security find-identity -v -p codesigning "$keychain"
       - name: Package zip and DMG
         env:
-          APPLE_SIGNING_IDENTITY: Developer ID Application: Olli Sulopuisto (LWSR8T5392)
+          APPLE_SIGNING_IDENTITY: "Developer ID Application: Olli Sulopuisto (LWSR8T5392)"
         run: |
           set -o pipefail
           version="$(python3 -c "import datetime;d=datetime.datetime.utcnow();print(f'{d.year}.{d.month}.{d.day}')").${GITHUB_RUN_NUMBER}-$(git rev-parse --short=8 HEAD)"
