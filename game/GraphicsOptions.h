@@ -354,6 +354,7 @@ struct CockpitExtensionProfile;
 void WindshieldGlass_SetCockpitExtensionProfiles(int car, const CockpitExtensionProfile *profiles);
 void WindshieldGlass_ClearCockpitExtensions(void);
 int WindshieldGlass_DrawCockpitExtension(int car);
+int WindshieldGlass_DrawCockpitMesh(int car);
 void Windshield_DrawCrackPane(int view);
 int WindshieldGlass_GetInfo(int car, int *window, int *slot, unsigned *group,
                             int *damagedTexture, int *brokenTexture);

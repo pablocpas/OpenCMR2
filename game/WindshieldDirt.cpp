@@ -240,6 +240,7 @@ void Windshield_DrawCrackPane(int view)
         if (g_windshieldGlassState[mview] >= 0)
             WindshieldGlass_DrawSidePanes(mview, g_windshieldSideState[mview][0], g_windshieldSideState[mview][1]);
         WindshieldGlass_DrawCockpitExtension(mview);
+        WindshieldGlass_DrawCockpitMesh(mview);
     }
 }
 

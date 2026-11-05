@@ -1,4 +1,5 @@
 #include "CockpitExtension.h"
+#include "CockpitMesh.h"
 // Runtime wiring for the cockpit windshield glass (video.windshield_cracks):
 // resolves, per car, which CIN window quad is the front windshield, its
 // damage break slot and exterior material group, and the exterior mesh's
@@ -24,6 +25,9 @@
 #include "port/gfx.h"
 #include "Graphics.h"
 #include <cstdio>
+#include <filesystem>
+#include <map>
+const char *Platform_GetUserDir(void);   // src/platform/sys.cpp (platform.h pulls SDL into game code)
 #include <cmath>
 
 // CarEffects.cpp (the window layout owner).
@@ -924,6 +928,170 @@ int WindshieldGlass_DrawCockpitExtension(int car)
     return 1;
 }
 
+// ---- cockpit add-on mesh + interior dump (video.cockpit_mesh / video.dump_interior) -------------------
+// dump_interior (one shot per stage load): writes every mesh part of the car's interior as an OBJ in the
+// interior root node's space (<user dir>/interior_dump.obj), a read-only scaffold for modelling.
+// cockpit_mesh: draws <user dir>/cockpit_mesh.obj (same space, "usemtl tex<N>" picks the interior texture)
+// with the root node's world matrix. The file is re-read when its timestamp changes (checked ~twice a second).
+static int g_wgDumped[WG_MAX_CARS];
+struct WgCockpitMesh {
+    std::map<int, std::vector<GfxVertex>> byTexture;
+    long long stamp = -1;
+    int polls = 0;
+};
+static WgCockpitMesh g_wgCockpitMesh[WG_MAX_CARS];
+
+static int WgDumpNode(SceneNode *pNode, const float *rootInv, CmObjWriter &w, int *nodeIndex)
+{
+    int tris = 0;
+    for (; pNode != NULL; pNode = pNode->pNext) {
+        int idx = (*nodeIndex)++;
+        if (pNode->type == SCENE_NODE_MESH && pNode->pObject != NULL) {
+            Mesh *pMesh = (Mesh *)pNode->pObject;
+            const MeshVertexF *verts = (const MeshVertexF *)pMesh->pVertexData;
+            if (verts != NULL) {
+                float nw[16], rel[16];
+                WgWorldFromFixed((const int *)&pNode->world, nw);
+                Cm_Mul(nw, rootInv, rel);
+                for (int pi = 0; pi < pMesh->partCount && pi < 50; pi++) {
+                    MeshPart *pPart = pMesh->pParts[pi];
+                    if (pPart == NULL || pPart->pData == NULL || pPart->indexCount < 3)
+                        continue;
+                    w.Group(idx, pi, pPart->texture);
+                    for (int q = 0; q + 2 < pPart->indexCount; q += 3) {
+                        CmVert cv[3];
+                        int ok = 1;
+                        for (int k = 0; k < 3; k++) {
+                            int vi = pPart->minIndex + pPart->pData[q + k];
+                            if (vi < 0 || vi >= pMesh->field_0x10) { ok = 0; break; }
+                            float o[3];
+                            Cm_Transform(rel, verts[vi].x, verts[vi].y, verts[vi].z, o);
+                            cv[k] = { o[0], o[1], o[2], verts[vi].textureCoordinates[0][0], verts[vi].textureCoordinates[0][1] };
+                        }
+                        if (ok) { w.Tri(cv[0], cv[1], cv[2]); tris++; }
+                    }
+                }
+            }
+        }
+        if (pNode->pFirstChild != NULL)
+            tris += WgDumpNode(pNode->pFirstChild, rootInv, w, nodeIndex);
+    }
+    return tris;
+}
+
+static void WgDumpInterior(int car)
+{
+    SceneNode *root = g_carInteriorRoots[car];
+    float rw[16], inv[16];
+    WgWorldFromFixed((const int *)&root->world, rw);
+    if (!Cm_AffineInverse(rw, inv)) {
+        Sys_Log("interior dump: car %d root matrix is singular, nothing written", car);
+        return;
+    }
+    CmObjWriter w;
+    int nodeIndex = 0;
+    int tris = WgDumpNode(root, inv, w, &nodeIndex);
+    std::string path = std::string(Platform_GetUserDir()) + "interior_dump.obj";
+    FILE *f = fopen(path.c_str(), "wb");
+    if (f == NULL) {
+        Sys_Log("interior dump: cannot write %s", path.c_str());
+        return;
+    }
+    fwrite(w.text.data(), 1, w.text.size(), f);
+    fclose(f);
+    Sys_Log("interior dump: car %d wrote %d triangles from %d nodes to %s", car, tris, nodeIndex, path.c_str());
+}
+
+static void WgLoadCockpitMesh(int car, const std::string &path, long long stamp)
+{
+    WgCockpitMesh &m = g_wgCockpitMesh[car];
+    m.stamp = stamp;
+    m.byTexture.clear();
+    FILE *f = fopen(path.c_str(), "rb");
+    if (f == NULL)
+        return;
+    std::string text;
+    char buf[65536];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof buf, f)) > 0)
+        text.append(buf, n);
+    fclose(f);
+    std::vector<CmTri> tris;
+    CmParseResult res;
+    if (!CockpitMesh_ParseObj(text.data(), text.size(), tris, res)) {
+        Sys_Log("cockpit mesh: %s rejected: %s (keeping nothing drawn)", path.c_str(), res.error.c_str());
+        return;
+    }
+    for (const CmTri &t : tris)
+        for (int k = 0; k < 3; k++) {
+            GfxVertex v = {};
+            v.x = t.v[k].x; v.y = t.v[k].y; v.z = t.v[k].z;
+            v.ny = 1;
+            v.diffuse = 0xffc0c0c0;
+            v.u0 = t.v[k].u; v.v0 = t.v[k].v;
+            m.byTexture[t.tex].push_back(v);
+        }
+    Sys_Log("cockpit mesh: loaded %d triangles in %d texture groups from %s (%d faces without a tex<N> material skipped, %d bad faces)",
+            res.triangles, (int)m.byTexture.size(), path.c_str(), res.skippedNoTexture, res.skippedBad);
+}
+
+int WindshieldGlass_DrawCockpitMesh(int car)
+{
+    int wantMesh = Sys_GetOption("video.cockpit_mesh", 0);
+    int wantDump = Sys_GetOption("video.dump_interior", 0);
+    if ((!wantMesh && !wantDump) || car < 0 || car >= WG_MAX_CARS || g_carInteriorRoots[car] == NULL)
+        return 0;
+    if (wantDump && !g_wgDumped[car]) {
+        g_wgDumped[car] = 1;
+        WgDumpInterior(car);
+    }
+    if (!wantMesh)
+        return 0;
+    WgCockpitMesh &m = g_wgCockpitMesh[car];
+    if (m.polls++ % 30 == 0) {   // hot reload: poll the timestamp, not the contents
+        std::string path = std::string(Platform_GetUserDir()) + "cockpit_mesh.obj";
+        std::error_code ec;
+        auto t = std::filesystem::last_write_time(path, ec);
+        long long stamp = ec ? 0 : (long long)t.time_since_epoch().count();
+        if (stamp != m.stamp)
+            WgLoadCockpitMesh(car, path, stamp);
+    }
+    if (m.byTexture.empty())
+        return 0;
+    GfxMatrix wm;
+    WgWorldFromFixed((const int *)&g_carInteriorRoots[car]->world, (float *)&wm);
+    Gfx_PushState();
+    Gfx_SetTransform(GFX_TRANSFORM_WORLD, &wm);
+    Gfx_SetLighting(FALSE);
+    Gfx_SetFog(FALSE);
+    Gfx_SetAlphaTest(FALSE);
+    Gfx_SetDepthTest(TRUE);
+    Gfx_SetDepthWrite(TRUE);
+    Gfx_SetCullMode(GFX_CULL_NONE);
+    Gfx_SetAlphaBlend(FALSE);
+    Gfx_SetStageColorOp(0, GFX_TOP_MODULATE);
+    Gfx_SetStageColorArg1(0, GFX_TA_TEXTURE);
+    Gfx_SetStageColorArg2(0, GFX_TA_DIFFUSE);
+    Gfx_SetStageAlphaOp(0, GFX_TOP_DISABLE);
+    Gfx_SetStageColorOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageAlphaOp(1, GFX_TOP_DISABLE);
+    Gfx_SetStageTexCoordIndex(0, 0);
+    Gfx_SetStageTextureTransform(0, GFX_TTFF_DISABLE);
+    Gfx_SetStageAddress(0, GFX_ADDRESS_CLAMP);
+    int drawn = 0;
+    for (auto &g : m.byTexture) {
+        Texture *tx = (g.first >= 0 && g.first < 2048) ? CGraphics::GetTextureBuffer()[g.first] : NULL;
+        if (tx == NULL || tx->pSurface == NULL)
+            continue;
+        Gfx_SetTexture(0, tx->pSurface);
+        Gfx_DrawPrimitive(GFX_TRIANGLELIST, g.second.data(), (int)g.second.size());
+        drawn += (int)g.second.size() / 3;
+    }
+    Gfx_SetTexture(0, NULL);
+    Gfx_PopState();
+    return drawn;
+}
+
 // Second attempt for cars whose first setup hit a transient miss (resolved == 0:
 // no glass profile / no damage textures yet). Called once after StageObjects_Init,
 // when CarEffects_Init has filled its tables and the car part sets exist. Cars that
@@ -942,6 +1110,7 @@ void WindshieldGlass_RetryPending(void)
 
 void WindshieldGlass_ResetCache(void)
 {
+    for (int i = 0; i < WG_MAX_CARS; i++) { g_wgDumped[i] = 0; g_wgCockpitMesh[i].byTexture.clear(); g_wgCockpitMesh[i].stamp = -1; g_wgCockpitMesh[i].polls = 0; }
     WindshieldGlass_ClearCockpitExtensions();
     WindshieldGlass_RestoreAll();
     for (int i = 0; i < WG_MAX_CARS; i++) {
