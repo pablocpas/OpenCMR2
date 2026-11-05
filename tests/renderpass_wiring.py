@@ -27,3 +27,22 @@ view=game[game.index('int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pC
 assert view.index('CGraphics::SetProjection(0, 0, CGraphics::m_farPlaneFixed, 0)') < view.index('Particle_DrawAll(')
 assert view.index('Particle_DrawAll(') < view.index('Game_DrawCulledSectorMeshes(')
 assert view.index('Scene_DrawShadowBatches(bit)') < view.index('Gfx_FlushDustVolume()') < view.index('Flare_SampleVisibility(') < view.index('Sprite_DrawLayer(3)')
+
+# Every fullscreen constructor is bound by PostProcessPass, which has no
+# depth attachment. Shader depth samplers do not make a depth target.
+import re
+constructors = dict(re.findall(r'SDL_GPUGraphicsPipeline \*(\w+)Pipeline\([^)]*\)\s*\{(.*?)\n    \}', s, re.S))
+fullscreen = {"MotionBlur", "PostProcess", "LensGrime", "SpeedStreak", "Dof", "GodRays", "Fog", "ColorGrading"}
+assert fullscreen <= constructors.keys(), "fullscreen constructor audit incomplete"
+for name, body in constructors.items():
+    if name in {"Clear", "Shadow"} or "SDL_GPUGraphicsPipelineCreateInfo" not in body:
+        continue  # real geometry/shadow passes attach depth
+    assert 'has_depth_stencil_target = false' in body, name + " must match its color-only pass"
+    assert 'has_depth_stencil_target = true' not in body, name + " unexpectedly declares depth"
+pass_source = (root/'src/render/postprocess_pass.h').read_text()
+assert 'SDL_BeginGPURenderPass(cmd,&colour,1,nullptr)' in pass_source
+helper = s[s.index('bool PostProcessPass('):s.index('bool PrepareDustResources(')]
+assert 'Gfx_BeginPostProcessPass(' in helper
+for name in fullscreen - {"PostProcess"}:
+    assert re.search(r'PostProcessPass\(cmd,\s*'+name+r'Pipeline\(\)', s), name + " pass route changed"
+print('all fullscreen pipeline declarations match color-only passes')

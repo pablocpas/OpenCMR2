@@ -1516,7 +1516,7 @@ struct Executor : GfxExecutor {
         info.target_info.color_target_descriptions = &color;
         info.target_info.num_color_targets = 1;
         info.target_info.depth_stencil_format = depthFormat;
-        info.target_info.has_depth_stencil_target = true;
+        info.target_info.has_depth_stencil_target = false;
         lensGrimePipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
         if (lensGrimePipeline == NULL)
             Sys_Log("gfx: lens grime pipeline: %s", SDL_GetError());
@@ -1546,7 +1546,7 @@ struct Executor : GfxExecutor {
         info.target_info.color_target_descriptions = &color;
         info.target_info.num_color_targets = 1;
         info.target_info.depth_stencil_format = depthFormat;
-        info.target_info.has_depth_stencil_target = true;
+        info.target_info.has_depth_stencil_target = false;
         speedStreakPipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
         if (speedStreakPipeline == NULL)
             Sys_Log("gfx: speed streak pipeline: %s", SDL_GetError());
@@ -1578,7 +1578,7 @@ struct Executor : GfxExecutor {
         info.target_info.color_target_descriptions = &color;
         info.target_info.num_color_targets = 1;
         info.target_info.depth_stencil_format = depthFormat;
-        info.target_info.has_depth_stencil_target = true;
+        info.target_info.has_depth_stencil_target = false;
         dofPipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
         if (dofPipeline == NULL)
             Sys_Log("gfx: dof pipeline: %s", SDL_GetError());
@@ -1610,7 +1610,7 @@ struct Executor : GfxExecutor {
         info.target_info.color_target_descriptions = &color;
         info.target_info.num_color_targets = 1;
         info.target_info.depth_stencil_format = depthFormat;
-        info.target_info.has_depth_stencil_target = true;
+        info.target_info.has_depth_stencil_target = false;
         godRaysPipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
         if (godRaysPipeline == NULL)
             Sys_Log("gfx: god rays pipeline: %s", SDL_GetError());
@@ -1817,7 +1817,7 @@ struct Executor : GfxExecutor {
         info.target_info.color_target_descriptions = &color;
         info.target_info.num_color_targets = 1;
         info.target_info.depth_stencil_format = depthFormat;
-        info.target_info.has_depth_stencil_target = true;
+        info.target_info.has_depth_stencil_target = false;
         fogPipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
         if (fogPipeline == NULL)
             Sys_Log("gfx: fog pipeline: %s", SDL_GetError());
@@ -1850,7 +1850,7 @@ struct Executor : GfxExecutor {
         info.target_info.color_target_descriptions = &color;
         info.target_info.num_color_targets = 1;
         info.target_info.depth_stencil_format = depthFormat;
-        info.target_info.has_depth_stencil_target = true;
+        info.target_info.has_depth_stencil_target = false;
         colorGradingPipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
         if (colorGradingPipeline == NULL)
             Sys_Log("gfx: color grading pipeline: %s", SDL_GetError());
