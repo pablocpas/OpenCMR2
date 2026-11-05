@@ -63,6 +63,9 @@ int main(){
   t=p;CHECK(run({"t","--fog-probe","1"})&&e2.empty());t.Apply();
   CHECK(t.overrides["video.fog_probe"]==1);   // one-shot fog depth probe flag parses
   CHECK(run({"t","--fog-probe","2"})&&!e2.empty());
+  t=p;CHECK(run({"t","--cockpit-extend-probe","1"})&&e2.empty());t.Apply();
+  CHECK(t.overrides["video.cockpit_extend_probe"]==1);   // extension visibility probe flag parses
+  CHECK(run({"t","--cockpit-extend-probe","2"})&&!e2.empty());
   t=p;CHECK(run({"t","--fog-spatial","1","--fog-evolve","-40"})&&e2.empty());t.Apply();
   CHECK(t.overrides["video.fog_spatial"]==1&&t.overrides["video.fog_evolve"]==60);   // signed CLI stored 0..200 neutral 100
   CHECK(run({"t","--fog-spatial","2"})&&!e2.empty());CHECK(run({"t","--fog-evolve","101"})&&!e2.empty());CHECK(run({"t","--fog-evolve","-101"})&&!e2.empty());
