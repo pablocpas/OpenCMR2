@@ -6770,7 +6770,9 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
                 Sys_GetOption("video.windscreen_dirt",40),Sys_GetOption("video.windscreen_wipers",1),Sys_GetOption("video.windshield_cracks",1),
                 (wsResolved&&Sys_GetOption("video.windshield_crack_overlay",0)==0)?"ok":WindshieldGlass_FailReason(mv),wsGlass);
             line(text,wsResolved?wsLit:wsDim);
-            snprintf(text,sizeof text,"Windshield overlay: draw %u/%u | dirt %d | %s",wsDrawn,wsCalls,wsDirt,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached");
+            int wsWipeT=-1,wsCleared=0,wsAspect=0;
+            Windshield_GetWipeDiag(mv,&wsWipeT,&wsCleared,&wsAspect);
+            snprintf(text,sizeof text,"Windshield overlay: draw %u/%u | dirt %d | %s | wipe t%d clr%d asp%d",wsDrawn,wsCalls,wsDirt,wsReason>=0&&wsReason<3?wsWhy[wsReason]:"never reached",wsWipeT,wsCleared,wsAspect);
             line(text,wsDrawn>0?wsLit:wsDim);
         }
         if(hitchText[0])line(hitchText);
