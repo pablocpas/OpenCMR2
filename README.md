@@ -231,7 +231,7 @@ Download the package for your platform from
 | macOS (Apple silicon) | `OpenCMR2-macOS-arm64.zip` |
 | Android | `OpenCMR2-Android.apk` |
 
-The optional macOS DMG (manual `macos-dmg` workflow) contains `OpenCMR2.app`: it asks once for your own game folder and car ZIP folder, prepares the private asset pack and starts the same options as `./rebuild.sh --all-mods` (needs Python 3.10+ once, ad-hoc signed, not notarized; see its READ ME FIRST.txt).
+The optional macOS DMG (manual `macos-dmg` workflow) contains `OpenCMR2.app`: it asks once for your own game folder and car ZIP folder, prepares the private asset pack and starts the same options as `./rebuild.sh --all-mods` (needs Python 3.10+ once, Developer ID signed, not notarized; see its READ ME FIRST.txt).
 
 Extract it and run `opencmr2`. On first launch, choose the folder of your PC
 installation. The installation itself, a folder inside it or a parent folder
