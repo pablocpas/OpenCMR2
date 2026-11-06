@@ -9250,6 +9250,7 @@ void CarInterior_AnimateWipers(int index)
 // Rain intensity selects slow/fast wiper steps. Mode 1 finishes the current
 // sweep; angle and step keep their signed-short overflow and strict limits.
 int Windshield_FrontGlassBroken(int slot);   // WindshieldDirt.cpp
+int Windshield_DryWipeWanted(int slot, int running);   // WindshieldDirt.cpp
 // FUNCTION: CMR2 0x00476c70
 void CarInterior_UpdateWiperSweep(int index)
 {
@@ -9284,15 +9285,20 @@ void CarInterior_UpdateWiperSweep(int index)
             g_carWiperStates[index].step = rand() % 0xb + 0x2d;
         }
     } else {
-        // OpenCMR2: the blades also run dry ("make em work always") - a slow
-        // continuous sweep so they clear the dirt that builds without rain.
-        // Parking (mode 1) still finishes its sweep first and then restarts.
+        // OpenCMR2: dry weather. The blades sweep only while the glass is
+        // dirty enough (hysteresis in Windshield_DryWipeWanted); otherwise they
+        // stay parked so dirt can build on the lower glass too. Parking (mode
+        // 1) still finishes its sweep first.
         if (g_carWiperStates[index].mode == 0) {
-            g_carWiperStates[index].mode = 2;
-            g_carWiperStates[index].step = rand() % 0xb + 0x2d;
+            if (Windshield_DryWipeWanted(index, 0)) {
+                g_carWiperStates[index].mode = 2;
+                g_carWiperStates[index].step = rand() % 0xb + 0x2d;
+            }
         } else if (g_carWiperStates[index].mode == 3) {
             g_carWiperStates[index].mode = 2;   // dry: never the fast rain step
             g_carWiperStates[index].step = rand() % 0xb + 0x2d;
+        } else if (g_carWiperStates[index].mode == 2 && !Windshield_DryWipeWanted(index, 1)) {
+            g_carWiperStates[index].mode = 1;   // clean enough: finish the sweep and park
         }
     }
     if (g_carWiperStates[index].mode != 0) {

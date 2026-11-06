@@ -180,6 +180,14 @@ int main()
     CHECK(Windshield_OverlayVisible(1) == 1);
     CHECK(Windshield_OverlayVisible(2) == 0);
 
+    // Dry auto wipe hysteresis: idle when clean, start when dirty, park when clean again.
+    int cells = WINDSHIELD_MAP_W * WINDSHIELD_MAP_H;
+    CHECK(Windshield_DryWipeWantedForTotal(0, 0) == 0);
+    CHECK(Windshield_DryWipeWantedForTotal(cells * (kDryWipeStart - 1), 0) == 0);
+    CHECK(Windshield_DryWipeWantedForTotal(cells * kDryWipeStart, 0) == 1);
+    CHECK(Windshield_DryWipeWantedForTotal(cells * (kDryWipeStop + 1), 1) == 1);
+    CHECK(Windshield_DryWipeWantedForTotal(cells * (kDryWipeStop - 1), 1) == 0);
+
     std::printf(fails ? "FAILED\n" : "windshield dirt ok\n");
     return fails ? 1 : 0;
 }

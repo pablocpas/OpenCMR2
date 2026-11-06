@@ -182,6 +182,18 @@ inline int Windshield_OverlayVisible(int glassState)
     return glassState != 2;
 }
 
+// Dry-weather auto wipe (hysteresis). The blades used to sweep constantly when
+// dry, which kept the swept (lower) glass permanently clean. Now a dry sweep
+// starts only once the mean dirt per map cell passes kDryWipeStart, and the
+// blades park (after finishing the sweep) once it falls below kDryWipeStop.
+static const int kDryWipeStart = 12;
+static const int kDryWipeStop = 3;
+inline int Windshield_DryWipeWantedForTotal(int totalDirt, int running)
+{
+    int mean = totalDirt / (WINDSHIELD_MAP_W * WINDSHIELD_MAP_H);
+    return running ? mean >= kDryWipeStop : mean >= kDryWipeStart;
+}
+
 // Total dirt (for "is it worth drawing" and the F10 line).
 inline int Windshield_TotalDirt(const WindshieldMap *m)
 {
