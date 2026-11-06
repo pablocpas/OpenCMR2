@@ -39,35 +39,42 @@ static void DistanceTransform1D(const float *f, const float *qq,
   }
   k = 0;
   int vk = v[0];
+  // Bolt optimization: cache f_vk = f[vk] in local register across queries q,
+  // updating it only when k advances, avoiding repeated memory lookups f[vk].
+  float f_vk = f[vk];
   float zk1 = z[1];
   float q_f = 0.0f;
   for (int q = 0; q < n; q++, q_f += 1.0f) {
     while (zk1 < q_f) {
       k++;
       vk = v[k];
+      f_vk = f[vk];
       zk1 = z[k + 1];
     }
     float dq = q_f - (float)vk;
-    d[q] = std::min(dq * dq + f[vk], 1e20f);
+    d[q] = std::min(dq * dq + f_vk, 1e20f);
   }
 }
 
 // 2D distance transform using preallocated scratch buffers to eliminate
 // redundant vector allocations between the inside and outside distance passes.
-static void DistanceTransform(std::vector<float> &grid, int w, int h,
+// Operates on raw pointers with cached column/row pointers to simplify indexing.
+static void DistanceTransform(float *grid, int w, int h,
                               const float *qq, const float *inv_denom_table,
                               float *f, float *f_plus_qq,
                               float *d, float *z, int *v) {
   for (int x = 0; x < w; x++) {
+    float *col = grid + x;
     for (int y = 0; y < h; y++)
-      f[y] = grid[(size_t)y * w + x];
+      f[y] = col[(size_t)y * w];
     DistanceTransform1D(f, qq, f_plus_qq, inv_denom_table, d, h, v, z);
     for (int y = 0; y < h; y++)
-      grid[(size_t)y * w + x] = d[y];
+      col[(size_t)y * w] = d[y];
   }
   for (int y = 0; y < h; y++) {
-    DistanceTransform1D(&grid[(size_t)y * w], qq, f_plus_qq, inv_denom_table, d, w, v, z);
-    memcpy(&grid[(size_t)y * w], d, w * sizeof(float));
+    float *row = grid + (size_t)y * w;
+    DistanceTransform1D(row, qq, f_plus_qq, inv_denom_table, d, w, v, z);
+    memcpy(row, d, w * sizeof(float));
   }
 }
 
@@ -76,11 +83,15 @@ static void DistanceTransform(std::vector<float> &grid, int w, int h,
 std::vector<float> FromCoverage(const std::vector<float> &coverage, int w,
                                 int h) {
   const float inf = 1e20f;
-  std::vector<float> toInside(coverage.size()), toOutside(coverage.size());
-  for (size_t i = 0; i < coverage.size(); i++) {
-    bool in = coverage[i] >= 0.5f;
-    toInside[i] = in ? 0.0f : inf;
-    toOutside[i] = in ? inf : 0.0f;
+  const size_t sz = coverage.size();
+  std::vector<float> toInside(sz), toOutside(sz);
+  const float *cov = coverage.data();
+  float *inside = toInside.data();
+  float *outside = toOutside.data();
+  for (size_t i = 0; i < sz; i++) {
+    bool in = cov[i] >= 0.5f;
+    inside[i] = in ? 0.0f : inf;
+    outside[i] = in ? inf : 0.0f;
   }
   // Bolt optimization: eliminate 8 separate std::vector heap allocations per
   // FromCoverage call by using a contiguous stack scratch buffer for common UI
@@ -113,11 +124,12 @@ std::vector<float> FromCoverage(const std::vector<float> &coverage, int w,
   for (int i = 1; i <= n; i++)
     inv_denom[i] = 0.5f / (float)i;
 
-  DistanceTransform(toInside, w, h, qq, inv_denom, f, f_plus_qq, d, z, v);
-  DistanceTransform(toOutside, w, h, qq, inv_denom, f, f_plus_qq, d, z, v);
-  for (size_t i = 0; i < coverage.size(); i++)
-    toInside[i] = toOutside[i] > 0 ? sqrtf(toOutside[i]) - 0.5f
-                                   : 0.5f - sqrtf(toInside[i]);
+  DistanceTransform(inside, w, h, qq, inv_denom, f, f_plus_qq, d, z, v);
+  DistanceTransform(outside, w, h, qq, inv_denom, f, f_plus_qq, d, z, v);
+  for (size_t i = 0; i < sz; i++) {
+    float out_val = outside[i];
+    inside[i] = (out_val > 0.0f) ? (sqrtf(out_val) - 0.5f) : (0.5f - sqrtf(inside[i]));
+  }
   return toInside;
 }
 
