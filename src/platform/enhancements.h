@@ -21,7 +21,7 @@ struct EnhancementOptions {
         if(equal==key.npos && key=="--asset-upgrades"){trees="shell";treeCoverage="all";spectators="animated";textures="uprez";roads="finland1";return true;}
         if(equal==key.npos && key=="--prepare-only"){prepareOnly=true;return true;}
         if(equal==key.npos && key=="--install-enhancement-deps"){installDependencies=true;return true;}
-        if(key!="--camera-roll"&&key!="--sun-glare"&&key!="--textures"&&key!="--roads"&&key!="--tree-wind"&&key!="--car-names"&&key!="--trees"&&key!="--spectators"&&key!="--driver-names"&&key!="--cars"&&key!="--mods-dir"&&key!="--effect"&&key!="--attract-capture"&&key!="--capture-interval"&&key!="--capture-count"&&key!="--speed-fov"&&key!="--tunnel-vision"&&key!="--tunnel-lines"&&key!="--speed-motes-stretch"&&key!="--speed-motes-amount"&&key!="--speed-motes-size"&&key!="--dof-blur-max-px"&&key!="--speed-streak"&&key!="--speed-hold"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--cockpit-eye-shift"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--camera-move-chase"&&key!="--camera-move-cockpit"&&key!="--camera-move-car"&&key!="--fov-dolly-curve"&&key!="--tire-debris"&&key!="--tree-rustle"&&key!="--spectator-irregular"&&key!="--tire-track-length"&&key!="--tire-track-history"&&key!="--camera-move-type"&&key!="--fov-preview"&&key!="--dof-focus-car"&&key!="--drone-speed-drop"&&key!="--drone-distance"&&key!="--speed-fov-cockpit"&&key!="--cockpit-blur-clear"&&key!="--test-preset"&&key!="--fog-amount"&&key!="--fog-glow"&&key!="--fog-clear"&&key!="--fog-lights"&&key!="--fog-cull"&&key!="--fog-probe"&&key!="--fog-spatial"&&key!="--brush-volume"&&key!="--fog-evolve"&&key!="--air-motes-amount"&&key!="--snow-glint"&&key!="--cockpit-door-extend"&&key!="--cockpit-extend-rear"&&key!="--cockpit-extend-probe"&&key!="--windshield-crack-overlay"&&key!="--tunnel-track"&&key!="--diag-replay-glass"&&key!="--replay-export")return false;
+        if(key!="--camera-roll"&&key!="--sun-glare"&&key!="--textures"&&key!="--roads"&&key!="--tree-wind"&&key!="--car-names"&&key!="--trees"&&key!="--spectators"&&key!="--driver-names"&&key!="--cars"&&key!="--mods-dir"&&key!="--effect"&&key!="--attract-capture"&&key!="--capture-interval"&&key!="--capture-count"&&key!="--speed-fov"&&key!="--tunnel-vision"&&key!="--tunnel-lines"&&key!="--speed-motes-stretch"&&key!="--speed-motes-amount"&&key!="--speed-motes-size"&&key!="--dof-blur-max-px"&&key!="--speed-streak"&&key!="--speed-hold"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--cockpit-eye-shift"&&key!="--tree-coverage"&&key!="--spectator-gain"&&key!="--camera-move-chase"&&key!="--camera-move-cockpit"&&key!="--camera-move-car"&&key!="--fov-dolly-curve"&&key!="--tire-debris"&&key!="--tree-rustle"&&key!="--spectator-irregular"&&key!="--tire-track-length"&&key!="--tire-track-history"&&key!="--camera-move-type"&&key!="--fov-preview"&&key!="--dof-focus-car"&&key!="--drone-speed-drop"&&key!="--drone-distance"&&key!="--speed-fov-cockpit"&&key!="--cockpit-blur-clear"&&key!="--test-preset"&&key!="--fog-amount"&&key!="--fog-glow"&&key!="--fog-clear"&&key!="--fog-lights"&&key!="--fog-cull"&&key!="--fog-probe"&&key!="--fog-spatial"&&key!="--brush-volume"&&key!="--fog-evolve"&&key!="--air-motes-amount"&&key!="--snow-glint"&&key!="--cockpit-door-extend"&&key!="--cockpit-extend-rear"&&key!="--cockpit-extend-probe"&&key!="--dump-interior"&&key!="--cockpit-mesh"&&key!="--windshield-crack-overlay"&&key!="--tunnel-track"&&key!="--diag-replay-glass"&&key!="--replay-export")return false;
         if(equal==std::string::npos && i+1>=argc){error="Missing value for "+key;return true;}
         std::string value=equal==std::string::npos?argv[++i]:inlineValue;
         if(key=="--camera-roll"){char*end=nullptr;long n=strtol(value.c_str(),&end,10);if(value.empty()||*end||n<0||n>100)error="--camera-roll expects 0..100";else overrides["video.camera_roll"]=(int)n;}
@@ -146,6 +146,16 @@ struct EnhancementOptions {
         if(key=="--cockpit-extend-probe"){
             // One-shot visibility diagnostic for the cockpit extension (video.cockpit_extend_probe); log only.
             if(value!="0"&&value!="1")error="--cockpit-extend-probe expects 0 or 1";else overrides["video.cockpit_extend_probe"]=value=="1"?1:0;
+        }
+        if(key=="--dump-interior"){
+            // One-shot: write the car's cockpit model as <user dir>/interior_dump.obj (scaffold for modelling add-on pieces). 0 = off, default.
+            if(value!="0"&&value!="1")error="--dump-interior expects 0 or 1";
+            else overrides["video.dump_interior"]=value=="1"?1:0;
+        }
+        if(key=="--cockpit-mesh"){
+            // Draw the add-on mesh <user dir>/cockpit_mesh.obj inside the cockpit (hot reloaded on file change). 0 = off, default.
+            if(value!="0"&&value!="1")error="--cockpit-mesh expects 0 or 1";
+            else overrides["video.cockpit_mesh"]=value=="1"?1:0;
         }
         if(key=="--diag-replay-glass"){
             // Diagnostic (default 0): in replays, log every glass/part break-flag transition and the
@@ -306,6 +316,8 @@ inline const char *EnhancementHelp(){return
 "  --fog-lights 0..200         Fog brightening inside head/rear light beams, percent (default 100)\n"
 "  --fog-probe 0|1             One-shot fog depth readback diagnostic on the next fogged frame (SDL_GPU only; logs depth vs expected fog vs actual shift with a verdict; default 0)\n"
 "  --snow-glint 0..200         Ice-crystal glints on snowbanks and falling snow, percent (default 100)\n"
+"  --dump-interior 0|1       One-shot: write the cockpit model to <user dir>/interior_dump.obj as a scaffold for modelling add-on pieces (default 0)\n"
+"  --cockpit-mesh 0|1        Draw the add-on mesh <user dir>/cockpit_mesh.obj in the cockpit; reloads when the file changes (default 0)\n"
 "  --diag-replay-glass 0|1   Diagnostic: in replays, log part break-flag transitions and the saved-damage restore (default 0; log only, no behaviour change)\n"
 "  --cockpit-extend-probe 0|1  One-shot cockpit extension visibility diagnostic: logs where the door-card edge and extension strips land on screen (default 0; log only)\n"
 "  --test-preset overdo        Exaggerated diagnostic look for speed lines/streak, FOV, DoF, tunnel vision 130 with lines (legacy motes off; add --effect speed_motes=on)\n"

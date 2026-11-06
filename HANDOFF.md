@@ -1,3 +1,7 @@
+# Cockpit add-on mesh and interior dump (5 November 2026)
+
+User request (voice, 23:14, phonemsg-01M6PRZY6XPJ87DF6AF62143PA) for a way to view and edit the car interior, then "do B" (23:29): a lighter route than a new editor. `--dump-interior 1` writes the interior as `<user dir>/interior_dump.obj` (scaffold, interior root space, game axes, groups `n<node>_p<part>`, material `tex<N>`); he models extra pieces in Blender; `--cockpit-mesh 1` draws `<user dir>/cockpit_mesh.obj` in the cockpit 3D pass with the interior root's world matrix, hot reloaded on file timestamp (polled every 30 draws). Pure parser/writer/matrix helpers in game/CockpitMesh.h (tests/cockpit_mesh.cpp, synthetic OBJ; round trip, fans, negative indices, bad index). Hooks: WindshieldGlass.cpp, call in Windshield_DrawCrackPane. Defaults on a Subaru, Blender, add-on pieces only (Q3, edit-existing-vertices, unanswered). Steps and Blender settings: docs/COCKPIT-MESH.md. Unverified: no game run, no GL harness, native Metal untested; the dump was never run against a real a5.c3d (no assets here), so the node-space maths (row vectors, node.world * inverse(root.world)) is from the engine code and the unit test only.
+
 # Android effects screen (1 November 2026)
 
 Lane: feat/android-effects-gui, Android-only (android/) plus one workflow
