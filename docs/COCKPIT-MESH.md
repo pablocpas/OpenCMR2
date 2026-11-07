@@ -18,6 +18,14 @@ Texture pixels are not exported (assets are private); the UVs are in the file.
 
 ## 2. Blender
 
+Helper add-on (optional but recommended): install `tools/blender/cockpit_mesh_helper.py`
+(Edit > Preferences > Add-ons > Install...). Its OpenCMR2 sidebar tab has two buttons:
+"Import interior scaffold" (imports with the right axis settings into a locked reference
+collection) and "Validate + export add-ons" (exports only the objects you added, checks
+the material names first, and re-reads the exported file with the same rules the game's
+parser applies, so a rejected file is caught in Blender). Manual settings, if you prefer
+them, follow.
+
 Import: File > Import > Wavefront (.obj), Forward Axis = X, Up Axis = Y, scale 1.0.
 Keep the scaffold as reference (do not edit or export it). Add new pieces as separate objects.
 
