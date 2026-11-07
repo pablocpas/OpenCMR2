@@ -16,7 +16,7 @@ permissions:
 jobs:
   dmg:
     timeout-minutes: 60
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - run: brew install ninja glslang
       - uses: actions/checkout@v4
