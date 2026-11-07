@@ -87,6 +87,53 @@ static void drawAndRead(DWORD *pixels)
     require(Gfx_ReadBackBuffer(0, 0, W, H, pixels), "readback");
 }
 
+static GfxVertexBuffer *folVb;
+static GfxTexture *folTex;
+
+// Alpha-cutout "foliage" quad: left half opaque (leaf), right half cut out
+// (alpha 0). Cutout texels write no depth, so the holes keep whatever depth
+// is behind the quad.
+static void putFoliageQuad()
+{
+    GfxVertex *v = Gfx_LockVertexBuffer(folVb);
+    require(v != NULL, "lock foliage");
+    const float px[4] = { -0.75f, -0.25f, -0.75f, -0.25f };   // screen x 12..36
+    const float py[4] = { -0.30f, -0.30f, 0.30f, 0.30f };
+    const float pu[4] = { 0.f, 1.f, 0.f, 1.f };
+    const float pv[4] = { 0.f, 0.f, 1.f, 1.f };
+    for (int i = 0; i < 4; i++) {
+        memset(&v[i], 0, sizeof v[i]);
+        v[i].x = px[i]; v[i].y = py[i]; v[i].z = 1.2f;   // nearer than the lamp: raw depth ~0.467
+        v[i].nz = -1.f;
+        v[i].diffuse = 0xffffffff;
+        v[i].u0 = pu[i]; v[i].v0 = pv[i];
+    }
+    Gfx_UnlockVertexBuffer(folVb);
+}
+
+static void drawAndReadFoliage(DWORD *pixels)
+{
+    Gfx_SetPostFog(TRUE, 70, 100);
+    Gfx_SetRaceWorld(TRUE);
+    Gfx_Clear(GFX_CLEAR_TARGET | GFX_CLEAR_ZBUFFER, 0xff181c20, 1.0f);
+    Gfx_SetAlphaTest(FALSE);
+    Gfx_SetTexture(0, whiteTex);
+    Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, vb, 0, 4);
+    Gfx_SetAlphaTest(TRUE);
+    Gfx_SetAlphaFunc(GFX_CMP_GREATER);
+    Gfx_SetAlphaRef(0x80);
+    Gfx_SetTexture(0, folTex);
+    Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, folVb, 0, 4);
+    Gfx_SetAlphaTest(FALSE);
+    Gfx_SetAlphaFunc(GFX_CMP_ALWAYS);
+    Gfx_SetAlphaRef(0);
+    Gfx_EndWorldEffects();
+    static DWORD dummy[W * H];
+    (void)Gfx_ReadBackBuffer(0, 0, W, H, dummy);
+    Gfx_Present(0);
+    require(Gfx_ReadBackBuffer(0, 0, W, H, pixels), "readback");
+}
+
 static int red(const DWORD *f, int x, int y) { return (int)((f[y * W + x] >> 16) & 0xff); }   // ARGB red byte
 
 static void dumpPpm(const char *prefix, const char *tag, const DWORD *pixels)
@@ -232,6 +279,19 @@ int main(int argc, char **argv)
         memset(lr.pixels, 0xff, 4);
         Gfx_UnlockTexture(whiteTex, 0, 0);
     }
+    folVb = Gfx_CreateVertexBuffer(4);
+    require(folVb != NULL, "foliage vertex buffer");
+    folTex = Gfx_CreateTexture(4, 1, GFX_FORMAT_BGRA8, 1, 0);
+    require(folTex != NULL, "foliage texture");
+    {   GfxLockedRect lr;
+        require(Gfx_LockTexture(folTex, 0, 0, &lr), "lock foliage tex");
+        unsigned char *p = (unsigned char *)lr.pixels;
+        for (int i = 0; i < 4; i++) {   // BGRA: opaque dark leaf left, cut out right
+            p[i*4+0] = 0x20; p[i*4+1] = 0x50; p[i*4+2] = 0x20;
+            p[i*4+3] = i < 2 ? 0xff : 0x00;
+        }
+        Gfx_UnlockTexture(folTex, 0, 0);
+    }
 
     const char *prefix = argc > 1 ? argv[1] : nullptr;
     static DWORD control[W * H], lit[W * H];
@@ -270,6 +330,34 @@ int main(int argc, char **argv)
     Gfx_SetFogLights(ylights, yn);
     putQuad();
     drawAndRead(yawed);
+
+    // 7. Alpha-cutout foliage between camera and beam (user screenshot
+    // 2026-11-06, replay 2:57: pale halos / dark cutout patches around foliage
+    // near beams). The foliage quad sits nearer than the lamp, so its opaque
+    // leaves must gate the beam's far segments; the cutout holes keep the far
+    // scene depth, so the gate passes there even for segments BEHIND the
+    // foliage. Diagnostic prints measure the leak; the assertion pins the
+    // correct half (leaves gate far segments) so a fix can flip the leak
+    // prints into assertions.
+    static DWORD folCon[W * H], folLit[W * H];
+    Gfx_SetFogLights(nullptr, 0);
+    putQuad(); putFoliageQuad();
+    drawAndReadFoliage(folCon);
+    Gfx_SetFogLights(ylights, yn);
+    putQuad(); putFoliageQuad();
+    drawAndReadFoliage(folLit);
+    dumpPpm(prefix, "foliage", folLit);
+    {   int leafLift = red(folLit,18,32) - red(folCon,18,32);   // opaque half, beam path
+        int holeLift = red(folLit,32,32) - red(folCon,32,32);   // cutout half, beam path
+        fprintf(stderr, "foliage gate: leaf lift %+d, hole lift %+d (leak = hole - leaf)\n", leafLift, holeLift);
+        // Measured on llvmpipe 96x64: leaf +0, hole +77. The leaf assertion
+        // pins the correct half of the gate (opaque foliage occludes the
+        // beam). The hole assertion pins the CURRENT leak as the regression
+        // target: a fix must flip it to holeLift <= leafLift + 8 (cutout
+        // pixels occluded by the foliage they belong to).
+        require(leafLift >= -2 && leafLift <= 8, "foliage: opaque leaf gates the beam");
+        require(holeLift >= 40, "foliage: KNOWN LEAK - beam passes through cutout holes (flip when fixed)");
+    }
 
     dumpPpm(prefix, "lookback", rlook);
     dumpPpm(prefix, "yawed", yawed);
