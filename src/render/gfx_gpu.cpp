@@ -145,6 +145,10 @@ SDL_GPUPrimitiveType PrimitiveType(int d3d)
 struct GpuTexture {
     SDL_GPUTexture *texture = nullptr;
     SDL_GPUTexture *depth = nullptr;       // render targets
+    // A cube render target's faces are drawn in these 2D targets and copied
+    // into the cube, which is then only sampled. Drawing in the cube's layers
+    // directly broke the whole picture on the Adreno 840 (#46).
+    SDL_GPUTexture *faces[6] = {};
     SDL_GPUTextureFormat format;
     bool cpuDecode = false;                // BC data decoded on the CPU (no BC support)
 };
@@ -429,6 +433,12 @@ struct Executor : GfxExecutor {
         SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
         if (target)
             usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+        if (cube && target) {
+            usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+            for (int f = 0; f < 6; f++)
+                g->faces[f] = CreateTexture(SDL_GPU_TEXTURETYPE_2D, g->format, t->width, t->height, 1, 1,
+                                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
+        }
         g->texture = CreateTexture(cube ? SDL_GPU_TEXTURETYPE_CUBE : SDL_GPU_TEXTURETYPE_2D, g->format, t->width,
                                    t->height, cube ? 6 : 1, t->mipLevels, usage);
         if (target)
@@ -554,6 +564,8 @@ struct Executor : GfxExecutor {
             return;
         SDL_ReleaseGPUTexture(device, g->texture);
         SDL_ReleaseGPUTexture(device, g->depth);
+        for (SDL_GPUTexture *face : g->faces)
+            SDL_ReleaseGPUTexture(device, face);
         delete g;
         t->gpu = NULL;
     }
@@ -691,6 +703,8 @@ struct Executor : GfxExecutor {
         info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
         info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        // CreateDevice leaves depth clamping off, which needs depth clipping.
+        info.rasterizer_state.enable_depth_clip = true;
         info.depth_stencil_state.enable_depth_test = depth;
         info.depth_stencil_state.enable_depth_write = depth;
         info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
@@ -1083,8 +1097,14 @@ struct Executor : GfxExecutor {
         } else {
             GfxTexture *root = target->cube != NULL ? target->cube : target;
             GpuTexture *g = Ensure(root);
-            color.texture = g->texture;
-            color.layer_or_depth_plane = target->cube != NULL ? target->face : 0;
+            // Face 0 of a cube is the cube itself.
+            int face = target->cube != NULL ? target->face : 0;
+            if (g->faces[face] != NULL) {
+                color.texture = g->faces[face];
+            } else {
+                color.texture = g->texture;
+                color.layer_or_depth_plane = target->cube != NULL ? target->face : 0;
+            }
             depth.texture = g->depth;
             w = root->width;
             h = root->height;
@@ -1108,6 +1128,27 @@ struct Executor : GfxExecutor {
             (*cleared)++;
         }
         return SDL_BeginGPURenderPass(cmd, &color, 1, &depth);
+    }
+
+    // Ends the render pass on target; a cube face's goes on into the cube.
+    void EndPass(SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pass, GfxTexture *target)
+    {
+        SDL_EndGPURenderPass(pass);
+        if (target == NULL)
+            return;
+        // Face 0 of a cube is the cube itself.
+        GfxTexture *root = target->cube != NULL ? target->cube : target;
+        int face = target->cube != NULL ? target->face : 0;
+        GpuTexture *g = (GpuTexture *)root->gpu;
+        if (g == NULL || g->faces[face] == NULL || g->texture == NULL)
+            return;
+        SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
+        SDL_GPUTextureLocation src = {}, dst = {};
+        src.texture = g->faces[face];
+        dst.texture = g->texture;
+        dst.layer = (Uint32)face;
+        SDL_CopyGPUTextureToTexture(copy, &src, &dst, root->width, root->height, 1, false);
+        SDL_EndGPUCopyPass(copy);
     }
 
     void Execute(GfxFrame &frame, std::vector<GfxTexture *> &textures, GfxReadback &readback, bool present,
@@ -1148,7 +1189,7 @@ struct Executor : GfxExecutor {
             const GfxCommand &c = frame.commands[i];
             if (c.type == GFX_CMD_TARGET) {
                 if (pass != NULL) {
-                    SDL_EndGPURenderPass(pass);
+                    EndPass(cmd, pass, target);
                     pass = NULL;
                 }
                 target = c.target;
@@ -1268,7 +1309,7 @@ struct Executor : GfxExecutor {
             }
         }
         if (pass != NULL)
-            SDL_EndGPURenderPass(pass);
+            EndPass(cmd, pass, target);
 
         if (!present) {
             SDL_SubmitGPUCommandBuffer(cmd);
