@@ -39,6 +39,11 @@ target_link_libraries(gpu_clear_test PRIVATE opencmr2_platform)
 add_test(NAME gpu_clear COMMAND gpu_clear_test)
 set_tests_properties(gpu_clear PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30)
 
+add_executable(gpu_distance_fade_test gpu_distance_fade.cpp)
+target_link_libraries(gpu_distance_fade_test PRIVATE opencmr2_platform)
+add_test(NAME gpu_distance_fade COMMAND gpu_distance_fade_test)
+set_tests_properties(gpu_distance_fade PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30)
+
 # FTOI vs a real x87 FISTP (the /QIfist conversion of the original).
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "i[3-6]86|x86|AMD64|amd64")
     add_executable(ftoi_fistp_test ftoi_fistp.cpp)

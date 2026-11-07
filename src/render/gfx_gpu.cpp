@@ -186,6 +186,8 @@ struct Executor : GfxExecutor {
     SDL_GPUDevice *device = nullptr;
     SDL_Window *window = nullptr;
     SDL_GPUShader *vs3d = nullptr, *vsTL = nullptr, *fs = nullptr, *vsClear = nullptr, *fsClear = nullptr;
+    SDL_GPUShader *fsBackdrop = nullptr;
+    SDL_GPUGraphicsPipeline *backdropPipeline = nullptr;
     SDL_GPUTexture *backColor = nullptr, *backDepth = nullptr;
     SDL_GPUTexture *backdrop = nullptr;    // the copy of backColor the distance fade reads
     int backWidth = 0, backHeight = 0;
@@ -227,6 +229,7 @@ struct Executor : GfxExecutor {
         }
         for (auto &p : pipelines)
             SDL_ReleaseGPUGraphicsPipeline(device, p.second);
+        SDL_ReleaseGPUGraphicsPipeline(device, backdropPipeline);
         for (auto &s : samplers)
             SDL_ReleaseGPUSampler(device, s.second);
         SDL_ReleaseGPUTexture(device, backColor);
@@ -242,6 +245,7 @@ struct Executor : GfxExecutor {
         SDL_ReleaseGPUShader(device, fs);
         SDL_ReleaseGPUShader(device, vsClear);
         SDL_ReleaseGPUShader(device, fsClear);
+        SDL_ReleaseGPUShader(device, fsBackdrop);
         SDL_ReleaseWindowFromGPUDevice(device, window);
         SDL_DestroyGPUDevice(device);
     }
@@ -332,8 +336,26 @@ struct Executor : GfxExecutor {
         fs = Shader(SHADER_CODE(fixed_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 7, 1);
         vsClear = Shader(SHADER_CODE(clear_vert), SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         fsClear = Shader(SHADER_CODE(clear_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 1);
-        if (!vs3d || !vsTL || !fs || !vsClear || !fsClear)
+        fsBackdrop = Shader(SHADER_CODE(backdrop_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 0);
+        if (!vs3d || !vsTL || !fs || !vsClear || !fsClear || !fsBackdrop)
             return false;
+
+        SDL_GPUColorTargetDescription backdropTarget = {};
+        backdropTarget.format = colorFormat;
+        SDL_GPUGraphicsPipelineCreateInfo backdropInfo = {};
+        backdropInfo.vertex_shader = vsClear;
+        backdropInfo.fragment_shader = fsBackdrop;
+        backdropInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        backdropInfo.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        backdropInfo.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        backdropInfo.rasterizer_state.enable_depth_clip = true;
+        backdropInfo.target_info.color_target_descriptions = &backdropTarget;
+        backdropInfo.target_info.num_color_targets = 1;
+        backdropPipeline = SDL_CreateGPUGraphicsPipeline(device, &backdropInfo);
+        if (!backdropPipeline) {
+            Sys_Log("gfx: backdrop pipeline: %s", SDL_GetError());
+            return false;
+        }
 
         white2D = CreateTexture(SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM, 1, 1, 1, 1,
                                 SDL_GPU_TEXTUREUSAGE_SAMPLER);
@@ -386,7 +408,7 @@ struct Executor : GfxExecutor {
             backDepth = CreateTexture(SDL_GPU_TEXTURETYPE_2D, depthFormat, width, height, 1, 1,
                                       SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
             backdrop = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
-                                     SDL_GPU_TEXTUREUSAGE_SAMPLER);
+                                     SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
             backWidth = width;
             backHeight = height;
             if (backColor == NULL || backDepth == NULL || backdrop == NULL)
@@ -1165,20 +1187,30 @@ struct Executor : GfxExecutor {
                 continue;
             }
             if (c.type == GFX_CMD_BACKDROP) {
-                // A copy pass between render passes; the next draw starts a
-                // render pass that loads the back buffer as it is.
+                // Capture through a render pass instead of a transfer copy.
+                // Cycling leaves snapshots read by earlier frames intact.
                 if (target != NULL)
                     continue;
                 if (pass != NULL) {
                     SDL_EndGPURenderPass(pass);
                     pass = NULL;
                 }
-                SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
-                SDL_GPUTextureLocation src = {}, dst = {};
-                src.texture = backColor;
-                dst.texture = backdrop;
-                SDL_CopyGPUTextureToTexture(copy, &src, &dst, backWidth, backHeight, 1, false);
-                SDL_EndGPUCopyPass(copy);
+                SDL_GPUColorTargetInfo color = {};
+                color.texture = backdrop;
+                color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+                color.store_op = SDL_GPU_STOREOP_STORE;
+                color.cycle = true;
+                SDL_GPURenderPass *capture = SDL_BeginGPURenderPass(cmd, &color, 1, NULL);
+                SDL_BindGPUGraphicsPipeline(capture, backdropPipeline);
+                SDL_GPUTextureSamplerBinding source = { backColor, Sampler(GfxStageState()) };
+                SDL_BindGPUFragmentSamplers(capture, 0, &source, 1);
+                ClearUniforms u = {};
+                SDL_PushGPUVertexUniformData(cmd, 0, &u, sizeof(u));
+                SDL_DrawGPUPrimitives(capture, 3, 1, 0, 0);
+                SDL_EndGPURenderPass(capture);
+                // The full-screen triangle uses the clear vertex uniforms.
+                vertexUniformState = NULL;
+                fragmentUniformsSet = false;
                 continue;
             }
             if (pass == NULL) {
