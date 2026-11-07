@@ -219,10 +219,12 @@ static void Windshield_DrawDirtPane(int view)
     }
     GfxLockedRect lr;
     if (!Gfx_LockTexture(g_windshieldTex, 0, 0, &lr)) return;
+    int alphaScale = Windshield_DirtAlphaScale(g_windshieldGlassState[mview],
+                                               Sys_GetOption("video.windshield_dirt_fade_cracked", 0));
     for (int y = 0; y < WINDSHIELD_MAP_H; y++) {
         BYTE *row = (BYTE *)lr.pixels + y * lr.pitch;
         for (int x = 0; x < WINDSHIELD_MAP_W; x++) {
-            int d = m->dirt[y * WINDSHIELD_MAP_W + x];
+            int d = m->dirt[y * WINDSHIELD_MAP_W + x] * alphaScale / 255;
             row[x * 4 + 0] = 0x48;   // B: dust brown, reads on dark forest
             row[x * 4 + 1] = 0x62;   // G
             row[x * 4 + 2] = 0x7a;   // R

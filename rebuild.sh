@@ -44,6 +44,8 @@
 #                               stretching the door card's own gradient patch (not a repeating pattern). Original Subaru interior only. Native look unverified
 #   --tunnel-track 0|1        Tunnel vision + speed-streak centre follows the road ahead, cockpit only, eased and clamped (default 1)
 #   --windshield-crack-overlay 0|1  Experimental, default off: in cockpits whose interior model has no glass part (the Subaru), redraw the car's exterior
+#   --windshield-dirt-fade-cracked 0|1
+#                               Dim the windshield dirt film to half strength on cracked (state 1) glass (default 0)
 #                               front-glass triangles with the damaged/broken texture, depth tested against the dash. Native look unverified
 #   --fog-amount N / --fog-glow N / --air-motes-amount N / --snow-glint N / --snow-material N
 #                               Other atmosphere dials (docs/ATMOSPHERE.md), also launch-only passthrough
@@ -98,9 +100,9 @@ while [ "$#" -gt 0 ]; do
         --brush-placement-output) need_value "$@"; BRUSH_OUT="$2"; shift 2 ;;
         --dry-run) DRY=1; shift ;;
         --fog-amount|--fog-glow|--fog-clear|--fog-lights|--air-motes-amount|--fog-evolve|--snow-glint|--snow-material|--cockpit-door-extend|--cockpit-extend-rear) need_value "$@"; TUNING+=("$1" "$2"); shift 2 ;;
-        --fog-cull|--fog-probe|--cockpit-extend-probe|--fog-spatial|--brush-volume|--windshield-crack-overlay|--tunnel-track) need_value "$@"; case "$2" in 0|1) ;; *) die "$1 takes 0 or 1, got '$2'" ;; esac; TUNING+=("$1" "$2"); shift 2 ;;
+        --fog-cull|--fog-probe|--cockpit-extend-probe|--fog-spatial|--brush-volume|--windshield-crack-overlay|--windshield-dirt-fade-cracked|--tunnel-track) need_value "$@"; case "$2" in 0|1) ;; *) die "$1 takes 0 or 1, got '$2'" ;; esac; TUNING+=("$1" "$2"); shift 2 ;;
         --fog-amount=*|--fog-glow=*|--fog-clear=*|--fog-lights=*|--air-motes-amount=*|--fog-evolve=*|--snow-glint=*|--snow-material=*|--cockpit-door-extend=*|--cockpit-extend-rear=*) TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
-        --fog-cull=*|--fog-probe=*|--cockpit-extend-probe=*|--fog-spatial=*|--brush-volume=*|--windshield-crack-overlay=*|--tunnel-track=*) case "${1#*=}" in 0|1) ;; *) die "${1%%=*} takes 0 or 1" ;; esac; TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
+        --fog-cull=*|--fog-probe=*|--cockpit-extend-probe=*|--fog-spatial=*|--brush-volume=*|--windshield-crack-overlay=*|--windshield-dirt-fade-cracked=*|--tunnel-track=*) case "${1#*=}" in 0|1) ;; *) die "${1%%=*} takes 0 or 1" ;; esac; TUNING+=("${1%%=*}" "${1#*=}"); shift ;;
         *) die "unknown option '$1' (see --help)" ;;
     esac
 done
