@@ -805,6 +805,7 @@ add_test(NAME tunnel_road_projection COMMAND tunnel_road_projection_test)
 if(Python3_EXECUTABLE)
     add_test(NAME windshield_composition_wiring COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/windshield_composition_wiring.py)
     add_test(NAME cockpit_mesh_wiring COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cockpit_mesh_wiring.py)
+    add_test(NAME blender_helper COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/blender_helper.py WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 endif()
 
 add_executable(cockpit_mesh_test cockpit_mesh.cpp)
