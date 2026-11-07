@@ -401,24 +401,35 @@ void WriteField(const std::vector<float> &coverage, const Cell &c, int texels, f
     const int up = texels * kOversample;
     const int w = c.w * up, h = c.h * up;
     std::vector<float> distance = DistanceField::FromCoverage(coverage, w, h);
+    // Bolt optimization: Precompute constant RGB color byte conversions once per glyph
+    // cell instead of re-evaluating lroundf for each texel, cache direct row pointers
+    // in destination buffer to avoid redundant index calculations, and unroll the fixed
+    // 4x4 sample summation across distance field samples.
+    const uint8_t r_byte = (uint8_t)lroundf(rgb[2] * 255.0f);
+    const uint8_t g_byte = (uint8_t)lroundf(rgb[1] * 255.0f);
+    const uint8_t b_byte = (uint8_t)lroundf(rgb[0] * 255.0f);
+    const float *dist_data = distance.data();
+
     for (int ty = 0; ty < c.h * texels; ty++) {
         int oy = c.y * texels + ty;
         if (oy < 0 || oy >= outHeight)
             continue;
-        for (int tx = 0; tx < c.w * texels; tx++) {
+        uint8_t *p = &out[((size_t)oy * outWidth + (size_t)c.x * texels) * 4];
+        const size_t row_base = (size_t)(ty * kOversample) * w;
+        for (int tx = 0; tx < c.w * texels; tx++, p += 4) {
             int ox = c.x * texels + tx;
             if (ox < 0 || ox >= outWidth)
                 continue;
-            // The mean signed distance over the texel's samples.
-            float sum = 0;
-            for (int sy = 0; sy < kOversample; sy++)
-                for (int sx = 0; sx < kOversample; sx++)
-                    sum += distance[(size_t)(ty * kOversample + sy) * w + tx * kOversample + sx];
+            const size_t sample_base = row_base + (size_t)(tx * kOversample);
+            float sum = dist_data[sample_base] + dist_data[sample_base + 1] + dist_data[sample_base + 2] + dist_data[sample_base + 3]
+                      + dist_data[sample_base + w] + dist_data[sample_base + w + 1] + dist_data[sample_base + w + 2] + dist_data[sample_base + w + 3]
+                      + dist_data[sample_base + 2 * w] + dist_data[sample_base + 2 * w + 1] + dist_data[sample_base + 2 * w + 2] + dist_data[sample_base + 2 * w + 3]
+                      + dist_data[sample_base + 3 * w] + dist_data[sample_base + 3 * w + 1] + dist_data[sample_base + 3 * w + 2] + dist_data[sample_base + 3 * w + 3];
+
             float a = 0.5f + (sum / (kOversample * kOversample) / up + weight) / (2.0f * kSpread);
-            uint8_t *p = &out[((size_t)oy * outWidth + ox) * 4];
-            p[0] = (uint8_t)lroundf(rgb[2] * 255.0f);
-            p[1] = (uint8_t)lroundf(rgb[1] * 255.0f);
-            p[2] = (uint8_t)lroundf(rgb[0] * 255.0f);
+            p[0] = r_byte;
+            p[1] = g_byte;
+            p[2] = b_byte;
             p[3] = (uint8_t)lroundf(std::min(std::max(a, 0.0f), 1.0f) * 255.0f);
         }
     }
