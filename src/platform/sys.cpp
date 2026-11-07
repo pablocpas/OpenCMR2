@@ -644,6 +644,9 @@ bool Platform_Init(int argc, char **argv)
         if (pref != NULL)
             MoveOldUserDir(s_userDir);
     }
+    // DIAG issue 46: keep the previous session's log, which the launcher
+    // shares with this one.
+    SDL_RenamePath((s_userDir + "opencmr2.log").c_str(), (s_userDir + "opencmr2.prev.log").c_str());
     s_logFile = OpenHostFile((s_userDir + "opencmr2.log").c_str(), "w");
 
     std::string settingsFile = s_userDir + "opencmr2.ini";
@@ -658,6 +661,12 @@ bool Platform_Init(int argc, char **argv)
             dataDir = argv[++i];
         } else if (strcmp(argv[i], "--user-dir") == 0 && i + 1 < argc) {
             ++i;
+        } else if (strcmp(argv[i], "--set") == 0 && i + 1 < argc) {
+            // DIAG issue 46: section.key=value for this session (the launcher's switches).
+            std::string pair = argv[++i];
+            size_t eq = pair.find('=');
+            if (eq != std::string::npos)
+                s_settings[Lower(pair.substr(0, eq))] = pair.substr(eq + 1);
         } else {
             if (!s_commandLine.empty())
                 s_commandLine += ' ';

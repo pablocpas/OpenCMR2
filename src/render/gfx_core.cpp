@@ -13,6 +13,10 @@
 #include <string.h>
 
 #include <algorithm>
+#include <string>
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
 
 namespace {
 
@@ -102,6 +106,143 @@ static uint32_t TraceHash(uint32_t h, const void *data, size_t size)
     return h;
 }
 
+// ---- DIAG issue 46 ----------------------------------------------------------
+// Draws that reach the distance fade (Game_BeginDistanceFade), grouped by the
+// game function that drew them: a 5 s summary, and a line for each frame (at
+// most four a second) with draws lying wholly past the fade's end, which the
+// fade replaces by the backdrop (sky and sun) wherever they cover.
+namespace diag {
+struct Caller {
+    const void *addr;
+    const char *phase;
+    unsigned draws, full, vertices;
+    float minDist, maxDist;
+};
+std::vector<Caller> s_window, s_frame;
+const char *s_phase;
+unsigned s_lines, s_frames, s_maxFrameMs, s_frameNumber;
+uint64_t s_windowStart, s_lastFrame, s_lastFrameLine;
+float s_fadeStart, s_fadeEnd;
+const unsigned kMaxLines = 4000;
+
+bool Enabled()
+{
+    static int on = Platform_GetSettingInt("debug.render_log", 1);
+    return on != 0;
+}
+
+std::string Name(const void *addr)
+{
+    char buf[96];
+#ifndef _WIN32
+    Dl_info info;
+    if (dladdr(addr, &info) && info.dli_fbase != NULL) {
+        const char *file = info.dli_fname ? strrchr(info.dli_fname, '/') : NULL;
+        snprintf(buf, sizeof(buf), "%s+0x%lx", file ? file + 1 : "?",
+                 (unsigned long)((uintptr_t)addr - (uintptr_t)info.dli_fbase));
+        return buf;
+    }
+#endif
+    snprintf(buf, sizeof(buf), "%p", addr);
+    return buf;
+}
+
+Caller &Find(std::vector<Caller> &list, const void *addr)
+{
+    for (Caller &c : list)
+        if (c.addr == addr && c.phase == s_phase)
+            return c;
+    list.push_back({ addr, s_phase, 0, 0, 0, 1e30f, 0.0f });
+    return list.back();
+}
+
+void Draw(const GfxVertex *v, DWORD count, const void *caller)
+{
+    if (!Enabled() || s_target != NULL || count == 0 || !(s_state.fadeEnd > s_state.fadeStart))
+        return;
+    const float *w = &s_state.world._11, *vw = &s_state.view._11;
+    float m[16];
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++)
+            m[i * 4 + j] = w[i * 4] * vw[j] + w[i * 4 + 1] * vw[4 + j] + w[i * 4 + 2] * vw[8 + j] + w[i * 4 + 3] * vw[12 + j];
+    float lo = 1e30f, hi = 0.0f;
+    for (DWORD k = 0; k < count; k++) {
+        float x = v[k].x * m[0] + v[k].y * m[4] + v[k].z * m[8] + m[12];
+        float y = v[k].x * m[1] + v[k].y * m[5] + v[k].z * m[9] + m[13];
+        float z = v[k].x * m[2] + v[k].y * m[6] + v[k].z * m[10] + m[14];
+        float d = sqrtf(x * x + y * y + z * z);
+        lo = std::min(lo, d);
+        hi = std::max(hi, d);
+    }
+    s_fadeStart = s_state.fadeStart;
+    s_fadeEnd = s_state.fadeEnd;
+    if (hi <= s_state.fadeStart)
+        return;
+    bool full = lo >= s_state.fadeEnd;
+    Caller &c = Find(s_window, caller);
+    c.draws++;
+    c.full += full ? 1 : 0;
+    c.vertices += count;
+    c.minDist = std::min(c.minDist, lo);
+    c.maxDist = std::max(c.maxDist, hi);
+    if (full) {
+        Caller &f = Find(s_frame, caller);
+        f.draws++;
+        f.full++;
+        f.vertices += count;
+        f.minDist = std::min(f.minDist, lo);
+        f.maxDist = std::max(f.maxDist, hi);
+    }
+}
+
+void FrameEnd()
+{
+    if (!Enabled())
+        return;
+    uint64_t now = SDL_GetTicks();
+    s_frameNumber++;
+    s_frames++;
+    if (s_lastFrame != 0)
+        s_maxFrameMs = std::max(s_maxFrameMs, (unsigned)(now - s_lastFrame));
+    s_lastFrame = now;
+    if (!s_frame.empty() && s_lines < kMaxLines && now - s_lastFrameLine >= 250) {
+        std::string line = "diag: frame " + std::to_string(s_frameNumber) + " wholly faded draws:";
+        for (const Caller &c : s_frame) {
+            char buf[160];
+            snprintf(buf, sizeof(buf), " [%s] %s x%u (%u vertices, %.0f-%.0f m)", c.phase ? c.phase : "-", Name(c.addr).c_str(), c.draws,
+                     c.vertices, c.minDist, c.maxDist);
+            line += buf;
+        }
+        Sys_Log("%s", line.c_str());
+        s_lines++;
+        s_lastFrameLine = now;
+    }
+    s_frame.clear();
+    if (s_windowStart == 0)
+        s_windowStart = now;
+    if (now - s_windowStart >= 5000) {
+        if (!s_window.empty() && s_lines < kMaxLines) {
+            char head[160];
+            snprintf(head, sizeof(head), "diag: 5 s to frame %u: %u frames, longest %u ms, fade %.0f-%.0f m;",
+                     s_frameNumber, s_frames, s_maxFrameMs, s_fadeStart, s_fadeEnd);
+            std::string line = head;
+            for (const Caller &c : s_window) {
+                char buf[160];
+                snprintf(buf, sizeof(buf), " [%s] %s %u/%u (%.0f-%.0f m)", c.phase ? c.phase : "-", Name(c.addr).c_str(), c.full, c.draws,
+                         c.minDist, c.maxDist);
+                line += buf;
+            }
+            Sys_Log("%s", line.c_str());
+            s_lines++;
+        }
+        s_window.clear();
+        s_frames = 0;
+        s_maxFrameMs = 0;
+        s_windowStart = now;
+    }
+}
+} // namespace diag
+
 // Records a draw; fans become lists (SDL_GPU has no fans). With a buffer,
 // the vertices are firstVertex.. of that buffer.
 void RecordDraw(int primitive, bool transformed, const void *vertices, DWORD vertexCount, const WORD *indices,
@@ -126,6 +267,8 @@ void RecordDraw(int primitive, bool transformed, const void *vertices, DWORD ver
                         s_state.stages[0].texture ? s_state.stages[0].texture->width : 0, s_state.stages[0].texture ? s_state.stages[0].texture->height : 0);
             }
     }
+    if (!transformed)
+        diag::Draw((const GfxVertex *)vertices, vertexCount, s_traceCaller);
     if (vertexCount == 0 || s_executor == NULL)
         return;
     std::vector<uint16_t> fan;
@@ -417,6 +560,7 @@ static void Present(BOOL vsync, bool stretch)
 {
     if (FILE *trace = TraceFile())
         fprintf(trace, "F %u\n", s_traceFrame++);
+    diag::FrameEnd();
     if (Diagnostics::observer)
         Diagnostics::observer->BeginPresent();
     if (s_executor != NULL)
@@ -507,6 +651,11 @@ extern "C" void Gfx_SetRenderTarget(GfxTexture *target)
     s_target = target;
     if (target != NULL)
         Root(target)->renderedTo = true;
+}
+
+extern "C" void Gfx_DiagPhase(const char *name)
+{
+    diag::s_phase = name;
 }
 
 extern "C" void Gfx_CaptureBackdrop(void)

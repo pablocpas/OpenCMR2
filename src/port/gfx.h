@@ -270,6 +270,8 @@ void Gfx_SetRenderTarget(GfxTexture *target);
    scenery dissolves into what lies behind it before the far plane cuts it. end <= start turns
    the fade off. */
 void Gfx_CaptureBackdrop(void);
+/* DIAG issue 46: names the part of the scene the next draws belong to (NULL: none). */
+void Gfx_DiagPhase(const char *name);
 void Gfx_SetDistanceFade(float start, float end);
 
 /* ---- fixed-function state -------------------------------------------------- */

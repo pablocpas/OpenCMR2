@@ -485,6 +485,9 @@ void CGame::SetStartupFlag(void)
 // FUNCTION: CMR2 0x004057e0
 void CGame::SetFrontendResourceMode(int param1)
 {
+    // DIAG issue 46: 0 frontend, 2 service area, 3 stage.
+    if (param1 != m_unk0x0052ea4c)
+        Sys_Log("diag: resource mode %d -> %d (object render mode %d)", m_unk0x0052ea4c, param1, m_unk0x0059ce14);
     m_unk0x0052ea4c = param1;
 }
 
@@ -2040,6 +2043,9 @@ int CGame::GetDrawnOverlayTriangleCount(void)
 // FUNCTION: CMR2 0x0049c420
 void CGame::SetObjectRenderMode(int param1)
 {
+    // DIAG issue 46: 1 is the interior camera's drawing order.
+    if (param1 != m_unk0x0059ce14)
+        Sys_Log("diag: object render mode %d -> %d", m_unk0x0059ce14, param1);
     m_unk0x0059ce14 = param1;
 }
 
@@ -2591,6 +2597,10 @@ static void Game_BeginDistanceFade(void)
     int end = CGraphics::m_farPlaneFixed;
     int start = FixMul(end, 0xd99a);
 
+    // DIAG issue 46: the launcher's switch turns the fade off.
+    static int enabled = Sys_GetOption("video.distance_fade", 1);
+    if (!enabled)
+        return;
     Gfx_CaptureBackdrop();
     Gfx_SetDistanceFade(X87S_MUL(X87S_FILD(float, start), CGraphics::m_oneOver65536),
                         X87S_MUL(X87S_FILD(float, end), CGraphics::m_oneOver65536));
@@ -2683,16 +2693,22 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
             Game_BeginDistanceFade();
             Graphics_EnableFog();
             Graphics_SetLightingMode(0);
+            Gfx_DiagPhase("sector meshes"); // DIAG issue 46
             Game_DrawCulledSectorMeshes();
             Graphics_SetLightingMode(5);
+            Gfx_DiagPhase("sector shadows"); // DIAG issue 46
             Game_DrawCulledSectorShadows();
             Graphics_SwitchAlphaBlendAndTest(1);
+            Gfx_DiagPhase("glows"); // DIAG issue 46
             Glow_Draw(pCamera, (BYTE)bit);
+            Gfx_DiagPhase("quads 8"); // DIAG issue 46
             Quad2D_DrawLayer(8);
             Graphics_SetLightingMode(4);
+            Gfx_DiagPhase("quads 0x20"); // DIAG issue 46
             Quad2D_DrawLayer(0x20);
             Graphics_SetLightingMode(1);
             if (CGame::m_unk0x0059ce14 != 0) {
+                Gfx_DiagPhase("interior: objects"); // DIAG issue 46
                 Game_DrawStaticStageObjects();
                 Game_DrawDeferredObjects();
                 Gfx_SetTransform(GFX_TRANSFORM_WORLD, &g_identityWorldMatrix);
@@ -2700,18 +2716,23 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
                 CGraphics::SetCachedSourceDestinationBlend(5, 6);
                 Gfx_SetFog(0);
                 Graphics_SetLightingMode(5);
+                Gfx_DiagPhase("interior: quads 0x10, lines, billboards"); // DIAG issue 46
                 Quad2D_DrawLayer(0x10);
                 Line2D_Draw();
                 Billboard_Draw(pCamera);
                 Graphics_SetLightingMode(1);
+                Gfx_DiagPhase("interior: sorted nodes"); // DIAG issue 46
                 Game_QueueVisibleSectorNodes(bit);
                 Game_DrawSortedNodes(bit);
             } else {
+                Gfx_DiagPhase("objects and sorted nodes"); // DIAG issue 46
                 Game_DrawStaticStageObjects();
                 Game_QueueVisibleSectorNodes(bit);
                 Game_DrawSortedNodes(bit);
+                Gfx_DiagPhase("deferred objects"); // DIAG issue 46
                 Game_DrawDeferredObjects();
             }
+            Gfx_DiagPhase(NULL); // DIAG issue 46
             Gfx_SetDistanceFade(0.0f, 0.0f);
         } else {
             Game_DrawWorldMeshNodesAnd2DLayer();
@@ -2798,6 +2819,9 @@ void CGame::RegisterNetworkResourceRelease(void)
 // FUNCTION: CMR2 0x004764c0
 void InteriorCamera_EndLeave(CameraRecord *pRecord)
 {
+    if (g_carInteriorRoots[pRecord->car] == NULL) // DIAG issue 46
+        Sys_Log("diag: left the interior camera of car %d without its model; object render mode stays %d",
+                (int)pRecord->car, CGame::GetObjectRenderMode());
     if (g_carInteriorRoots[pRecord->car] != NULL)
         CGame::SetObjectRenderMode(0);
 }
@@ -2805,6 +2829,8 @@ void InteriorCamera_EndLeave(CameraRecord *pRecord)
 // FUNCTION: CMR2 0x00476500
 void InteriorCamera_EndEnter(CameraRecord *pRecord)
 {
+    Sys_Log("diag: entered the interior camera of car %d (model %s)", (int)pRecord->car, // DIAG issue 46
+            g_carInteriorRoots[pRecord->car] != NULL ? "loaded" : "missing");
     if (g_carInteriorRoots[pRecord->car] != NULL)
         CGame::SetObjectRenderMode(1);
 }

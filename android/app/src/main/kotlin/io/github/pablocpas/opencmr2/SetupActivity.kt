@@ -1,5 +1,6 @@
 package io.github.pablocpas.opencmr2
 
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
@@ -16,6 +17,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,7 +30,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -222,13 +226,32 @@ private fun errorText(error: Throwable): String {
 
 @Composable
 private fun LauncherScreen(onStart: () -> Unit, onControls: () -> Unit) {
-    Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Image(painterResource(R.drawable.logo), null, Modifier.size(96.dp).clip(RoundedCornerShape(24.dp)))
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
             Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.launcher_start)) }
             TextButton(onClick = onControls) { Text(stringResource(R.string.controllers_title)) }
+            DiagnosticControls()
         }
     }
+}
+
+// DIAG issue 46: the test switch and the log sharing of the diagnostic build.
+@Composable
+private fun DiagnosticControls() {
+    val context = LocalContext.current
+    var fade by remember { mutableStateOf(DiagnosticLog.distanceFade(context)) }
+    var noLog by remember { mutableStateOf(false) }
+    Text("Diagnostic build (issue 46)", style = MaterialTheme.typography.titleSmall)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Distance fade", Modifier.weight(1f))
+        Switch(checked = fade, onCheckedChange = { fade = it; DiagnosticLog.setDistanceFade(context, it) })
+    }
+    OutlinedButton(onClick = { noLog = !DiagnosticLog.share(context as Activity) }, modifier = Modifier.fillMaxWidth()) {
+        Text("Share log")
+    }
+    if (noLog)
+        Text("No log yet: play first.", style = MaterialTheme.typography.bodySmall)
 }

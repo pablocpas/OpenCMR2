@@ -313,6 +313,14 @@ struct Executor : GfxExecutor {
             return false;
         }
         Sys_Log("gfx: SDL_GPU driver %s", SDL_GetGPUDeviceDriver(device));
+        {
+            // DIAG issue 46: the GPU and its driver.
+            SDL_PropertiesID p = SDL_GetGPUDeviceProperties(device);
+            Sys_Log("diag: GPU %s; driver %s %s (%s)", SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_NAME_STRING, "?"),
+                    SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_DRIVER_NAME_STRING, "?"),
+                    SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_DRIVER_VERSION_STRING, "?"),
+                    SDL_GetStringProperty(p, SDL_PROP_GPU_DEVICE_DRIVER_INFO_STRING, "?"));
+        }
         if (!SDL_GPUTextureSupportsFormat(device, depthFormat, SDL_GPU_TEXTURETYPE_2D,
                                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
             depthFormat = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
