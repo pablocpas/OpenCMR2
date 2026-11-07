@@ -223,6 +223,34 @@ int main(int argc, char **argv)
     require(clights[0].beamLen > ylights[0].beamLen * 0.3f && clights[0].beamLen < ylights[0].beamLen * 3.0f,
             "camera cut: wedge length continuous");
 
+    // Overhead replay auto-cam (user screenshots 2026-11-03: 2:49 overhead
+    // shows lamps lit but forward beams absent; rear glow visible). Camera 10
+    // units above the car looking straight down, car heading +Z: the
+    // horizontal forward beam is fully transverse to the view axis, so the
+    // wedge must survive long and point screen-forward (+v). If this passes,
+    // an overhead disappearance is not projection-side - the suspects left
+    // are the 8-light field starving headlights (priority fix #308 merged
+    // after those screenshots; the replay OSD "lf x/8 lost N hl N" line
+    // settles it natively) or the producer not recording the car's lights
+    // that step.
+    {   static SceneNode overhead;
+        memset(&overhead, 0, sizeof overhead);
+        FixMatrix_Identity(&overhead.world);
+        // looking straight down: forward = -Y, right = +X, up = +Z
+        overhead.world.right.x = 0x10000;  overhead.world.right.y = 0;        overhead.world.right.z = 0;
+        overhead.world.up.x = 0;           overhead.world.up.y = 0;           overhead.world.up.z = 0x10000;
+        overhead.world.forward.x = 0;      overhead.world.forward.y = -0x10000; overhead.world.forward.z = 0;
+        overhead.world.position.y = 0xA0000;   // 10 units up
+        LightField_Clear();
+        FixVector oPos = {0, 0x8000, 0x80000};        // car at origin, front lamp (0, 0.5, 8)
+        FixVector oDir = {0, 0, 0x10000};             // forward, horizontal
+        require(LightField_Add(&oPos, &oDir, 0x10000, 0x10000, 0x1200, 0) == 1, "overhead light add");
+        GfxFogLight olights[LIGHT_FIELD_MAX];
+        int on = FogBeam_ProjectLights(olights, LIGHT_FIELD_MAX, &overhead, (float)W, (float)H, 1.0f/1.5f, -0.5f/1.5f);
+        require(on == 1, "overhead cam: forward beam light survives projection");
+        require(olights[0].beamLen > 0.05f, "overhead cam: transverse beam keeps a real wedge");
+    }
+
     // R look-back case (user screenshot: red glow by the left spoiler
     // support): camera rotated 180 degrees, rear lamp ahead in view, beam
     // pointing back toward/past the camera. The wedge must run from the lamp
