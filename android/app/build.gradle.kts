@@ -60,9 +60,7 @@ android {
         minSdk = 29
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Combined #46/#49 test: keep the previous diagnostic build's code,
-        // so this installs over it and the next stable build can replace it.
-        versionCode = 215
+        versionCode = git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
         versionName = git("describe", "--tags", "--always").removePrefix("v").ifEmpty { "dev" }
 
         ndk {
