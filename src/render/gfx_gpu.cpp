@@ -699,6 +699,8 @@ struct Executor : GfxExecutor {
         info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
         info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
         info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        // DeviceProperties disables depth clamping, including for clears.
+        info.rasterizer_state.enable_depth_clip = true;
         info.depth_stencil_state.enable_depth_test = depth;
         info.depth_stencil_state.enable_depth_write = depth;
         info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
