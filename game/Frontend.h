@@ -5,6 +5,14 @@
 #include "Texture.h"
 
 // TODO: no idea if this is the right thing to call this
+// Entries of CFrontend::m_matrixTextures: the trophies are at their place.
+enum {
+    FRONTEND_LG_MATRIX = 0,
+    FRONTEND_TROPHY_BRONZE = 1,
+    FRONTEND_TROPHY_SILVER = 2,
+    FRONTEND_TROPHY_GOLD = 3
+};
+
 class CFrontend
 {
 public:
@@ -115,8 +123,11 @@ public:
     // GLOBAL: CMR2 0x008185b8
     static Texture* m_pAr640DTexture;
 
+    // The large matrix texture, then the trophies by place (m_matrixTextures
+    // indices below). FrontendDraw_MatrixMedalRect picks a trophy with the
+    // place it was won in, as an index into this table.
     // GLOBAL: CMR2 0x008182b8
-    static Texture* m_pLgMatrixTexture;
+    static Texture* m_matrixTextures[4];
 
     // GLOBAL: CMR2 0x00818324
     static Texture* m_pSmMatrixTexture;
@@ -127,14 +138,8 @@ public:
     // GLOBAL: CMR2 0x00818348
     static Texture* m_pTinyFlags[8];
 
-    // GLOBAL: CMR2 0x008182bc
-    static Texture* m_pTBronze;
 
-    // GLOBAL: CMR2 0x008182c0
-    static Texture* m_pTSilver;
 
-    // GLOBAL: CMR2 0x008182c4
-    static Texture* m_pTGold;
 
     // GLOBAL: CMR2 0x00516c78
     static char m_strEsc[4];

@@ -210,8 +210,8 @@ void FrontendMenu_DrawProfileActions(Menu *pMenu)
 void Frontend_DrawRectangleOutline(short *pRect, BYTE *pColour);
 
 // Lays a matrix-textured rect at (param_1, param_2) scaled to the screen and
-// queues it through Frontend_DrawRectangleOutline; for param_3 in 1..3 the rect is replaced by
-// the medal texture of that place, centred on the same point.
+// queues it through Frontend_DrawRectangleOutline; for param_3 in 1..3 (bronze,
+// silver, gold) the trophy of that place is drawn too, centred on the same point.
 // FUNCTION: CMR2 0x004d4f90
 void FrontendDraw_MatrixMedalRect(int param_1, int param_2, int param_3)
 {
@@ -223,7 +223,7 @@ void FrontendDraw_MatrixMedalRect(int param_1, int param_2, int param_3)
     g_frontendDrawRect[3] = (int)(g_pGraphics->resY * 0x1c) / 480;
     Frontend_DrawRectangleOutline(g_frontendDrawRect, (BYTE *)g_colourText0x0052496c);
     if (param_3 >= 1 && param_3 <= 3) {
-        pTexture = (&CFrontend::m_pLgMatrixTexture)[param_3];
+        pTexture = CFrontend::m_matrixTextures[param_3];
         g_frontendDrawRect[0] = param_1 - pTexture->width / 2;
         g_frontendDrawRect[1] = param_2;
         g_frontendDrawRect[2] = pTexture->width;

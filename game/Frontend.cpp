@@ -77,13 +77,10 @@ char CFrontend::m_strFrontEndTexturesCmr2TGA[32] = "%s\\FrontEnd\\Textures\\cmr2
 
 Texture* CFrontend::m_pAr640ATexture;
 Texture* CFrontend::m_pAr640DTexture;
-Texture* CFrontend::m_pLgMatrixTexture;
+Texture* CFrontend::m_matrixTextures[4];
 Texture* CFrontend::m_pSmMatrixTexture;
 Texture* CFrontend::m_pSetupRepBanners[8];
 Texture* CFrontend::m_pTinyFlags[8];
-Texture* CFrontend::m_pTBronze;
-Texture* CFrontend::m_pTSilver;
-Texture* CFrontend::m_pTGold;
 
 Texture* CFrontend::m_unk0x00817ebc;
 Texture* CFrontend::m_unk0x00817fd0;
@@ -684,9 +681,9 @@ void FrontendDraw_AnimatedMatrixBackground(short x0, short y0, char *pMap)
     g_matrixPhase2 = (short)(((CMain::GetFrameDelta() + 1) * -0x3000) / 360);
     // PORT: retain the original matrix, palette and per-dot ripple exactly;
     // only the circular sprite's enlarged edge is evaluated as geometry.
-    Gfx_VectorizeMenuDot(CFrontend::m_pLgMatrixTexture->pSurface);
-    g_frontendDrawRect[2] = CFrontend::m_pLgMatrixTexture->width;
-    g_frontendDrawRect[3] = CFrontend::m_pLgMatrixTexture->height;
+    Gfx_VectorizeMenuDot(CFrontend::m_matrixTextures[FRONTEND_LG_MATRIX]->pSurface);
+    g_frontendDrawRect[2] = CFrontend::m_matrixTextures[FRONTEND_LG_MATRIX]->width;
+    g_frontendDrawRect[3] = CFrontend::m_matrixTextures[FRONTEND_LG_MATRIX]->height;
     for (i = 0; i < 0x12; i++) {
         pCell = pMap + i;
         for (j = 0; j < 0xc; j++) {
@@ -705,8 +702,8 @@ void FrontendDraw_AnimatedMatrixBackground(short x0, short y0, char *pMap)
             colour[0] = (FixMul((int)FTOI(__int64, X87S_MUL(colour[0], CGraphics::m_65536)), brightness) >> 16);
             colour[1] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[1], CGraphics::m_65536)), brightness);
             colour[2] = FixMulShift32((int)FTOI(__int64, X87S_MUL(colour[2], CGraphics::m_65536)), brightness);
-            Sprite_Queue((SpriteRect *)&CFrontend::m_pLgMatrixTexture->field_0x11c, (SpriteRect *)g_frontendDrawRect,
-                         CFrontend::m_pLgMatrixTexture, 1, 0, NULL, NULL, colour, 8);
+            Sprite_Queue((SpriteRect *)&CFrontend::m_matrixTextures[FRONTEND_LG_MATRIX]->field_0x11c, (SpriteRect *)g_frontendDrawRect,
+                         CFrontend::m_matrixTextures[FRONTEND_LG_MATRIX], 1, 0, NULL, NULL, colour, 8);
             pCell += 0x12;
         }
     }

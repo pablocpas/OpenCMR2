@@ -20,6 +20,7 @@
 extern void Sprite_DrawLayer(int);
 extern void Scene_InitFixedMathTables();
 extern void FrontendDraw_AnimatedMatrixBackground(short, short, char *);
+extern void FrontendDraw_MatrixMedalRect(int, int, int);
 extern char g_matrixMaps[11][216];
 
 static void Check(bool ok, const char *message)
@@ -103,7 +104,7 @@ int main(int argc, char **argv)
         Gfx_DestroyTexture(compressed.pSurface);
         Texture dot{};
         FillDot(dot, size);
-        CFrontend::m_pLgMatrixTexture = &dot;
+        CFrontend::m_matrixTextures[FRONTEND_LG_MATRIX] = &dot;
         Check(Gfx_GetSpriteTexelInset(dot.pSurface) == 0.5f, "original bitmap sampling is unchanged");
         CMain::ResetFrameDelta();
         for (int frame : {1000, 1600}) {
@@ -121,12 +122,42 @@ int main(int argc, char **argv)
                 Gfx_Present(FALSE);
             }
         }
+        // The medal cells draw the trophy of the place (1 bronze, 2 silver,
+        // 3 gold) at its own size (#44: every cell showed a country banner).
+        Texture trophies[3]{}, banners[8]{};
+        for (int i = 0; i < 3; i++) {
+            trophies[i].width = short(40 + i);
+            trophies[i].height = short(24 + i);
+            CFrontend::m_matrixTextures[FRONTEND_TROPHY_BRONZE + i] = &trophies[i];
+        }
+        for (int i = 0; i < 8; i++)
+            CFrontend::m_pSetupRepBanners[i] = &banners[i];
+        for (int place = 0; place <= 3; place++) {
+            Sprite_DrawLayer(1);
+            FrontendDraw_MatrixMedalRect(320, 200, place);
+            const Sprite *trophy = nullptr;
+            for (unsigned i = 0; i < g_spriteCount1; i++) {
+                Check(g_spriteLayer1[i].pTexture == nullptr || g_spriteLayer1[i].pTexture == &trophies[place - 1],
+                      "a medal cell draws only its place's trophy");
+                if (g_spriteLayer1[i].pTexture != nullptr)
+                    trophy = &g_spriteLayer1[i];
+            }
+            Check((trophy != nullptr) == (place != 0), "a won place has its trophy, no place has none");
+            if (trophy != nullptr)
+                Check(trophy->dst.w == trophies[place - 1].width && trophy->dst.h == trophies[place - 1].height &&
+                      trophy->dst.x == 320 - trophies[place - 1].width / 2, "the trophy keeps its size, centred");
+        }
+        for (int i = 0; i < 8; i++)
+            CFrontend::m_pSetupRepBanners[i] = nullptr;
+        for (int i = 1; i < 4; i++)
+            CFrontend::m_matrixTextures[i] = nullptr;
+        Sprite_DrawLayer(1);
         Gfx_Shutdown();
     }
     unsigned long long extra = 0;
     Check(fscanf(reference, "%llx", &extra) == EOF, "all original sprite references were checked");
     fclose(reference);
-    CFrontend::m_pLgMatrixTexture = nullptr;
+    CFrontend::m_matrixTextures[FRONTEND_LG_MATRIX] = nullptr;
     CGame::UnwindCallbacks(0);
     g_pGraphics = nullptr;
     puts("country flags: all 44 original dot layouts, colours and animation frames preserved");
