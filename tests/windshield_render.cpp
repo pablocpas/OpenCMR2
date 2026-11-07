@@ -30,6 +30,7 @@ extern "C" double Sys_GetTicksPrecise(void) { return 0; }
 extern "C" void Sys_GetDesktopSize(int *w, int *h) { *w = 96; *h = 64; }
 
 int WindshieldGlass_DrawCockpitExtension(int) { return 0; }
+int WindshieldGlass_DrawCockpitMesh(int) { return 0; }
 int WindshieldGlass_GetInfo(int,int*,int*,unsigned*,int*,int*) {return 0;}
 // Stand-in glass: a trapezoid in the upper part of the frame, uv = position
 // inside its bounds (u across, v down), like WsGlassFrame_UV on a real glass.

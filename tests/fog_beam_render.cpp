@@ -21,6 +21,16 @@ static SDL_Window *testWindow;
 extern "C" int Sys_GetOption(const char *, int fallback) { return fallback; }
 SDL_Window *Platform_GetWindow() { return testWindow; }
 int Platform_GetSettingInt(const char *, int fallback) { return fallback; }
+void TouchOverlay_RecordFrame(int, int, bool) {}
+// The harness compiles FixedMatrixCore.cpp without SceneNode.cpp, so the
+// 16.16 sqrt table is filled here with the formula Scene_InitFixedMathTables
+// documents: g_sqrtTable[n] = sqrt((8 + 16*n) / 65536) * 65536, rounded.
+unsigned short g_sqrtTable[4096];
+static void FillSqrtTable()
+{
+    for (int n = 0; n < 4096; n++)
+        g_sqrtTable[n] = (unsigned short)(int)(sqrt((8.0 + 16.0 * n) / 65536.0) * 65536.0 + 0.5);
+}
 const char *Platform_GetSetting(const char *key, const char *fallback) {
     return !strcmp(key, "video.graphics_api") ? "opengl" : fallback;
 }
@@ -93,6 +103,7 @@ static void dumpPpm(const char *prefix, const char *tag, const DWORD *pixels)
 
 int main(int argc, char **argv)
 {
+    FillSqrtTable();
     require(SDL_Init(SDL_INIT_VIDEO), SDL_GetError());
     Gfx_PrepareGlWindow();
     testWindow = SDL_CreateWindow("fog beam rendered pixels", W, H, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
