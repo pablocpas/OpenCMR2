@@ -179,6 +179,14 @@ int main()
     CHECK(Windshield_OverlayVisible(0) == 1);
     CHECK(Windshield_OverlayVisible(1) == 1);
     CHECK(Windshield_OverlayVisible(2) == 0);
+    // Cracked-glass fade (video.windshield_dirt_fade_cracked): half alpha on
+    // cracked glass only when enabled; broken stays hidden; intact unchanged.
+    CHECK(Windshield_DirtAlphaScale(-1, 1) == 255);
+    CHECK(Windshield_DirtAlphaScale(0, 1) == 255);
+    CHECK(Windshield_DirtAlphaScale(1, 0) == 255);
+    CHECK(Windshield_DirtAlphaScale(1, 1) == 128);
+    CHECK(Windshield_DirtAlphaScale(2, 1) == 0);
+    CHECK(Windshield_DirtAlphaScale(2, 0) == 0);
 
     // Dry auto wipe hysteresis: idle when clean, start when dirty, park when clean again.
     int cells = WINDSHIELD_MAP_W * WINDSHIELD_MAP_H;

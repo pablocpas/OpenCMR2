@@ -175,11 +175,21 @@ inline int Windshield_Wipe(WindshieldMap *m, float pivotU, float pivotV, float r
 // resolved front glass is BROKEN (state 2), the dirt overlay hides so the
 // real swapped broken-glass texture shows without a dirt film floating over
 // its holes. Intact and damaged glass keep the full dirt/wiper behaviour.
-// Cracked (state 1) keeps the dirt; whether it should also fade is the
-// player's call, so it is unchanged here.
 inline int Windshield_OverlayVisible(int glassState)
 {
     return glassState != 2;
+}
+
+// Cracked-glass dirt fade (video.windshield_dirt_fade_cracked, default 0):
+// cracked (state 1) glass can draw the dirt film at half strength, so the
+// crack reads as damaging the view, not just retexturing it. Off keeps the
+// original full-strength dirt on cracked glass. Broken (state 2) always
+// hides the overlay (see Windshield_OverlayVisible).
+inline int Windshield_DirtAlphaScale(int glassState, int fadeCracked)
+{
+    if (glassState == 2) return 0;
+    if (glassState == 1 && fadeCracked) return 128;
+    return 255;
 }
 
 // Dry-weather auto wipe (hysteresis). The blades used to sweep constantly when
