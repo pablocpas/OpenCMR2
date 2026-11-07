@@ -72,6 +72,11 @@ void Input_Update(void);
    of player 2. */
 void Input_SetLocalPlayers(int count);
 
+/* The Android text editor is modal; its chip alone is not. While open,
+   game actions and raw keys are neutral so a controller cannot move the
+   underlying menu away from the entry being edited. */
+void Input_SetTextEntryOpen(BOOL open);
+
 /* Value of an action of a player, 0..INPUT_FULL. */
 int Input_GetAction(int player, int action);
 /* Whether the player steers with an axis rather than keys or buttons, and

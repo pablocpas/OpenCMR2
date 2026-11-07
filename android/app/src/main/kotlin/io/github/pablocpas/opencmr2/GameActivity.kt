@@ -2,6 +2,7 @@ package io.github.pablocpas.opencmr2
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.annotation.Keep
@@ -59,6 +60,16 @@ class GameActivity : SDLActivity() {
     // so the release is held back long enough for it to see the press.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         controls?.onInput(event.source)
+        if (textEntry?.isOpen == true && SDLControllerManager.isDeviceSDLJoystick(event.deviceId)) {
+            // Keep SDL's pressed/released state balanced even when the editor
+            // consumes A/B. Forward releases before closing the modal editor.
+            val handled = when (event.action) {
+                KeyEvent.ACTION_DOWN -> SDLControllerManager.onNativePadDown(event.deviceId, event.keyCode, event.scanCode)
+                KeyEvent.ACTION_UP -> SDLControllerManager.onNativePadUp(event.deviceId, event.keyCode, event.scanCode)
+                else -> false
+            }
+            if (textEntry?.onKey(event) == true || handled) return true
+        }
         if (textEntry?.onKey(event) == true)
             return true
         if (event.keyCode != KeyEvent.KEYCODE_BACK || mBrokenLibraries ||
@@ -78,6 +89,10 @@ class GameActivity : SDLActivity() {
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         controls?.onInput(event.source)
+        if (textEntry?.isOpen == true && event.isFromSource(InputDevice.SOURCE_JOYSTICK)) {
+            SDLControllerManager.handleJoystickMotionEvent(event)
+            return true
+        }
         return super.dispatchGenericMotionEvent(event)
     }
 
@@ -92,6 +107,8 @@ class GameActivity : SDLActivity() {
     }
 
     override fun onDestroy() {
+        textEntry?.end()
+        textEntry = null
         controls?.close()
         controls = null
         super.onDestroy()

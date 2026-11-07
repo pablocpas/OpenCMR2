@@ -4,6 +4,7 @@
 #include "platform/testing.h"
 #include "port/sys.h"
 #include "port/gfx.h"
+#include "port/input.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -714,6 +715,7 @@ bool Platform_Init(int argc, char **argv)
 
 void Platform_Shutdown(void)
 {
+    Input_SetTextEntryOpen(FALSE);
     Sys_DestroyWindow();
     if (s_logFile != NULL) {
         fclose(s_logFile);
@@ -981,8 +983,13 @@ void OpenTextBar()
         return;
     jstring label = env->NewStringUTF(Utf8FromWindows1252(s_entryLabel).c_str());
     jstring text = env->NewStringUTF(Utf8FromWindows1252(s_entryText).c_str());
-    if (label != NULL && text != NULL)
-        AndroidCall("openTextEntry", "(Ljava/lang/String;Ljava/lang/String;I)V", label, text, (jint)s_entryMax);
+    if (label != NULL && text != NULL) {
+        // Block on the game thread before the asynchronous UI open. Otherwise
+        // a held stick can already move to a different entry in that gap.
+        Input_SetTextEntryOpen(TRUE);
+        if (!AndroidCall("openTextEntry", "(Ljava/lang/String;Ljava/lang/String;I)V", label, text, (jint)s_entryMax))
+            Input_SetTextEntryOpen(FALSE);
+    }
     if (label != NULL)
         env->DeleteLocalRef(label);
     if (text != NULL)
@@ -1028,6 +1035,7 @@ void UpdateTextInput()
     TakeTextBarAnswer();
     if (s_entryActive && SDL_GetTicks() >= s_textInputUntil) {
         s_entryActive = false;
+        Input_SetTextEntryOpen(FALSE);
         if (!s_entryHardKeyboard)
             AndroidCall("endTextEntry", "()V");
     }
@@ -1056,6 +1064,12 @@ void UpdateTextInput()
 } // namespace
 
 #ifdef __ANDROID__
+extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_TextEntry_nativeSetOpen(
+    JNIEnv *, jclass, jboolean open)
+{
+    Input_SetTextEntryOpen(open ? TRUE : FALSE);
+}
+
 extern "C" JNIEXPORT void JNICALL Java_io_github_pablocpas_opencmr2_TextEntry_nativeTextEntered(
     JNIEnv *env, jclass, jstring text, jboolean accepted)
 {

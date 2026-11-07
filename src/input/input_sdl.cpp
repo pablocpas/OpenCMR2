@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <atomic>
 #include <sstream>
 #ifdef __ANDROID__
 #include <jni.h>
@@ -123,6 +124,7 @@ bool AndroidHasKeyboard()
 #endif
 const BYTE *s_testKeyboard;
 bool s_testNoControllers;
+std::atomic<bool> s_textEntryOpen{false};
 bool s_heldBack[SDL_SCANCODE_COUNT];
 std::deque<InputDevice> s_devices;
 int s_nextOrder;
@@ -741,8 +743,15 @@ extern "C" void Input_SetLocalPlayers(int count)
     s_localPlayers = count < 2 ? 1 : 2;
 }
 
+extern "C" void Input_SetTextEntryOpen(BOOL open)
+{
+    s_textEntryOpen = open != FALSE;
+}
+
 extern "C" int Input_GetAction(int player, int action)
 {
+    if (s_textEntryOpen)
+        return 0;
     if (player < 0 || player >= INPUT_PLAYERS || action < 0 || action >= INPUT_ACTION_COUNT)
         return 0;
     return s_players[player].values[action];
@@ -857,6 +866,10 @@ extern "C" void Input_SetMouseExclusive(InputDevice *device, BOOL exclusive)
 extern "C" BOOL Input_ReadKeyboard(InputDevice *device, BYTE keys[256])
 {
     (void)device;
+    if (s_textEntryOpen) {
+        memset(keys, 0, 256);
+        return TRUE;
+    }
     if (s_testKeyboard) {
         memcpy(keys, s_testKeyboard, 256);
         return TRUE;
@@ -894,6 +907,8 @@ extern "C" BOOL Input_ReadMouse(InputDevice *device, InputMouseState *state)
 
 extern "C" BOOL Input_IsKeyDown(int key)
 {
+    if (s_textEntryOpen)
+        return FALSE;
     if (s_testKeyboard)
         return key >= 0 && key < 256 && (s_testKeyboard[key] & 0x80);
     int count = 0;

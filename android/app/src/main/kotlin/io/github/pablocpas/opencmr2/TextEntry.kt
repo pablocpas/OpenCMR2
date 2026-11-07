@@ -152,6 +152,7 @@ class TextEntry(private val activity: Activity, parent: ViewGroup, private val o
             activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         }
         isOpen = true
+        nativeSetOpen(true)
         root.isVisible(true)
         bar.visibility = View.VISIBLE
         chip.visibility = View.GONE
@@ -173,6 +174,7 @@ class TextEntry(private val activity: Activity, parent: ViewGroup, private val o
     /** The game left the entry. */
     fun end() {
         if (isOpen) close()
+        else nativeSetOpen(false)
         root.isVisible(false)
     }
 
@@ -206,6 +208,7 @@ class TextEntry(private val activity: Activity, parent: ViewGroup, private val o
         input.hideSoftInputFromWindow(edit.windowToken, 0)
         edit.clearFocus()
         bar.visibility = View.GONE
+        nativeSetOpen(false)
         activity.window.setSoftInputMode(softInputMode)
         onOpen(false)
     }
@@ -239,6 +242,9 @@ class TextEntry(private val activity: Activity, parent: ViewGroup, private val o
     companion object {
         // The grey green of the game's menus.
         private const val ACCENT = 0xFFA9C2B8.toInt()
+
+        @JvmStatic
+        private external fun nativeSetOpen(open: Boolean)
 
         @JvmStatic
         private external fun nativeTextEntered(text: String, accepted: Boolean)

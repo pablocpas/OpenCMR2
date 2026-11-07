@@ -60,8 +60,8 @@ android {
         minSdk = 29
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Test build for #46: the same code as the diagnostic build the tester
-        // has (215), so it installs over it and 1.8.7 can still install over it.
+        // Combined #46/#49 test: keep the previous diagnostic build's code,
+        // so this installs over it and the next stable build can replace it.
         versionCode = 215
         versionName = git("describe", "--tags", "--always").removePrefix("v").ifEmpty { "dev" }
 

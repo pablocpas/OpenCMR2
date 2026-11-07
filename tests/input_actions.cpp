@@ -275,6 +275,51 @@ void CheckRecords(Pad &pad)
     RaceFrame();
 }
 
+void CheckModalTextEntry(Pad &pad)
+{
+    Release(pad);
+    memset(s_keys, 0, sizeof(s_keys));
+    MenuFrame();
+    Menu menu{};
+    Menu_Init(&menu, nullptr, 0, 0, nullptr, nullptr, 1, 1, 1);
+    for (int i = 0; i < 3; i++)
+        Menu_AddItemType1(&menu, nullptr, -1, nullptr, short(i));
+    Menu_SetInputStateFlag(0);
+
+    // As in the network name/password editor: it opens while the controller
+    // is still held. Block even values already read by Input_Update.
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_LEFTY, SDL_JOYSTICK_AXIS_MIN);
+    MenuFrame();
+    Check(Input_GetAction(0, INPUT_MENU_UP) == INPUT_FULL, "stick active before text editor opens");
+    Input_SetTextEntryOpen(TRUE);
+    Check(Input_GetAction(0, INPUT_MENU_UP) == 0, "opening editor immediately masks a previously read stick");
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    s_keys[INPUT_KEY_ESCAPE] = 0x80;
+    for (int frame = 0; frame < 40; frame++) {
+        MenuFrame();
+        Menu_Update(&menu, Device(0).pressed);
+        Check((Device(0).held & 0x3f) == 0 && menu.cursor == 1,
+              "controller cannot navigate or activate the menu behind the editor");
+    }
+    Check(!Input_IsKeyDown(INPUT_KEY_ESCAPE) && CInput::m_keyboardState[INPUT_KEY_ESCAPE] == 0,
+          "raw keyboard cannot cancel the underlying menu while editing");
+    Release(pad);
+    memset(s_keys, 0, sizeof(s_keys));
+    MenuFrame();
+    Input_SetTextEntryOpen(FALSE); // accept, cancel and closing the bar all release it
+    MenuFrame();
+    Menu_Update(&menu, Device(0).pressed);
+    Check(menu.cursor == 1 && (Device(0).held & 0x3f) == 0,
+          "released editor buttons do not leak into the menu after closing");
+    SDL_SetJoystickVirtualButton(pad.joystick, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
+    MenuFrame();
+    Menu_Update(&menu, Device(0).pressed);
+    Check(menu.cursor == 2, "menu navigation resumes after the editor closes");
+    Release(pad);
+    MenuFrame();
+}
+
 void CheckRacePresses(Pad &pad)
 {
     const unsigned actionBits = 0x20 | 0x40 | 0x80 | 0x400;
@@ -821,6 +866,7 @@ int main()
 
     CheckGamepadActions(pad);
     CheckRecords(pad);
+    CheckModalTextEntry(pad);
     CheckRacePresses(pad);
     CheckMixedChannels(pad);
     CheckTwoPlayers(pad);
