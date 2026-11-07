@@ -24,7 +24,7 @@ object DiagnosticLog {
 
     /** Arguments for the game: the settings the switches change. */
     fun gameArguments(context: Context): Array<String> =
-        if (distanceFade(context)) emptyArray() else arrayOf("--set", "video.distance_fade=0")
+        arrayOf("--set", "video.distance_fade=${if (distanceFade(context)) 1 else 0}")
 
     // SDL_GetPrefPath is the internal storage; the other places cover older layouts.
     private fun logDirectories(context: Context): List<File> = listOfNotNull(
@@ -39,7 +39,7 @@ object DiagnosticLog {
         return buildString {
             appendLine("OpenCMR2 $version (diagnostic build for issue 46)")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, SoC $soc, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-            appendLine("Distance fade: ${if (distanceFade(context)) "on" else "off"}")
+            appendLine("Launcher distance fade preference: ${if (distanceFade(context)) "on" else "off"}")
         }
     }
 

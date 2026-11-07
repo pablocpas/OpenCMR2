@@ -944,7 +944,7 @@ struct Executor : GfxExecutor {
     }
 
     // The stages' textures (2D and cube for each), then the backdrop.
-    void TextureBindings(const GfxDrawState &s, SDL_GPUTextureSamplerBinding bindings[7])
+    void TextureBindings(const GfxDrawState &s, SDL_GPUTextureSamplerBinding bindings[7], bool fade)
     {
         for (int i = 0; i < 2; i++) {
             const GfxStageState &stage = s.stages[i];
@@ -969,7 +969,9 @@ struct Executor : GfxExecutor {
             if (ScaledPoint(stage)) source.minFilter = source.magFilter = GFX_FILTER_LINEAR;
             bindings[5 + i] = { native != NULL ? native->texture : white2D, Sampler(source) };
         }
-        bindings[4] = { backdrop, Sampler(GfxStageState()) };
+        // Before the first capture its contents are undefined. Draws that
+        // do not use the fade (including UI and targets) bind a valid dummy.
+        bindings[4] = { fade ? backdrop : white2D, Sampler(GfxStageState()) };
     }
 
     // What a render pass has bound: each draw sets only what differs from the
@@ -1284,7 +1286,7 @@ struct Executor : GfxExecutor {
                 fragmentUniformsSet = true;
             }
             SDL_GPUTextureSamplerBinding textures[7];
-            TextureBindings(s, textures);
+            TextureBindings(s, textures, fu.distanceFade[2] != 0.0f);
             if (!bound.texturesSet || memcmp(textures, bound.textures, sizeof(textures)) != 0) {
                 SDL_BindGPUFragmentSamplers(pass, 0, textures, 7);
                 memcpy(bound.textures, textures, sizeof(textures));

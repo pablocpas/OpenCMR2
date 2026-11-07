@@ -2598,9 +2598,11 @@ static void Game_BeginDistanceFade(void)
     int start = FixMul(end, 0xd99a);
 
     // DIAG issue 46: the launcher's switch turns the fade off.
-    static int enabled = Sys_GetOption("video.distance_fade", 1);
-    if (!enabled)
+    // Android can start another game session without unloading this library.
+    if (!Sys_GetOption("video.distance_fade", 1)) {
+        Gfx_SetDistanceFade(0.0f, 0.0f);
         return;
+    }
     Gfx_CaptureBackdrop();
     Gfx_SetDistanceFade(X87S_MUL(X87S_FILD(float, start), CGraphics::m_oneOver65536),
                         X87S_MUL(X87S_FILD(float, end), CGraphics::m_oneOver65536));

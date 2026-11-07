@@ -728,9 +728,9 @@ BYTE Race_LoadSelectedStage(void)
     else
         Graphics_ReserveCubeMapsAndLoadEnvironment(CFrontend::m_stringDest, 1, Race_GetLoadedStageFile(), 0x40);
     // DIAG issue 46: what the stage loads with.
-    Sys_Log("diag: stage %s: graphics options %08x, flags %08x, record flag 0x10 %d, object render mode %d",
+    Sys_Log("diag: stage %s: graphics options %08x, flags %08x, record flag 0x10 %d, object render mode %d, distance fade %d",
             Race_GetStagePathBuffer38340(), CGameInfo::m_gameInfo.graphicsOptions, g_pGraphics->field913_0x3bc,
-            CGameInfo::IsRecordFlagSet(0x10) ? 1 : 0, CGame::GetObjectRenderMode());
+            CGameInfo::IsRecordFlagSet(0x10) ? 1 : 0, CGame::GetObjectRenderMode(), Sys_GetOption("video.distance_fade", 1));
     RallyData_DrawLoadingProgress(0xf, 1, 0xff);
     Race_ResolveStageTexturesAndPalettes();
     Race_LoadStageLightPlacement();
