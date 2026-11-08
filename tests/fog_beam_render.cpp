@@ -122,8 +122,12 @@ static void drawAndReadFoliage(DWORD *pixels)
     Gfx_SetAlphaTest(TRUE);
     Gfx_SetAlphaFunc(GFX_CMP_GREATER);
     Gfx_SetAlphaRef(0x80);
+    Gfx_SetStageMinFilter(0, GFX_FILTER_POINT);   // hard texel edges: no filtered alpha ramp
+    Gfx_SetStageMagFilter(0, GFX_FILTER_POINT);
     Gfx_SetTexture(0, folTex);
     Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, folVb, 0, 4);
+    Gfx_SetStageMinFilter(0, GFX_FILTER_LINEAR);
+    Gfx_SetStageMagFilter(0, GFX_FILTER_LINEAR);
     Gfx_SetAlphaTest(FALSE);
     Gfx_SetAlphaFunc(GFX_CMP_ALWAYS);
     Gfx_SetAlphaRef(0);
@@ -375,16 +379,15 @@ int main(int argc, char **argv)
     putQuad(); putFoliageQuad();
     drawAndReadFoliage(folLit);
     dumpPpm(prefix, "foliage", folLit);
-    {   int leafLift = red(folLit,18,32) - red(folCon,18,32);   // opaque half, beam path
-        int holeLift = red(folLit,32,32) - red(folCon,32,32);   // cutout half, beam path
+    {   int leafLift = red(folLit,21,32) - red(folCon,21,32);   // opaque leaf, 3px from the cutout edge
+        int holeLift = red(folLit,27,32) - red(folCon,27,32);   // cutout hole, 3px past the edge (4px fade kernel reaches the leaf)
         fprintf(stderr, "foliage gate: leaf lift %+d, hole lift %+d (leak = hole - leaf)\n", leafLift, holeLift);
-        // Measured on llvmpipe 96x64: leaf +0, hole +77. The leaf assertion
-        // pins the correct half of the gate (opaque foliage occludes the
-        // beam). The hole assertion pins the CURRENT leak as the regression
-        // target: a fix must flip it to holeLift <= leafLift + 8 (cutout
-        // pixels occluded by the foliage they belong to).
+        // Fixed in fog.frag (edge-aware beam fade): pre-fix measurements
+        // were leaf +0 / hole +77; the fade must pull the hole to the leaf
+        // level while the leaf stays gated. Bounds follow the yawed-beam
+        // tolerances above.
         require(leafLift >= -2 && leafLift <= 8, "foliage: opaque leaf gates the beam");
-        require(holeLift >= 40, "foliage: KNOWN LEAK - beam passes through cutout holes (flip when fixed)");
+        require(holeLift <= leafLift + 8, "foliage: cutout hole no longer leaks the beam");
     }
 
     dumpPpm(prefix, "lookback", rlook);

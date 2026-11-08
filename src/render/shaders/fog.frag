@@ -32,23 +32,25 @@ float fogBank(vec2 wp)
     n = smoothstep(0.30, 0.70, n);
     return 0.20 + 1.60 * n;   // kBankMin 0.20 .. 1.80
 }
+float viewZFromDepth(float depth)
+{
+    if (fog.z > 0.0 && fog.w > fog.z) {
+        // extra.z: 1 = GL half-range buffer (0.5+0.5*d_game) - un-remap before
+        // the hyperbolic recovery; 0 = full-range depth (SDL_GPU).
+        float d = extra.z > 0.5 ? depth * 2.0 - 1.0 : depth;
+        return fog.z * fog.w / max(fog.w - d * (fog.w - fog.z), 1e-6);
+    }
+    // Unknown projection: ramp over the top slice of the hyperbolic raw depth.
+    float t = clamp((depth - 0.990) / 0.010, 0.0, 1.0);
+    return 150.0 * t * t;
+}
 void main()
 {
     vec2 size = vec2(textureSize(scene, 0));
     vec2 uv = gl_FragCoord.xy / size;
     vec4 center = texture(scene, uv);
     float depth = texture(depthTex, uv).r;
-    float viewZ = 0.0;
-    if (fog.z > 0.0 && fog.w > fog.z) {
-        // extra.z: 1 = GL half-range buffer (0.5+0.5*d_game) - un-remap before
-        // the hyperbolic recovery; 0 = full-range depth (SDL_GPU).
-        float d = extra.z > 0.5 ? depth * 2.0 - 1.0 : depth;
-        viewZ = fog.z * fog.w / max(fog.w - d * (fog.w - fog.z), 1e-6);
-    } else {
-        // Unknown projection: ramp over the top slice of the hyperbolic raw depth.
-        float t = clamp((depth - 0.990) / 0.010, 0.0, 1.0);
-        viewZ = 150.0 * t * t;
-    }
+    float viewZ = viewZFromDepth(depth);
     // World-anchored banks: rebuild the pixel's horizontal world position (view x / depth = ndc.x / p11) and vary the density there.
     float bank = 1.0;
     if (camB.w > 0.0 && fog.z > 0.0 && depth < 0.9999) {
@@ -144,6 +146,34 @@ void main()
             // 2026-11-01 - "keep just the beams"). halos[] stays in the
             // uniform layout, pinned to the lamp CPU-side, but is unread here.
             lightSum += lightInfo[i].yzw * (li * wedge * gate);
+        }
+        // Alpha-cutout foliage leak (2026-11-06 replay 2:57 screenshot: pale
+        // halos / dark patches around foliage near beams): cutout texels
+        // write no depth, so pixels inside/around a foliage silhouette keep
+        // the far background depth and the depth gate lights them. Fade the
+        // beam where this pixel's surface is much farther than a close
+        // neighbor's - the signature of a hole next to an occluder. Open
+        // road depth varies smoothly and stays unfaded; the beam's light
+        // sitting ON the occluder (nearer than its neighborhood) is
+        // unaffected, only the light landing behind it.
+        if (lightSum.x + lightSum.y + lightSum.z > 0.0) {
+            vec2 px2 = 4.0 / size;
+            float nearZ = viewZ;
+            nearZ = min(nearZ, viewZFromDepth(texture(depthTex, uv + vec2( px2.x, 0.0)).r));
+            nearZ = min(nearZ, viewZFromDepth(texture(depthTex, uv + vec2(-px2.x, 0.0)).r));
+            nearZ = min(nearZ, viewZFromDepth(texture(depthTex, uv + vec2(0.0,  px2.y)).r));
+            nearZ = min(nearZ, viewZFromDepth(texture(depthTex, uv + vec2(0.0, -px2.y)).r));
+            // Relative discontinuity: a neighbor more than 25% nearer means
+            // this pixel sits behind an occluder edge (tree card, post) and
+            // the beam there is shadowed. Relative, not absolute units, so
+            // distant skyline transitions (both depths huge, ratio small)
+            // keep the beam while a far background peeking through a near
+            // cutout (ratio huge) fades fully. Beam light ON the occluder
+            // itself is never faded (its viewZ is the minimum).
+            if (viewZ > 1.0) {
+                float leak = clamp((viewZ - nearZ) / (0.25 * viewZ), 0.0, 1.0);
+                lightSum *= 1.0 - leak;
+            }
         }
         lightSum *= extra.y * mix(0.30, 1.0, factor);
     }
