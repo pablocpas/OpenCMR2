@@ -38,12 +38,10 @@ jobs:
           cert="$RUNNER_TEMP/build_certificate.p12"
           keychain="$RUNNER_TEMP/app-signing.keychain-db"
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 -D -o "$cert"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
-          security import "$cert" -P "$P12_PASSWORD" -T /usr/bin/codesign -f pkcs12 -k "$keychain"
+          export KEYCHAIN_PATH="$keychain" CERTIFICATE_PATH="$cert"
+          export KEYCHAIN_PASSWORD="$KEYCHAIN_PASSWORD" P12_PASSWORD="$P12_PASSWORD"
+          python3 scripts/macos_ci_credentials.py import-certificate
           rm -f "$cert"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           security find-identity -v -p codesigning "$keychain"
       - name: Package zip and DMG
