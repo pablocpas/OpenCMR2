@@ -23,6 +23,7 @@ static SDL_Window *testWindow;
 extern "C" int Sys_GetOption(const char *, int fallback) { return fallback; }
 SDL_Window *Platform_GetWindow() { return testWindow; }
 int Platform_GetSettingInt(const char *, int fallback) { return fallback; }
+void TouchOverlay_RecordFrame(int, int, bool) {}
 const char *Platform_GetSetting(const char *key, const char *fallback) {
     return !strcmp(key, "video.graphics_api") ? "opengl" : fallback;
 }

@@ -21,6 +21,16 @@ static SDL_Window *testWindow;
 extern "C" int Sys_GetOption(const char *, int fallback) { return fallback; }
 SDL_Window *Platform_GetWindow() { return testWindow; }
 int Platform_GetSettingInt(const char *, int fallback) { return fallback; }
+void TouchOverlay_RecordFrame(int, int, bool) {}
+// The harness compiles FixedMatrixCore.cpp without SceneNode.cpp, so the
+// 16.16 sqrt table is filled here with the formula Scene_InitFixedMathTables
+// documents: g_sqrtTable[n] = sqrt((8 + 16*n) / 65536) * 65536, rounded.
+unsigned short g_sqrtTable[4096];
+static void FillSqrtTable()
+{
+    for (int n = 0; n < 4096; n++)
+        g_sqrtTable[n] = (unsigned short)(int)(sqrt((8.0 + 16.0 * n) / 65536.0) * 65536.0 + 0.5);
+}
 const char *Platform_GetSetting(const char *key, const char *fallback) {
     return !strcmp(key, "video.graphics_api") ? "opengl" : fallback;
 }
@@ -77,6 +87,53 @@ static void drawAndRead(DWORD *pixels)
     require(Gfx_ReadBackBuffer(0, 0, W, H, pixels), "readback");
 }
 
+static GfxVertexBuffer *folVb;
+static GfxTexture *folTex;
+
+// Alpha-cutout "foliage" quad: left half opaque (leaf), right half cut out
+// (alpha 0). Cutout texels write no depth, so the holes keep whatever depth
+// is behind the quad.
+static void putFoliageQuad()
+{
+    GfxVertex *v = Gfx_LockVertexBuffer(folVb);
+    require(v != NULL, "lock foliage");
+    const float px[4] = { -0.75f, -0.25f, -0.75f, -0.25f };   // screen x 12..36
+    const float py[4] = { -0.30f, -0.30f, 0.30f, 0.30f };
+    const float pu[4] = { 0.f, 1.f, 0.f, 1.f };
+    const float pv[4] = { 0.f, 0.f, 1.f, 1.f };
+    for (int i = 0; i < 4; i++) {
+        memset(&v[i], 0, sizeof v[i]);
+        v[i].x = px[i]; v[i].y = py[i]; v[i].z = 1.2f;   // nearer than the lamp: raw depth ~0.467
+        v[i].nz = -1.f;
+        v[i].diffuse = 0xffffffff;
+        v[i].u0 = pu[i]; v[i].v0 = pv[i];
+    }
+    Gfx_UnlockVertexBuffer(folVb);
+}
+
+static void drawAndReadFoliage(DWORD *pixels)
+{
+    Gfx_SetPostFog(TRUE, 70, 100);
+    Gfx_SetRaceWorld(TRUE);
+    Gfx_Clear(GFX_CLEAR_TARGET | GFX_CLEAR_ZBUFFER, 0xff181c20, 1.0f);
+    Gfx_SetAlphaTest(FALSE);
+    Gfx_SetTexture(0, whiteTex);
+    Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, vb, 0, 4);
+    Gfx_SetAlphaTest(TRUE);
+    Gfx_SetAlphaFunc(GFX_CMP_GREATER);
+    Gfx_SetAlphaRef(0x80);
+    Gfx_SetTexture(0, folTex);
+    Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, folVb, 0, 4);
+    Gfx_SetAlphaTest(FALSE);
+    Gfx_SetAlphaFunc(GFX_CMP_ALWAYS);
+    Gfx_SetAlphaRef(0);
+    Gfx_EndWorldEffects();
+    static DWORD dummy[W * H];
+    (void)Gfx_ReadBackBuffer(0, 0, W, H, dummy);
+    Gfx_Present(0);
+    require(Gfx_ReadBackBuffer(0, 0, W, H, pixels), "readback");
+}
+
 static int red(const DWORD *f, int x, int y) { return (int)((f[y * W + x] >> 16) & 0xff); }   // ARGB red byte
 
 static void dumpPpm(const char *prefix, const char *tag, const DWORD *pixels)
@@ -93,6 +150,7 @@ static void dumpPpm(const char *prefix, const char *tag, const DWORD *pixels)
 
 int main(int argc, char **argv)
 {
+    FillSqrtTable();
     require(SDL_Init(SDL_INIT_VIDEO), SDL_GetError());
     Gfx_PrepareGlWindow();
     testWindow = SDL_CreateWindow("fog beam rendered pixels", W, H, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
@@ -165,6 +223,34 @@ int main(int argc, char **argv)
     require(clights[0].beamLen > ylights[0].beamLen * 0.3f && clights[0].beamLen < ylights[0].beamLen * 3.0f,
             "camera cut: wedge length continuous");
 
+    // Overhead replay auto-cam (user screenshots 2026-11-03: 2:49 overhead
+    // shows lamps lit but forward beams absent; rear glow visible). Camera 10
+    // units above the car looking straight down, car heading +Z: the
+    // horizontal forward beam is fully transverse to the view axis, so the
+    // wedge must survive long and point screen-forward (+v). If this passes,
+    // an overhead disappearance is not projection-side - the suspects left
+    // are the 8-light field starving headlights (priority fix #308 merged
+    // after those screenshots; the replay OSD "lf x/8 lost N hl N" line
+    // settles it natively) or the producer not recording the car's lights
+    // that step.
+    {   static SceneNode overhead;
+        memset(&overhead, 0, sizeof overhead);
+        FixMatrix_Identity(&overhead.world);
+        // looking straight down: forward = -Y, right = +X, up = +Z
+        overhead.world.right.x = 0x10000;  overhead.world.right.y = 0;        overhead.world.right.z = 0;
+        overhead.world.up.x = 0;           overhead.world.up.y = 0;           overhead.world.up.z = 0x10000;
+        overhead.world.forward.x = 0;      overhead.world.forward.y = -0x10000; overhead.world.forward.z = 0;
+        overhead.world.position.y = 0xA0000;   // 10 units up
+        LightField_Clear();
+        FixVector oPos = {0, 0x8000, 0x80000};        // car at origin, front lamp (0, 0.5, 8)
+        FixVector oDir = {0, 0, 0x10000};             // forward, horizontal
+        require(LightField_Add(&oPos, &oDir, 0x10000, 0x10000, 0x1200, 0) == 1, "overhead light add");
+        GfxFogLight olights[LIGHT_FIELD_MAX];
+        int on = FogBeam_ProjectLights(olights, LIGHT_FIELD_MAX, &overhead, (float)W, (float)H, 1.0f/1.5f, -0.5f/1.5f);
+        require(on == 1, "overhead cam: forward beam light survives projection");
+        require(olights[0].beamLen > 0.05f, "overhead cam: transverse beam keeps a real wedge");
+    }
+
     // R look-back case (user screenshot: red glow by the left spoiler
     // support): camera rotated 180 degrees, rear lamp ahead in view, beam
     // pointing back toward/past the camera. The wedge must run from the lamp
@@ -221,6 +307,19 @@ int main(int argc, char **argv)
         memset(lr.pixels, 0xff, 4);
         Gfx_UnlockTexture(whiteTex, 0, 0);
     }
+    folVb = Gfx_CreateVertexBuffer(4);
+    require(folVb != NULL, "foliage vertex buffer");
+    folTex = Gfx_CreateTexture(4, 1, GFX_FORMAT_BGRA8, 1, 0);
+    require(folTex != NULL, "foliage texture");
+    {   GfxLockedRect lr;
+        require(Gfx_LockTexture(folTex, 0, 0, &lr), "lock foliage tex");
+        unsigned char *p = (unsigned char *)lr.pixels;
+        for (int i = 0; i < 4; i++) {   // BGRA: opaque dark leaf left, cut out right
+            p[i*4+0] = 0x20; p[i*4+1] = 0x50; p[i*4+2] = 0x20;
+            p[i*4+3] = i < 2 ? 0xff : 0x00;
+        }
+        Gfx_UnlockTexture(folTex, 0, 0);
+    }
 
     const char *prefix = argc > 1 ? argv[1] : nullptr;
     static DWORD control[W * H], lit[W * H];
@@ -259,6 +358,34 @@ int main(int argc, char **argv)
     Gfx_SetFogLights(ylights, yn);
     putQuad();
     drawAndRead(yawed);
+
+    // 7. Alpha-cutout foliage between camera and beam (user screenshot
+    // 2026-11-06, replay 2:57: pale halos / dark cutout patches around foliage
+    // near beams). The foliage quad sits nearer than the lamp, so its opaque
+    // leaves must gate the beam's far segments; the cutout holes keep the far
+    // scene depth, so the gate passes there even for segments BEHIND the
+    // foliage. Diagnostic prints measure the leak; the assertion pins the
+    // correct half (leaves gate far segments) so a fix can flip the leak
+    // prints into assertions.
+    static DWORD folCon[W * H], folLit[W * H];
+    Gfx_SetFogLights(nullptr, 0);
+    putQuad(); putFoliageQuad();
+    drawAndReadFoliage(folCon);
+    Gfx_SetFogLights(ylights, yn);
+    putQuad(); putFoliageQuad();
+    drawAndReadFoliage(folLit);
+    dumpPpm(prefix, "foliage", folLit);
+    {   int leafLift = red(folLit,18,32) - red(folCon,18,32);   // opaque half, beam path
+        int holeLift = red(folLit,32,32) - red(folCon,32,32);   // cutout half, beam path
+        fprintf(stderr, "foliage gate: leaf lift %+d, hole lift %+d (leak = hole - leaf)\n", leafLift, holeLift);
+        // Measured on llvmpipe 96x64: leaf +0, hole +77. The leaf assertion
+        // pins the correct half of the gate (opaque foliage occludes the
+        // beam). The hole assertion pins the CURRENT leak as the regression
+        // target: a fix must flip it to holeLift <= leafLift + 8 (cutout
+        // pixels occluded by the foliage they belong to).
+        require(leafLift >= -2 && leafLift <= 8, "foliage: opaque leaf gates the beam");
+        require(holeLift >= 40, "foliage: KNOWN LEAK - beam passes through cutout holes (flip when fixed)");
+    }
 
     dumpPpm(prefix, "lookback", rlook);
     dumpPpm(prefix, "yawed", yawed);
