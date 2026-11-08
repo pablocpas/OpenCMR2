@@ -44,6 +44,28 @@ float viewZFromDepth(float depth)
     float t = clamp((depth - 0.990) / 0.010, 0.0, 1.0);
     return 150.0 * t * t;
 }
+// Beam occluder-edge fade classification (pure-maths reference:
+// render/fog_math.h Fog_OccluderCounts, covered by tests/fog_math.cpp). A
+// depth neighbor counts as occluder evidence for a beam when its raw buffer
+// depth is in front of that beam's per-pixel segment reference (monotone
+// remap-safe on both executors) and it is not near-camera geometry:
+//  - projection known (fog.z > 0): view-space distance classification -
+//    closer than 1.0 world unit to the camera is the car's own interior
+//    (cockpit shell, dashboard), which blocks beams only inside its own
+//    silhouette; open road beside it keeps the beam. Raw-depth ratios cannot
+//    express this: full-range and half-range buffers map the same geometry
+//    to different ratios (SDL_GPU leaf at 1.4 -> raw 0.287 vs segment at 30
+//    -> raw 0.971 would fall under a 30% raw cutoff though the leaf is a
+//    real occluder).
+//  - projection unknown (GL recovery fallback): raw band at 30% of the
+//    segment reference (covers the harness ortho cases).
+bool occluderCounts(float neighborRaw, float segRef)
+{
+    if (neighborRaw >= segRef) return false;   // behind/at the segment: never evidence
+    if (fog.z > 0.0 && fog.w > fog.z)
+        return viewZFromDepth(neighborRaw) >= 1.0;
+    return neighborRaw >= segRef * 0.30;
+}
 void main()
 {
     vec2 size = vec2(textureSize(scene, 0));
@@ -92,16 +114,22 @@ void main()
         // Alpha-cutout foliage (2026-11-06 replay 2:57 screenshot): cutout
         // texels write no depth, so pixels inside/around a foliage silhouette
         // keep the far background depth and the per-segment gate passes for
-        // beam segments BEHIND the foliage. Raw neighborhood depths (4 px and
-        // 12 px rings: foliage holes are a few px, the halo around a
-        // silhouette a few more) feed the per-beam occluder test below; raw
-        // space is used because the GL path passes no near/far (fog.z == 0),
-        // so only raw depths compare meaningfully against segRef there.
-        vec2 pxA = 4.0 / size, pxB = 12.0 / size;
+        // beam segments BEHIND the foliage. Raw neighborhood depths (4, 8
+        // and 12 px rings: foliage holes are a few px, the halo around a
+        // silhouette a few more; the 8 px ring catches narrow leaves 5-11 px
+        // from a cutout that slip between the other two) feed the per-beam
+        // occluder test below; raw space is used because the GL path passes
+        // no near/far (fog.z == 0), so only raw depths compare meaningfully
+        // against segRef there.
+        vec2 pxA = 4.0 / size, pxB = 12.0 / size, pxC = 8.0 / size;
         float dA0 = texture(depthTex, uv + vec2( pxA.x, 0.0)).r;
         float dA1 = texture(depthTex, uv + vec2(-pxA.x, 0.0)).r;
         float dA2 = texture(depthTex, uv + vec2(0.0,  pxA.y)).r;
         float dA3 = texture(depthTex, uv + vec2(0.0, -pxA.y)).r;
+        float dC0 = texture(depthTex, uv + vec2( pxC.x, 0.0)).r;
+        float dC1 = texture(depthTex, uv + vec2(-pxC.x, 0.0)).r;
+        float dC2 = texture(depthTex, uv + vec2(0.0,  pxC.y)).r;
+        float dC3 = texture(depthTex, uv + vec2(0.0, -pxC.y)).r;
         float dB0 = texture(depthTex, uv + vec2( pxB.x, 0.0)).r;
         float dB1 = texture(depthTex, uv + vec2(-pxB.x, 0.0)).r;
         float dB2 = texture(depthTex, uv + vec2(0.0,  pxB.y)).r;
@@ -170,30 +198,27 @@ void main()
             // beam. Light ON the occluder is never faded (its viewZ is the
             // neighborhood minimum, so viewZ - occ stays 0).
             if (lightInfo[i].x > 0.0 && gate > 0.0 && viewZ > 1.0) {
-                // Occluder evidence in raw depth space (nearer = smaller raw
-                // depth): a neighbor in front of THIS segment shadows its
-                // light here; neighbors behind it must not (a tree at 10 must
-                // not darken a road pixel lit by a beam segment at 5). The
-                // occluder must not be DRASTICALLY nearer than the segment
-                // (raw below 30% of the segment's): the car's own interior
-                // shell or dashboard sits next to distant beams, blocks them
-                // only inside its own silhouette, and open road beside that
-                // silhouette is legitimately lit (cockpit_window_render
-                // shell case: shell raw 0.067 beside a segment at 0.8).
-                // Foliage occluders sit a fraction of the segment's depth
-                // away (fog_beam_render: leaf 0.467 vs segment 0.81+). Raw
-                // space is affine in 1/viewZ, so the raw band is a
-                // scale-aware view band.
-                float occLim = segRef * 0.30;
+                // Occluder evidence per beam (occluderCounts): a neighbor in
+                // front of THIS segment shadows its light here; neighbors
+                // behind it must not (a tree at 10 must not darken a road
+                // pixel lit by a beam segment at 5), and near-camera
+                // geometry (the car's own interior shell beside a distant
+                // beam) must not either - it blocks the beam only inside its
+                // own silhouette, and open road beside it stays lit
+                // (cockpit_window_render shell case).
                 float occRaw = depth;
-                if (dA0 < segRef && dA0 >= occLim) occRaw = min(occRaw, dA0);
-                if (dA1 < segRef && dA1 >= occLim) occRaw = min(occRaw, dA1);
-                if (dA2 < segRef && dA2 >= occLim) occRaw = min(occRaw, dA2);
-                if (dA3 < segRef && dA3 >= occLim) occRaw = min(occRaw, dA3);
-                if (dB0 < segRef && dB0 >= occLim) occRaw = min(occRaw, dB0);
-                if (dB1 < segRef && dB1 >= occLim) occRaw = min(occRaw, dB1);
-                if (dB2 < segRef && dB2 >= occLim) occRaw = min(occRaw, dB2);
-                if (dB3 < segRef && dB3 >= occLim) occRaw = min(occRaw, dB3);
+                if (occluderCounts(dA0, segRef)) occRaw = min(occRaw, dA0);
+                if (occluderCounts(dA1, segRef)) occRaw = min(occRaw, dA1);
+                if (occluderCounts(dA2, segRef)) occRaw = min(occRaw, dA2);
+                if (occluderCounts(dA3, segRef)) occRaw = min(occRaw, dA3);
+                if (occluderCounts(dC0, segRef)) occRaw = min(occRaw, dC0);
+                if (occluderCounts(dC1, segRef)) occRaw = min(occRaw, dC1);
+                if (occluderCounts(dC2, segRef)) occRaw = min(occRaw, dC2);
+                if (occluderCounts(dC3, segRef)) occRaw = min(occRaw, dC3);
+                if (occluderCounts(dB0, segRef)) occRaw = min(occRaw, dB0);
+                if (occluderCounts(dB1, segRef)) occRaw = min(occRaw, dB1);
+                if (occluderCounts(dB2, segRef)) occRaw = min(occRaw, dB2);
+                if (occluderCounts(dB3, segRef)) occRaw = min(occRaw, dB3);
                 // Fade magnitude from view depths (relative 25%): distant
                 // skyline transitions keep the beam; a far background
                 // peeking through a near cutout fades fully.

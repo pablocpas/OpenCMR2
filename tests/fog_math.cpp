@@ -153,6 +153,41 @@ int main(){
     CHECK(Fog_LightHeadroom(2.f, 2.f, 2.f) == 0.f);
     for (float m : {0.f, .2f, .5f, .8f, 1.f})
         CHECK(Fog_LightHeadroom(m, m, m) >= 0.f && Fog_LightHeadroom(m, m, m) <= 1.f);
+    // Beam occluder-edge classification (Fog_OccluderCounts, mirrors
+    // occluderCounts in shaders/fog.frag).
+    // GPU full-range, close foliage (Devin review case): near/far 1/250, a
+    // leaf at 1.4 world units -> raw ~0.287, beam segment at 30 -> ~0.971.
+    // A raw 30% band (cutoff ~0.291) would discard the leaf though it stands
+    // in front of the segment; the view-space classification keeps it.
+    {
+        float leaf = 250.f * (1.4f - 1.f) / (1.4f * (250.f - 1.f));   // ~0.287
+        float seg  = 250.f * (30.f - 1.f) / (30.f * (250.f - 1.f));   // ~0.971
+        CHECK(leaf < 0.30f * seg);                          // the raw-ratio failure itself
+        CHECK(Fog_OccluderCounts(leaf, seg, 1.f, 250.f, 0.f));        // full-range: counts
+        CHECK(Fog_OccluderCounts(0.5f + 0.5f * leaf, 0.5f + 0.5f * seg, 1.f, 250.f, 1.f));   // GL half-range: same answer
+    }
+    // GPU full-range, cockpit shell: interior at 0.6 units (near 0.5) beside
+    // a beam segment at 30 must NOT count - open road next to the car's own
+    // shell keeps the beam.
+    {
+        float shell = 250.f * (0.6f - 0.5f) / (0.6f * (250.f - 0.5f));   // ~0.167
+        float seg   = 250.f * (30.f - 0.5f) / (30.f * (250.f - 0.5f));   // ~0.983
+        CHECK(!Fog_OccluderCounts(shell, seg, 0.5f, 250.f, 0.f));
+        CHECK(!Fog_OccluderCounts(0.5f + 0.5f * shell, 0.5f + 0.5f * seg, 0.5f, 250.f, 1.f));
+    }
+    // Behind-segment silhouette (road 50 beside tree 10, segment 5): the tree
+    // lies BEHIND the segment and must never count.
+    {
+        float tree = 250.f * (10.f - 1.f) / (10.f * (250.f - 1.f));   // ~0.904
+        float seg  = 250.f * (5.f - 1.f) / (5.f * (250.f - 1.f));     // ~0.803
+        CHECK(!Fog_OccluderCounts(tree, seg, 1.f, 250.f, 0.f));
+    }
+    // Projection unknown (GL recovery fallback): raw band at 30% of the
+    // segment reference. Harness ortho cases: cockpit shell 0.067 beside a
+    // 0.8 segment is excluded, foliage leaf 0.467 beside a 0.81+ segment
+    // counts.
+    CHECK(!Fog_OccluderCounts(0.067f, 0.8f, 0.f, 0.f, 0.f));
+    CHECK(Fog_OccluderCounts(0.467f, 0.8135f, 0.f, 0.f, 0.f));
     if (!fails) std::puts("fog_math ok");
     // FogUniforms layout pin: shaders/fog.frag declares fog, sun, extra,
     // lights[8], lightInfo[8], beams[8] = 27 vec4; the executors' beam writes
