@@ -58,6 +58,26 @@ inline int Fog_ResolveProjectionVote(const FogProjVote votes[4], float *outNear,
 inline float Fog_ViewZGlBuffer(float bufferDepth, float nearZ, float farZ) {
     return Fog_ViewZ(bufferDepth * 2.f - 1.f, nearZ, farZ);
 }
+// Beam occluder-edge fade classification (mirrors occluderCounts in
+// shaders/fog.frag): a depth neighbor counts as occluder evidence for a beam
+// when its raw buffer depth is in front of that beam's per-pixel segment
+// reference (monotone remap-safe on both executors) and it is not
+// near-camera geometry. Projection known: view-space distance - closer than
+// kFogOccNearCamera world units is the car's own interior (cockpit shell,
+// dashboard), which blocks beams only inside its own silhouette. A raw-depth
+// ratio cannot express that: full-range and half-range buffers map the same
+// geometry to different ratios. Projection unknown (GL recovery fallback):
+// raw band at 30% of the segment reference.
+inline constexpr float kFogOccNearCamera = 1.0f;
+inline bool Fog_OccluderCounts(float neighborRaw, float segRefRaw, float nearZ, float farZ, float depthHalfRange) {
+    if (!(neighborRaw < segRefRaw)) return false;   // behind/at the segment: never evidence
+    if (nearZ > 0.f && farZ > nearZ) {
+        float vz = depthHalfRange > 0.5f ? Fog_ViewZGlBuffer(neighborRaw, nearZ, farZ)
+                                         : Fog_ViewZ(neighborRaw, nearZ, farZ);
+        return vz >= kFogOccNearCamera;
+    }
+    return neighborRaw >= segRefRaw * 0.30f;
+}
 // Exponential distance fog on a real view distance.
 inline float Fog_Factor(float viewZ, float density) {
     if (!(viewZ > 0.f) || !(density > 0.f)) return 0.f;

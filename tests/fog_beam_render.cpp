@@ -122,8 +122,12 @@ static void drawAndReadFoliage(DWORD *pixels)
     Gfx_SetAlphaTest(TRUE);
     Gfx_SetAlphaFunc(GFX_CMP_GREATER);
     Gfx_SetAlphaRef(0x80);
+    Gfx_SetStageMinFilter(0, GFX_FILTER_POINT);   // hard texel edges: no filtered alpha ramp
+    Gfx_SetStageMagFilter(0, GFX_FILTER_POINT);
     Gfx_SetTexture(0, folTex);
     Gfx_DrawPrimitiveVB(GFX_TRIANGLESTRIP, folVb, 0, 4);
+    Gfx_SetStageMinFilter(0, GFX_FILTER_LINEAR);
+    Gfx_SetStageMagFilter(0, GFX_FILTER_LINEAR);
     Gfx_SetAlphaTest(FALSE);
     Gfx_SetAlphaFunc(GFX_CMP_ALWAYS);
     Gfx_SetAlphaRef(0);
@@ -309,15 +313,27 @@ int main(int argc, char **argv)
     }
     folVb = Gfx_CreateVertexBuffer(4);
     require(folVb != NULL, "foliage vertex buffer");
-    folTex = Gfx_CreateTexture(4, 1, GFX_FORMAT_BGRA8, 1, 0);
+    folTex = Gfx_CreateTexture(4, 3, GFX_FORMAT_BGRA8, 1, 0);
     require(folTex != NULL, "foliage texture");
     {   GfxLockedRect lr;
         require(Gfx_LockTexture(folTex, 0, 0, &lr), "lock foliage tex");
         unsigned char *p = (unsigned char *)lr.pixels;
-        for (int i = 0; i < 4; i++) {   // BGRA: opaque dark leaf left, cut out right
-            p[i*4+0] = 0x20; p[i*4+1] = 0x50; p[i*4+2] = 0x20;
-            p[i*4+3] = i < 2 ? 0xff : 0x00;
-        }
+        // 4x3 texels over the same quad. v-bands 0 and 2: opaque dark leaf
+        // left half, cut out right half (the original pattern). v-band 1 -
+        // the MIDDLE band, which row 32 (quad centre, v ~= 0.5) samples
+        // under either readback orientation - is a NARROW leaf strip at
+        // texel 1 (screen x 18..24) between cutouts (Devin review #2): from
+        // the hole pixel at x=29 the nearest leaf sits 5-11 px away,
+        // between the 4 px and 12 px evidence rings, caught only by the 8 px
+        // ring. The original assertions keep their meaning in the strip
+        // band: leaf at x=21 is still opaque, the cutout edge is still x=24,
+        // and the x=32 wide hole is still reachable only by the 12 px ring.
+        for (int b = 0; b < 3; b++)
+            for (int i = 0; i < 4; i++) {   // BGRA
+                unsigned char *t = p + (b * 4 + i) * 4;
+                t[0] = 0x20; t[1] = 0x50; t[2] = 0x20;
+                t[3] = (b != 1 ? i < 2 : i == 1) ? 0xff : 0x00;
+            }
         Gfx_UnlockTexture(folTex, 0, 0);
     }
 
@@ -375,16 +391,30 @@ int main(int argc, char **argv)
     putQuad(); putFoliageQuad();
     drawAndReadFoliage(folLit);
     dumpPpm(prefix, "foliage", folLit);
-    {   int leafLift = red(folLit,18,32) - red(folCon,18,32);   // opaque half, beam path
-        int holeLift = red(folLit,32,32) - red(folCon,32,32);   // cutout half, beam path
-        fprintf(stderr, "foliage gate: leaf lift %+d, hole lift %+d (leak = hole - leaf)\n", leafLift, holeLift);
-        // Measured on llvmpipe 96x64: leaf +0, hole +77. The leaf assertion
-        // pins the correct half of the gate (opaque foliage occludes the
-        // beam). The hole assertion pins the CURRENT leak as the regression
-        // target: a fix must flip it to holeLift <= leafLift + 8 (cutout
-        // pixels occluded by the foliage they belong to).
+    {   int leafLift = red(folLit,21,32) - red(folCon,21,32);   // opaque leaf, 3px from the cutout edge
+        int holeLift = red(folLit,27,32) - red(folCon,27,32);   // cutout hole, 3px past the edge (4px ring reaches the leaf)
+        int hole32 = red(folLit,32,32) - red(folCon,32,32);     // wide-hole interior, 8px past the edge (12px ring reaches the leaf)
+        fprintf(stderr, "foliage gate: leaf lift %+d, hole(27) lift %+d, hole(32) lift %+d\n", leafLift, holeLift, hole32);
+        // fog.frag fades a beam segment's light where a close neighbor's raw
+        // depth is IN FRONT of that segment (occluder evidence), no farther
+        // in front than 70% of the segment's raw depth (a drastically nearer
+        // shell/dashboard is not an occluder - the cockpit_window_render
+        // shell case pins that side), and the pixel's view depth is >25%
+        // farther (magnitude). Pre-fix leak was hole(32) +77; both holes
+        // must drop to the leaf level, and the open-scene yawed assertions
+        // above (uniform depth, no near occluders) pin the false-positive
+        // side: no blanket darkening of legitimately lit background.
         require(leafLift >= -2 && leafLift <= 8, "foliage: opaque leaf gates the beam");
-        require(holeLift >= 40, "foliage: KNOWN LEAK - beam passes through cutout holes (flip when fixed)");
+        require(holeLift <= leafLift + 8, "foliage: cutout hole no longer leaks the beam");
+        require(hole32 <= leafLift + 8, "foliage: wide cutout interior no longer leaks the beam");
+        // Narrow leaf strip (Devin review #2): from the hole pixel at x=29
+        // the nearest leaf (texel x 18..24) sits 5-11 px away - between the
+        // 4 px and 12 px rings, caught only by the 8 px ring. With 4/12
+        // alone the hole stays lit (the slip, verified locally by disabling
+        // the 8 px ring: hole(29) jumps to the full leak).
+        int stripHole = red(folLit,29,32) - red(folCon,29,32);
+        fprintf(stderr, "strip gate: hole(29) lift %+d\n", stripHole);
+        require(stripHole <= leafLift + 8, "strip: hole beside a narrow leaf no longer slips the rings");
     }
 
     dumpPpm(prefix, "lookback", rlook);
