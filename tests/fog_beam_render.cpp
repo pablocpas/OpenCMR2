@@ -380,14 +380,21 @@ int main(int argc, char **argv)
     drawAndReadFoliage(folLit);
     dumpPpm(prefix, "foliage", folLit);
     {   int leafLift = red(folLit,21,32) - red(folCon,21,32);   // opaque leaf, 3px from the cutout edge
-        int holeLift = red(folLit,27,32) - red(folCon,27,32);   // cutout hole, 3px past the edge (4px fade kernel reaches the leaf)
-        fprintf(stderr, "foliage gate: leaf lift %+d, hole lift %+d (leak = hole - leaf)\n", leafLift, holeLift);
-        // Fixed in fog.frag (edge-aware beam fade): pre-fix measurements
-        // were leaf +0 / hole +77; the fade must pull the hole to the leaf
-        // level while the leaf stays gated. Bounds follow the yawed-beam
-        // tolerances above.
+        int holeLift = red(folLit,27,32) - red(folCon,27,32);   // cutout hole, 3px past the edge (4px ring reaches the leaf)
+        int hole32 = red(folLit,32,32) - red(folCon,32,32);     // wide-hole interior, 8px past the edge (12px ring reaches the leaf)
+        fprintf(stderr, "foliage gate: leaf lift %+d, hole(27) lift %+d, hole(32) lift %+d\n", leafLift, holeLift, hole32);
+        // fog.frag fades a beam segment's light where a close neighbor's raw
+        // depth is IN FRONT of that segment (occluder evidence), no farther
+        // in front than 70% of the segment's raw depth (a drastically nearer
+        // shell/dashboard is not an occluder - the cockpit_window_render
+        // shell case pins that side), and the pixel's view depth is >25%
+        // farther (magnitude). Pre-fix leak was hole(32) +77; both holes
+        // must drop to the leaf level, and the open-scene yawed assertions
+        // above (uniform depth, no near occluders) pin the false-positive
+        // side: no blanket darkening of legitimately lit background.
         require(leafLift >= -2 && leafLift <= 8, "foliage: opaque leaf gates the beam");
         require(holeLift <= leafLift + 8, "foliage: cutout hole no longer leaks the beam");
+        require(hole32 <= leafLift + 8, "foliage: wide cutout interior no longer leaks the beam");
     }
 
     dumpPpm(prefix, "lookback", rlook);
