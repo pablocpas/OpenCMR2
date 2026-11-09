@@ -148,10 +148,24 @@ std::vector<float> Trace(const std::vector<float> &mask, int w, int h, int up, b
     const int bits = sizeof(potrace_word) * 8;
     int stride = (tw + bits - 1) / bits;
     std::vector<potrace_word> map((size_t)stride * th);
-    for (int y = 0; y < th; y++)
-        for (int x = 0; x < tw; x++)
-            if (Sample(mask, w, h, (x + .5f) / traceScale - .5f, (y + .5f) / traceScale - .5f) >= .5f)
-                map[(th - 1 - y) * stride + x / bits] |= (potrace_word)1 << (bits - 1 - x % bits);
+    // Bolt: Fast path when traceScale == 1. In this case (x + 0.5f) - 0.5f == x,
+    // which corresponds exactly to integer pixel coordinates. Reading mask rows directly
+    // avoids 2 floorf calls and 4-point bilinear interpolation overhead per pixel.
+    if (traceScale == 1) {
+        for (int y = 0; y < h; y++) {
+            potrace_word *row = &map[(size_t)(h - 1 - y) * stride];
+            const float *mask_row = &mask[(size_t)y * w];
+            for (int x = 0; x < w; x++) {
+                if (mask_row[x] >= 0.5f)
+                    row[x / bits] |= (potrace_word)1 << (bits - 1 - x % bits);
+            }
+        }
+    } else {
+        for (int y = 0; y < th; y++)
+            for (int x = 0; x < tw; x++)
+                if (Sample(mask, w, h, (x + .5f) / traceScale - .5f, (y + .5f) / traceScale - .5f) >= .5f)
+                    map[(th - 1 - y) * stride + x / bits] |= (potrace_word)1 << (bits - 1 - x % bits);
+    }
     potrace_bitmap_t bitmap{tw, th, stride, map.data()};
     potrace_param_t *param = potrace_param_default();
     if (!param)
@@ -210,12 +224,17 @@ std::vector<float> Trace(const std::vector<float> &mask, int w, int h, int up, b
     // pixels and moves both sides of a stroke equally.
     double target = std::accumulate(mask.begin(), mask.end(), 0.0) * up * up;
     const float limit = 0.35f * up;
+    const float upper = limit + 1.0f;
+    const float lower = -limit - 1.0f;
     size_t inside = 0;
     std::vector<float> edge;
+    // Bolt: Reserve capacity to avoid repeated geometric reallocations when collecting
+    // boundary edge distance samples.
+    edge.reserve(distance.size() / 8);
     for (float d : distance) {
-        if (d > limit + 1)
+        if (d > upper)
             inside++;
-        else if (d >= -limit - 1)
+        else if (d >= lower)
             edge.push_back(d);
     }
     float lo = -limit, hi = limit;
