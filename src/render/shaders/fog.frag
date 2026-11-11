@@ -12,7 +12,7 @@ layout(std140, set = 3, binding = 0) uniform FogUniforms {
     vec4 lights[8];    // xy projected car light (uv, v downwards), z intensity 0..1, w wedge start ramp length (0 = none)
     vec4 lightInfo[8]; // x depth-buffer value 1 world unit in front of the lamp (<= 0: no depth gate), yzw tint
     vec4 beams[8];     // xy aspect-corrected unit screen beam direction, z wedge length, w depth ratio q: <1 forward tail, >1 backward thinning
-    vec4 halos[8];     // xy glow anchor (a few units forward along the beam), z unused halo depth ref, w beam-end depth ref
+    vec4 halos[8];     // xy glow anchor (a few units forward along the beam), z unbiased forward segment-anchor ref (legacy ref otherwise), w beam-end depth ref
     vec4 camA;         // camera world xz, camera forward xz (horizontal parts), for the world-anchored banks
     vec4 camB;         // camera right xz, 1/projection x scale, bank strength 0..1 (0 = uniform fog)
 };
@@ -193,8 +193,11 @@ void main()
                 // 1/viewZ, so the raw segment ref is exactly linear in t:
                 // lerp the lamp ref toward the beam-end ref (halos[i].w,
                 // <= 0 = unknown projection: keep the constant lamp gate).
-                segRef = halos[i].w > 0.0 ? mix(lightInfo[i].x, halos[i].w, tAxial) : lightInfo[i].x;
-                gate = step(segRef, depth);
+                float anchorRef = beams[i].w < 1.0 && halos[i].z > 0.0 ? halos[i].z : lightInfo[i].x;
+                segRef = halos[i].w > 0.0 ? mix(anchorRef, halos[i].w, tAxial) : lightInfo[i].x;
+                // The biased lamp gate excludes nearby bodywork separately;
+                // it must not distort segment depths along the whole beam.
+                gate = step(max(lightInfo[i].x, segRef), depth);
             }
             // Per-beam occluder edge fade: only neighbors IN FRONT of this
             // beam segment count - a silhouette behind the segment (road at

@@ -288,8 +288,8 @@ int main(int argc, char **argv)
     int bn = FogBeam_ProjectLights(blights, LIGHT_FIELD_MAX, &view, (float)W, (float)H, 1.0f/1.5f, -0.5f/1.5f);
     require(bn == 1, "lamp inside the near plane keeps its light");
     require(blights[0].depthRef > 0.43f && blights[0].depthRef < 0.46f, "clipped anchor gated at 1.5 units out");
-    require(blights[0].haloX == blights[0].x && blights[0].haloY == blights[0].y && blights[0].haloRef == blights[0].depthRef,
-            "bonnet halo slots pinned to the clipped lamp anchor");
+    require(blights[0].haloX == blights[0].x && blights[0].haloY == blights[0].y && blights[0].haloRef < blights[0].depthRef,
+            "bonnet segment anchor is unbiased");
 
     GfxViewport vp = { 0, 0, W, H, 0.f, 1.f };
     Gfx_SetViewport(&vp);
@@ -524,6 +524,30 @@ int main(int argc, char **argv)
         Gfx_SetFogLights(forward,nf); drawAndRead(on);
         require(memcmp(off,on,sizeof off)==0,"forward camera matrix: foreground occlusion");
     }
+    // Isolate raw depth ordering in the real shader. The existing scene
+    // depth sits between the unbiased and the old biased interpolation in
+    // this midpoint region; a biased lamp gate still excludes bodywork.
+    {
+        GfxFogLight beam={};
+        beam.x=0.5f; beam.y=0.2f; beam.beamY=1; beam.beamLen=0.5f;
+        beam.beamFade=1.0f/31; beam.intensity=4;
+        beam.r=beam.g=beam.b=1;
+        beam.depthRef=0.980f;
+        beam.haloRef=0.960f;
+        beam.beamEndRef=0.999f;
+        static DWORD off[W*H],on[W*H];
+        putQuad();
+        Gfx_SetFogLights(nullptr,0);drawAndRead(off);
+        Gfx_SetFogLights(&beam,1);drawAndRead(on);
+        int lift=0;for(int y=34;y<39;y++)for(int x=45;x<51;x++)lift=std::max(lift,red(on,x,y)-red(off,x,y));
+
+        fprintf(stderr,"clipped intermediate road lift=%d\n",lift);
+        require(lift>5,"clipped forward segment lights road behind it");
+        beam.depthRef=0.9999f; // same segment, foreground self-occlusion
+        Gfx_SetFogLights(&beam,1);drawAndRead(on);
+        require(memcmp(off,on,sizeof off)==0,"unbiased segment retains biased bodywork gate");
+    }
+    Gfx_SetTransform(GFX_TRANSFORM_PROJECTION,&proj);
     // Short forward run: the historical 0.05 denominator floor must not
     // extend an actual endpoint only 0.015 screen units from its anchor.
     // Direct uniform isolates the production shader from projection rounding.

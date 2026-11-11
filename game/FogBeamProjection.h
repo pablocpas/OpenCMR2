@@ -227,8 +227,10 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
             if (forward && run > 1e-4f && beamQ < 1.0f) {
                 float kept = fl->beamLen / run;
                 beamQ = 1.0f + (beamQ - 1.0f) * kept;
-                if (fl->beamEndRef > 0.0f)
-                    fl->beamEndRef = fl->depthRef + (fl->beamEndRef - fl->depthRef) * kept;
+                if (fl->beamEndRef > 0.0f) {
+                    float anchorRef = proj33 + proj43 / (anchorView.z / 65536.0f);
+                    fl->beamEndRef = anchorRef + (fl->beamEndRef - anchorRef) * kept;
+                }
             }
             fl->beamFade = fl->beamLen > 1e-4f ? beamQ : 1.0f;
         }
@@ -237,6 +239,10 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
         // paths share it) but are pinned to the lamp anchor with the lamp's
         // own depth gate; the fog shader no longer reads them.
         fl->haloX = lampU; fl->haloY = lampV; fl->haloRef = fl->depthRef;
+        // Reuse the otherwise unused halo depth lane for the UNBIASED
+        // forward segment anchor. Keep depthRef's bodywork bias separate.
+        if (fl->beamFade < 1.0f && proj43 < 0.0f)
+            fl->haloRef = proj33 + proj43 / (anchorView.z / 65536.0f);
     }
     return fogLightTotal;
 }

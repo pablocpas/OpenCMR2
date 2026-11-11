@@ -314,7 +314,7 @@ struct GfxFogLight {
     float beamX, beamY; // aspect-corrected projected lamp-to-end unit vector; (0,0) = no projected run
     float beamLen;      // retained projected wedge length, capped to a screen fraction
     float haloX, haloY; // screen uv of the glow anchor, a few units forward along the beam (the lit air in front of the car)
-    float haloRef;      // depth-buffer value for the halo gate; <= 0 disables it
+    float haloRef;      // unbiased forward segment-anchor depth; legacy halo ref otherwise
     float beamFade;     // beam depth ratio q = anchor/end (near-plane-clamped); < 1 forward soft tail, > 1 backward energy thinning
     float beamEndRef;   // depth-buffer value at the beam's far end (same convention as depthRef); <= 0: no per-segment gate, fall back to the constant lamp gate
     float startRamp;    // aspect-corrected screen length over which the wedge fades in from the anchor; > 0 only for lamps at/behind the near plane (the anchor is then the beam's near-plane crossing, not a real lamp spot); 0 = no ramp

@@ -19,6 +19,7 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+#include <utility>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -138,6 +139,38 @@ int main() {
             float best=0;
             for (int i=0;i<n;i++) best=fmaxf(best,lights[i].beamLen);
             if (n!=2 || best<0.1f) fail(v.name,pitch,false,0,"forward axial lamps must retain their projected road run",best,0.1f);
+        }
+    }
+    // Separate unbiased segment anchor from the bodywork self-occlusion
+    // gate. Depth interpolation must not inflate near-clipped segments.
+    for (const auto projection : {std::pair<double,double>{250.0/249.0,-250.0/249.0},
+                                  std::pair<double,double>{1.0/1.5,-0.5/1.5}}) {
+        SceneNode view={}; FixMatrix_Identity(&view.world);
+        LightField_Clear();
+        FixVector pos={65536,0,0},dir={0,0,65536};
+        LightField_Add(&pos,&dir,65536,65536,65536,65536);
+        GfxFogLight lights[LIGHT_FIELD_MAX];
+        int n=FogBeam_ProjectLights(lights,LIGHT_FIELD_MAX,&view,1920,1080,projection.first,projection.second);
+        if(n!=1 || lights[0].haloRef>=lights[0].depthRef)
+            fail("clipped",0,false,0,"segment anchor must be unbiased",n?lights[0].haloRef:0,n?lights[0].depthRef:0);
+        if(n==1) {
+            const double expected=projection.first+projection.second/(0x10100/65536.0);
+            if(fabs(lights[0].haloRef-expected)>1e-5)
+                fail("clipped",0,false,0,"unbiased anchor matches clipped plane",lights[0].haloRef,expected);
+        }
+        // Raw depths are affine in 1/z; GL's 0.5+0.5*d mapping preserves
+        // interpolation and ordering. A road at2.4 is behind the physical
+        // halfway segment, but in front of the old biased gate.
+        double a=projection.first+projection.second/1.0;
+        double b=projection.first+projection.second/31.0;
+        double biased=projection.first+projection.second/1.5;
+        double road=projection.first+projection.second/2.4;
+        for(bool half : {false,true}) {
+            auto remap=[&](double d){return half?0.5+0.5*d:d;};
+            double correct=(remap(a)+remap(b))*0.5;
+            double wrong=(remap(biased)+remap(b))*0.5;
+            if(!(correct<remap(road) && remap(road)<wrong))
+                fail("clipped",0,false,0,"full/half range segment ordering",correct,remap(road));
         }
     }
     for (const ViewDef &v : VIEWS) {
