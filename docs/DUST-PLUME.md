@@ -82,3 +82,11 @@ Correctness evidence is separate from appearance acceptance. Uneven WRC-like
 billowing/opacity and native Mac ground/projection alignment, camera cuts,
 replays, HUD/depth ordering and frame time still need real game captures.
 The rebuild remains under visual review, not a completed WRC-quality claim.
+
+If the volume is unavailable and no live fallback plume exists (including
+plume amount 0 or a full reserved particle budget), already-simulating tagged
+dry-wheel particles draw with the soft cloud material and cloud tint instead
+of vanishing or returning to leaf/grass sheets. This is the baseline dust,
+not an extra plume allocation: amount 0 still spawns no plume particles.
+Accepted volume or an existing visible fallback plume suppresses these baseline
+sheets. No new births, random calls or simulation edits are introduced.

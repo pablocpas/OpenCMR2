@@ -5666,6 +5666,16 @@ void Particle_DrawAll(SceneNode *pCamera, BYTE view)
     // Never draw the camera-facing cloud sheets over a successful world-volume
     // submission. Original wheel chips/spray remain separate.
     mask = 1 << view;
+    // No live cloud can exist when the cap is zero or the reserved pool is
+    // exhausted. Keep baseline wheel dust visible with the same soft-smoke
+    // material, without changing births, pool ownership or simulation.
+    bool fallbackCloudPresent=false;
+    if(g_particleTypes && g_particleTypeCount>DUST_PLUME_TYPE)
+        for(int j=0;j<g_particleCount;j++)
+            if(g_particles[j].active && (g_particles[j].field0x55&mask) &&
+               g_particles[j].pType==&g_particleTypes[DUST_PLUME_TYPE]){
+                fallbackCloudPresent=true;break;
+            }
     if (0 < g_particleCount) {
         pb = (BYTE *)g_particles + offsetof(Particle, field0x55);
         for (i = 0; i < g_particleCount; i++, pb += sizeof(Particle)) {
@@ -5675,9 +5685,17 @@ void Particle_DrawAll(SceneNode *pCamera, BYTE view)
             // Only dry wheel smoke explicitly tagged at emission is replaced.
             // Snow, water, debris and other uses of these templates stay intact.
             // Dry wheel sheets use leaf/grass sprite frames. They are not
-            // the soft-smoke cloud fallback, even when the volume is off or
-            // unavailable. Keep their simulation/RNG intact, omit only draw.
-            if(DRAW_PARTICLE.dryWheelDust)continue;
+            // the soft-smoke cloud fallback. If no replacement cloud exists,
+            // reuse this baseline particle only as soft smoke at draw time.
+            // Its leaf frame, callbacks and motion streak are never drawn.
+            bool baselineDryCloud=DRAW_PARTICLE.dryWheelDust;
+            if(baselineDryCloud){
+                if(volumeQueued || fallbackCloudPresent)continue;
+                if(!g_particleTypes || g_particleTypeCount<=DUST_PLUME_TYPE)continue;
+                pType=&g_particleTypes[DUST_PLUME_TYPE];
+                texture=pType->texture;
+                goto draw;
+            }
             if(volumeQueued && pType==&g_particleTypes[DUST_PLUME_TYPE])continue;
             if (pType->draw != 0) {
                 pType->draw(&DRAW_PARTICLE, pType, pCamera);
@@ -5729,6 +5747,11 @@ void Particle_DrawAll(SceneNode *pCamera, BYTE view)
             def.g = DRAW_PARTICLE.colour[1];
             def.b = DRAW_PARTICLE.colour[2];
             def.a = DRAW_PARTICLE.type0x53;
+            if(baselineDryCloud){
+                float r=def.r/255.f,g=def.g/255.f,b=def.b/255.f;
+                DustPlume_CloudTint(r,g,b);
+                def.r=(BYTE)(r*255.f+.5f);def.g=(BYTE)(g*255.f+.5f);def.b=(BYTE)(b*255.f+.5f);
+            }
             if(pType==&g_particleTypes[DUST_PLUME_TYPE])def.a=(BYTE)Effect_Scale(def.a,Sys_GetOption("video.dust_amount",100));
             // Wheel-thrown dust/chip specks (0x10..0x17): rotate and stretch
             // the quad along its screen-space motion so the specks read as

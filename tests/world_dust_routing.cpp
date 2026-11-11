@@ -6,13 +6,14 @@
 #include "port/gfx.h"
 #include <cstdio>
 extern int g_billboardsEnabled,g_billboardsRequested,g_unk0x006dd784;
+extern int g_billboardRuns[800][2];
 extern void Particle_DrawAll(SceneNode*,BYTE);
 extern void Particle_ClearActiveFlags();
 extern Particle *g_particles;extern ParticleType *g_particleTypes;
 extern int g_particleCount,g_particleTypeCount,g_nextParticle;
 static int volumeCalls;static bool available=true;static GfxDustLobe last;
-static int volumeEnabled=1;
-extern "C" int __wrap_Sys_GetOption(const char *key,int fallback){return !std::strcmp(key,"video.dust_volume")?volumeEnabled:fallback;}
+static int volumeEnabled=1,plumeAmount=200;
+extern "C" int __wrap_Sys_GetOption(const char *key,int fallback){return !std::strcmp(key,"video.dust_volume")?volumeEnabled:!std::strcmp(key,"video.dust_plume_amount")?plumeAmount:fallback;}
 extern "C" BOOL __wrap_Gfx_DrawDustVolume(const GfxDustLobe *lobes,int count){volumeCalls++;if(count)last=lobes[0];return available&&count>0&&lobes[0].centreRadius[0]==10;}
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"line%d: %s\n",__LINE__,#x);return 1;}}while(0)
 int main(){Particle pool[400]={};ParticleType types[33]={};g_particles=pool;g_particleTypes=types;g_particleCount=400;g_particleTypeCount=33;g_nextParticle=0;
@@ -24,7 +25,7 @@ int main(){Particle pool[400]={};ParticleType types[33]={};g_particles=pool;g_pa
  Particle_DrawAll(nullptr,0);CHECK(volumeCalls==1&&g_billboardsRequested==0);
  // An original dry wheel sheet is replaced only when explicitly tagged.
  Particle extra={};extra.active=1;extra.field0x55=1;extra.pType=&types[0x12];
- extra.texture=type.texture;extra.size=65536;extra.type0x53=80;extra.dryWheelDust=true;
+ Texture leaf={};leaf.textureId=7;extra.texture=&leaf;extra.size=65536;extra.type0x53=80;extra.dryWheelDust=true;
  pool[399]=extra;Particle_DrawAll(nullptr,0);CHECK(volumeCalls==2&&g_billboardsRequested==0);
  pool[399].dryWheelDust=false;Particle_DrawAll(nullptr,0);CHECK(volumeCalls==3&&g_billboardsRequested==1);
  pool[399].active=0;g_billboardsRequested=0;
@@ -59,6 +60,22 @@ int main(){Particle pool[400]={};ParticleType types[33]={};g_particles=pool;g_pa
  // Repeated draw selection cannot mutate the particle owner, life or tag.
  pool[399]=extra;Particle snapshot=pool[399];Particle_DrawAll(nullptr,0);
  CHECK(!std::memcmp(&snapshot,&pool[399],sizeof snapshot));
+ Particle_ClearActiveFlags();
+ // Zero cloud cap must retain a soft-smoke wheel fallback, not leaf art.
+ volumeEnabled=0;plumeAmount=0;
+ DustPlume_Emit(&point,&velocity,colour,0,1);
+ int liveClouds=0;for(auto &p:pool)if(p.active&&p.pType==&type)liveClouds++;
+ CHECK(liveClouds==0);
+ pool[399]=extra;g_unk0x006dd784=0;
+ Particle_DrawAll(nullptr,0);CHECK(g_unk0x006dd784==1);CHECK(g_billboardRuns[0][1]==smoke.textureId);
+ Particle_ClearActiveFlags();
+ // Pool reserve exhausted by non-cloud particles: baseline dry fallback too.
+ plumeAmount=200;
+ for(int i=0;i<336;i++){pool[i]={};pool[i].active=1;pool[i].pType=&types[0];}
+ DustPlume_Emit(&point,&velocity,colour,0,1);
+ liveClouds=0;for(auto &p:pool)if(p.active&&p.pType==&type)liveClouds++;
+ CHECK(liveClouds==0);pool[399]=extra;g_unk0x006dd784=0;
+ Particle_DrawAll(nullptr,0);CHECK(g_unk0x006dd784==1);CHECK(g_billboardRuns[0][1]==smoke.textureId);
  Particle_ClearActiveFlags();
  // Recycling an explicitly tagged particle through the original API clears the tag.
  types[0x12].flags=1;types[0x12].lifetime=65536;g_nextParticle=0;
