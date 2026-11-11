@@ -197,7 +197,13 @@ void main()
                 segRef = halos[i].w > 0.0 ? mix(anchorRef, halos[i].w, tAxial) : lightInfo[i].x;
                 // The biased lamp gate excludes nearby bodywork separately;
                 // it must not distort segment depths along the whole beam.
-                gate = step(max(lightInfo[i].x, segRef), depth);
+                // Forward beams only: a backward beam approaches the camera,
+                // so its segment depth gets closer while the lamp's biased
+                // ref stays farther - max() would apply that farther ref
+                // across the whole wedge and hide the beam's light on
+                // scenery between the segment and the lamp (Devin
+                // r4536372133). Backward beams gate on the segment ref alone.
+                gate = step(beams[i].w < 1.0 ? max(lightInfo[i].x, segRef) : segRef, depth);
             }
             // Per-beam occluder edge fade: only neighbors IN FRONT of this
             // beam segment count - a silhouette behind the segment (road at

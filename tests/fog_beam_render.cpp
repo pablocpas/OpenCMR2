@@ -547,6 +547,34 @@ int main(int argc, char **argv)
         Gfx_SetFogLights(&beam,1);drawAndRead(on);
         require(memcmp(off,on,sizeof off)==0,"unbiased segment retains biased bodywork gate");
     }
+    // Backward beam over scenery between the segment and the lamp (Devin
+    // review r4536372133): a backward beam approaches the camera, so its
+    // per-pixel segment ref is closer than the biased lamp ref. max(lamp,
+    // segment) applied that farther ref across the whole wedge and hid the
+    // beam's light on nearby scenery; the biased lamp maximum is for forward
+    // beams only.
+    {
+        GfxFogLight back={};
+        back.x=0.5f; back.y=0.2f; back.beamY=1; back.beamLen=0.5f;
+        back.beamFade=2.0f;                 // q > 1: backward thinning
+        back.intensity=4;
+        back.r=back.g=back.b=1;
+        back.depthRef=0.9990f;              // biased lamp ref past the quad
+        back.beamEndRef=0.90f;              // segment end much closer: midpoint segRef ~0.93-0.95
+        static DWORD off[W*H],on[W*H];
+        putQuad();
+        Gfx_SetFogLights(nullptr,0);drawAndRead(off);
+        Gfx_SetFogLights(&back,1);drawAndRead(on);
+        int lift=0;for(int y=34;y<39;y++)for(int x=45;x<51;x++)lift=std::max(lift,red(on,x,y)-red(off,x,y));
+        fprintf(stderr,"backward transverse midpoint lift=%d\n",lift);
+        require(lift>5,"backward beam lights scenery between segment and lamp");
+        // Same beam with the whole segment run past the quad: scenery closer
+        // than every segment must stay dark (the gate is not off for backward
+        // beams, it only drops the lamp maximum).
+        back.depthRef=0.9995f; back.beamEndRef=0.9980f;
+        Gfx_SetFogLights(&back,1);drawAndRead(on);
+        require(memcmp(off,on,sizeof off)==0,"backward beam still gated where the scene is closer than every segment");
+    }
     Gfx_SetTransform(GFX_TRANSFORM_PROJECTION,&proj);
     // Short forward run: the historical 0.05 denominator floor must not
     // extend an actual endpoint only 0.015 screen units from its anchor.

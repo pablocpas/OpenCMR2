@@ -78,6 +78,17 @@ inline bool Fog_OccluderCounts(float neighborRaw, float segRefRaw, float nearZ, 
     }
     return neighborRaw >= segRefRaw * 0.30f;
 }
+// Beam depth-gate reference (mirrors the gate line in shaders/fog.frag):
+// the per-pixel segment reference, raised to the biased lamp reference for
+// FORWARD beams (q < 1) so the car's own bodywork in front of the lamp
+// occludes its beam. A backward beam (q >= 1) approaches the camera, so its
+// segment depth gets closer while the lamp's biased reference stays farther;
+// taking the maximum would hide the beam's light on scenery between the
+// segment and the lamp (Devin r4536372133), so backward beams gate on the
+// segment reference alone.
+inline float Fog_BeamGateRef(float lampRef, float segRef, float q) {
+    return q < 1.f ? (lampRef > segRef ? lampRef : segRef) : segRef;
+}
 // Exponential distance fog on a real view distance.
 inline float Fog_Factor(float viewZ, float density) {
     if (!(viewZ > 0.f) || !(density > 0.f)) return 0.f;
