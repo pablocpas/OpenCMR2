@@ -36,6 +36,14 @@ inline bool DustPlume_Surface(bool dirt, bool gravel, bool water, bool snow, boo
 inline void DustPlume_SoilTint(float &r,float &g,float &b) {
     if(g>r){float green=g;r=green*1.12f;if(r>1.f)r=1.f;g=green*.84f;}
 }
+// Airborne soil is softer and less saturated than a thrown chip. Preserve
+// the surface hue without turning an olive/red chip palette into grass or
+// brick-coloured smoke. Used by BOTH cloud render paths, not paint deposits.
+inline void DustPlume_CloudTint(float &r,float &g,float &b) {
+    DustPlume_SoilTint(r,g,b);
+    float grey=.30f*r+.59f*g+.11f*b;
+    r=.45f*r+.55f*grey;g=.45f*g+.55f*grey;b=.45f*b+.55f*grey;
+}
 // video.dust_plume_amount (0..300, default 200) scales the live cloud cap:
 // 100 = the original 96, 200 = 192, 300 = 288 (the hard ceiling).
 inline int DustPlume_LiveCap(int amountPercent) {

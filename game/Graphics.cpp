@@ -5666,6 +5666,16 @@ void Particle_DrawAll(SceneNode *pCamera, BYTE view)
     // Never draw the camera-facing cloud sheets over a successful world-volume
     // submission. Original wheel chips/spray remain separate.
     mask = 1 << view;
+    // No live cloud can exist when the cap is zero or the reserved pool is
+    // exhausted. Keep baseline wheel dust visible with the same soft-smoke
+    // material, without changing births, pool ownership or simulation.
+    bool fallbackCloudPresent=false;
+    if(g_particleTypes && g_particleTypeCount>DUST_PLUME_TYPE)
+        for(int j=0;j<g_particleCount;j++)
+            if(g_particles[j].active && (g_particles[j].field0x55&mask) &&
+               g_particles[j].pType==&g_particleTypes[DUST_PLUME_TYPE]){
+                fallbackCloudPresent=true;break;
+            }
     if (0 < g_particleCount) {
         pb = (BYTE *)g_particles + offsetof(Particle, field0x55);
         for (i = 0; i < g_particleCount; i++, pb += sizeof(Particle)) {
@@ -5674,7 +5684,19 @@ void Particle_DrawAll(SceneNode *pCamera, BYTE view)
             pType = DRAW_PARTICLE.pType;
             // Only dry wheel smoke explicitly tagged at emission is replaced.
             // Snow, water, debris and other uses of these templates stay intact.
-            if(volumeQueued && (pType==&g_particleTypes[DUST_PLUME_TYPE] || DRAW_PARTICLE.dryWheelDust))continue;
+            // Dry wheel sheets use leaf/grass sprite frames. They are not
+            // the soft-smoke cloud fallback. If no replacement cloud exists,
+            // reuse this baseline particle only as soft smoke at draw time.
+            // Its leaf frame, callbacks and motion streak are never drawn.
+            bool baselineDryCloud=DRAW_PARTICLE.dryWheelDust;
+            if(baselineDryCloud){
+                if(volumeQueued || fallbackCloudPresent)continue;
+                if(!g_particleTypes || g_particleTypeCount<=DUST_PLUME_TYPE)continue;
+                pType=&g_particleTypes[DUST_PLUME_TYPE];
+                texture=pType->texture;
+                goto draw;
+            }
+            if(volumeQueued && pType==&g_particleTypes[DUST_PLUME_TYPE])continue;
             if (pType->draw != 0) {
                 pType->draw(&DRAW_PARTICLE, pType, pCamera);
                 continue;
@@ -5725,6 +5747,11 @@ void Particle_DrawAll(SceneNode *pCamera, BYTE view)
             def.g = DRAW_PARTICLE.colour[1];
             def.b = DRAW_PARTICLE.colour[2];
             def.a = DRAW_PARTICLE.type0x53;
+            if(baselineDryCloud){
+                float r=def.r/255.f,g=def.g/255.f,b=def.b/255.f;
+                DustPlume_CloudTint(r,g,b);
+                def.r=(BYTE)(r*255.f+.5f);def.g=(BYTE)(g*255.f+.5f);def.b=(BYTE)(b*255.f+.5f);
+            }
             if(pType==&g_particleTypes[DUST_PLUME_TYPE])def.a=(BYTE)Effect_Scale(def.a,Sys_GetOption("video.dust_amount",100));
             // Wheel-thrown dust/chip specks (0x10..0x17): rotate and stretch
             // the quad along its screen-space motion so the specks read as
@@ -7371,15 +7398,22 @@ void SpeedMote_LogStats(float speedRatio, int stepsElapsed)
 
 void DustPlume_Emit(FixVector *world, FixVector *velocity, BYTE *colour, BYTE shade, BYTE viewMask)
 {
-    if(world && colour && viewMask){
+    BYTE cloudColour[4]={0,0,0,255};
+    if(colour){
         float r=colour[0]/255.f,g=colour[1]/255.f,b=colour[2]/255.f;
-        DustPlume_SoilTint(r,g,b);
+        DustPlume_CloudTint(r,g,b);
+        cloudColour[0]=(BYTE)(r*255.f+.5f);
+        cloudColour[1]=(BYTE)(g*255.f+.5f);
+        cloudColour[2]=(BYTE)(b*255.f+.5f);
+    }
+    if(world && colour && viewMask){
+        float r=cloudColour[0]/255.f,g=cloudColour[1]/255.f,b=cloudColour[2]/255.f;
         // Existing particle velocities are displacement per25Hz reference step.
         // Copy the birth impulse; never read a later car position or velocity.
         worldDust.Emit(world->x/65536.f,world->y/65536.f,world->z/65536.f,r,g,b,
             velocity?velocity->x*25.f/65536.f:0,velocity?velocity->z*25.f/65536.f:0);
     }
-    if (!g_particles || !g_particleTypes || g_particleTypeCount <= DUST_PLUME_TYPE || g_particleCount <= 64 || !viewMask) return;
+    if (!world || !colour || !g_particles || !g_particleTypes || g_particleTypeCount <= DUST_PLUME_TYPE || g_particleCount <= 64 || !viewMask) return;
     int clouds = 0, active = 0;
     for (int i=0; i<g_particleCount; ++i) {
         if (!g_particles[i].active) continue;
@@ -7389,5 +7423,5 @@ void DustPlume_Emit(FixVector *world, FixVector *velocity, BYTE *colour, BYTE sh
     {   int plumeAmount=Sys_GetOption("video.dust_plume_amount",200);
         if (!DustPlume_HasBudget(active, clouds, g_particleCount, DustPlume_LiveCap(plumeAmount))) return; }
     // No attachment matrix or owner callback: this cloud stays on the old road.
-    Particle_Spawn(DUST_PLUME_TYPE, world, velocity, world->y, NULL, colour, shade, NULL, viewMask);
+    Particle_Spawn(DUST_PLUME_TYPE, world, velocity, world->y, NULL, cloudColour, shade, NULL, viewMask);
 }
