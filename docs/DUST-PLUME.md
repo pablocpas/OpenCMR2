@@ -28,8 +28,11 @@ physical lighting. This is visual
 volume, not fluid simulation, lighting/scattering or terrain collision.
 Ground height is captured at emission, not continuously sampled across slopes.
 
-A preflighted GPU volume command replaces only added DUST_PLUME cloud sheets.
-Original chips/spray remain. Missing sampled depth, shader/pipeline/target
+A preflighted GPU volume command replaces added DUST_PLUME cloud sheets.
+Dry dirt/gravel wheel particles explicitly tagged at emission are never drawn
+as leaf/grass-textured sheets, including when the volume is disabled or rejected.
+Their simulation remains active so the game's random stream and pool behaviour
+do not change. Untagged water, snow, ice, glass and other original effects remain. Missing sampled depth, shader/pipeline/target
 failure, OpenGL, offscreen targets, split viewports, orthographic and singular
 camera matrices reject the command and retain sheet fallback. A rare GPU pass
 failure after command acceptance cannot restore already skipped sheets in that
@@ -46,7 +49,9 @@ case work. Native Metal/M2Air frame time is not measured.
 The legacy sheet path still uses the existing smoke texture and400-particle
 pool, capped at96 added clouds with64 slots reserved for original effects.
 It has independent spawn randomness and no owner callback, but its sheets do
-face the camera. Dry dirt/gravel only: snow, ice, water and hard surfaces are
+face the camera. The fallback is the soft smoke cloud alone, not smoke plus
+legacy dry wheel sheets. Both cloud paths use the same desaturated surface tint;
+paint dirt deposits keep their existing palette. Dry dirt/gravel only: snow, ice, water and hard surfaces are
 excluded from added clouds; original effects remain. Snow needs separate
 calibration, not a universal low-volume rule.
 

@@ -35,5 +35,9 @@ int main(){
     r=.5f;g=1.f;b=.2f;DustPlume_SoilTint(r,g,b);if(r>1.f||g>=r)++fail;
     r=.6f;g=.4f;b=.2f;DustPlume_SoilTint(r,g,b);
     if(r!=.6f||g!=.4f||b!=.2f)++fail;
+    r=.7f;g=.25f;b=.10f;DustPlume_CloudTint(r,g,b);
+    if(!(r>g&&g>b&&r-b<.30f))++fail;
+    r=.3f;g=.3f;b=.3f;DustPlume_CloudTint(r,g,b);
+    if(std::fabs(r-.3f)>.00001f || std::fabs(g-.3f)>.00001f || std::fabs(b-.3f)>.00001f)++fail;
     puts(fail?"FAIL dust plume":"dust plume: bounded growth, drift decay, lift and fade pass");return fail?1:0;
 }

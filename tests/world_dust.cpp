@@ -1,12 +1,14 @@
 #include "port/types.h"
 #include "WorldDust.h"
+#include "DustPlume.h"
 #include <cstdio>
 #include <cstring>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"line%d: %s\n",__LINE__,#x);return 1;}}while(0)
 int main(int argc,char **argv){
  if(argc==3&&!std::strcmp(argv[1],"--fixture")){
   WorldDust::Pool pool;
-  for(int t=0;t<200;t++){float z=t*.25f;pool.Emit(8*std::sin(z*.06f),0,z,.66,.46,.22);pool.Step(.04f);}
+  float r=.66f,g=.46f,b=.22f;DustPlume_CloudTint(r,g,b);
+  for(int t=0;t<200;t++){float z=t*.25f;pool.Emit(8*std::sin(z*.06f),0,z,r,g,b);pool.Step(.04f);}
   GfxDustLobe lobes[32];int n=pool.Sample(lobes,32);FILE *f=std::fopen(argv[2],"w");if(!f)return 1;
   std::fputs("[",f);for(int i=0;i<n;i++){if(i)std::fputs(",",f);std::fputs("[",f);
    for(int k=0;k<4;k++)std::fprintf(f,"%s%g",k?",":"",lobes[i].centreRadius[k]);

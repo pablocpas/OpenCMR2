@@ -547,7 +547,7 @@ add_test(NAME world_dust COMMAND world_dust_test)
 if(OPENCMR2_TEST_ELF_WRAP)
  add_executable(world_dust_routing_test world_dust_routing.cpp)
  target_link_libraries(world_dust_routing_test PRIVATE opencmr2_platform)
- target_link_options(world_dust_routing_test PRIVATE -Wl,--wrap=Gfx_DrawDustVolume)
+ target_link_options(world_dust_routing_test PRIVATE -Wl,--wrap=Gfx_DrawDustVolume -Wl,--wrap=Sys_GetOption)
  add_test(NAME world_dust_routing COMMAND world_dust_routing_test)
 endif()
 add_executable(dust_volume_recording_test dust_volume_recording.cpp
