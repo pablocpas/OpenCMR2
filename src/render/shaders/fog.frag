@@ -140,7 +140,9 @@ void main()
             vec2 dl = uv - lights[i].xy;
             dl.x *= sun.w;
             vec2 bdir = beams[i].xy;
-            float blen = max(beams[i].z, 0.05);
+            // Forward endpoints can be shorter than the historical backward
+            // stability floor. Do not turn that floor into extra lit road.
+            float blen = max(beams[i].z, beams[i].w < 1.0 ? 0.0001 : 0.05);
             float wedge = 0.0;
             float tAxial = 0.0;
             if (dot(bdir, bdir) > 1e-6) {

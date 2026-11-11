@@ -524,6 +524,28 @@ int main(int argc, char **argv)
         Gfx_SetFogLights(forward,nf); drawAndRead(on);
         require(memcmp(off,on,sizeof off)==0,"forward camera matrix: foreground occlusion");
     }
+    // Short forward run: the historical 0.05 denominator floor must not
+    // extend an actual endpoint only 0.015 screen units from its anchor.
+    // Direct uniform isolates the production shader from projection rounding.
+    {
+        GfxFogLight shortBeam={};
+        shortBeam.x=0.5f; shortBeam.y=0.5f;
+        shortBeam.beamY=1.0f; shortBeam.beamLen=0.015f;
+        shortBeam.beamFade=0.5f;
+        shortBeam.r=shortBeam.g=shortBeam.b=1.0f;
+        shortBeam.intensity=4.0f;
+        static DWORD off[W*H], on[W*H];
+        putQuad(); Gfx_SetFogLights(nullptr,0); drawAndRead(off);
+        Gfx_SetFogLights(&shortBeam,1); drawAndRead(on);
+        int continuation=0;
+        for(int yy=0;yy<H;yy++) for(int xx=0;xx<W;xx++) {
+            float along=(yy+0.5f)/H-shortBeam.y;
+            if(along>shortBeam.beamLen && red(on,xx,yy)>red(off,xx,yy)+5)
+                continuation++;
+        }
+        fprintf(stderr,"short forward continuation=%d\n",continuation);
+        require(continuation==0,"short forward beam terminates at true endpoint");
+    }
     printf("fog_beam_render ok\n");
     return 0;
 }
