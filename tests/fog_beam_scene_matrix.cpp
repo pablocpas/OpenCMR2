@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <initializer_list>
 #include "Graphics.h"
 #include "FixedPoint.h"
 #include "SceneNode.h"
@@ -118,6 +119,27 @@ int main() {
     g_texManager.fixedProjection[14]=(int)(-250.0/249.0*65536.0);
     const double P33=250.0/249.0, P43=-250.0/249.0;
     const double lampYF=0.55, lampZF=2.05, lampYR=0.70, lampZR=-2.0, lampXF=0.65, lampXR=0.62;
+    // Forward-headlight visibility: the direction can be camera-axial while
+    // the offset lamps still project a useful run toward the road. The rear
+    // axial case must stay dark. Exercise the same camera positions at level
+    // pitch too, rather than letting camera pitch accidentally supply light.
+    for (const ViewDef &v : VIEWS) {
+        if (!strcmp(v.name,"side") || !strcmp(v.name,"chase-far")) continue;
+        for (double pitch : {0.0, v.pitch}) {
+            SceneNode view = {}; matFromYPR(&view.world,v.x,v.y,v.z,0,pitch);
+            LightField_Clear();
+            for (int side : {-1,1}) {
+                FixVector pos={(int)(side*lampXF*65536),(int)(lampYF*65536),(int)(lampZF*65536)};
+                FixVector dir={0,0,65536};
+                LightField_Add(&pos,&dir,65536,65536,65536,65536);
+            }
+            GfxFogLight lights[LIGHT_FIELD_MAX];
+            int n=FogBeam_ProjectLights(lights,LIGHT_FIELD_MAX,&view,1920,1080,P33,P43);
+            float best=0;
+            for (int i=0;i<n;i++) best=fmaxf(best,lights[i].beamLen);
+            if (n!=2 || best<0.1f) fail(v.name,pitch,false,0,"forward axial lamps must retain their projected road run",best,0.1f);
+        }
+    }
     for (const ViewDef &v : VIEWS) {
         SceneNode view; memset(&view,0,sizeof view);
         matFromYPR(&view.world, v.x,v.y,v.z, v.yaw,v.pitch);

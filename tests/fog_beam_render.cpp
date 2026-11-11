@@ -18,7 +18,8 @@
 #include <cstdlib>
 
 static SDL_Window *testWindow;
-extern "C" int Sys_GetOption(const char *, int fallback) { return fallback; }
+static int fogLightStrength=100;
+extern "C" int Sys_GetOption(const char *key, int fallback) { return !strcmp(key,"video.fog_lights") ? fogLightStrength : fallback; }
 SDL_Window *Platform_GetWindow() { return testWindow; }
 int Platform_GetSettingInt(const char *, int fallback) { return fallback; }
 void TouchOverlay_RecordFrame(int, int, bool) {}
@@ -358,8 +359,7 @@ int main(int argc, char **argv)
     Gfx_SetFogLights(&occluded, 1);
     putQuad();
     drawAndRead(gated);
-    // 4. Lamp inside the near plane (bonnet case): its clipped light must render
-    // (the forward-anchored halo; the near-axial wedge collapses to it).
+    // 4. Lamp inside the near plane: exercise the clipped projected wedge.
     static DWORD bonnet[W * H];
     Gfx_SetFogLights(blights, bn);
     putQuad();
@@ -453,6 +453,77 @@ int main(int argc, char **argv)
     require(red(rlook,84,32) <= red(control,84,32) + 8, "look-back: no right-side wedge");
     require(red(rlook,2,2) <= red(control,2,2) + 8, "look-back: no upper-left glow");
     require(red(rlook,12,32) <= red(control,12,32) + 8, "look-back: no left-side spill");
+    // Camera matrix: forward lamps must light the projected road/fog path,
+    // including level bonnet/bumper views. Far scene depth stands for open
+    // road; an occluding near quad must remain dark. No private assets.
+    struct CameraCase { const char *name; float y,z,pitch; };
+    const CameraCase cameras[] = {{"chase",2.4f,-6.8f,0},{"bonnet",0.95f,1.75f,0},{"bumper",0.55f,2.35f,0},
+        {"chase-pitched",2.4f,-6.8f,14},{"bonnet-pitched",0.95f,1.75f,6},{"bumper-pitched",0.55f,2.35f,2}};
+    for (const CameraCase &camera : cameras) {
+        SceneNode cv={}; FixMatrix_Identity(&cv.world);
+        float pitch=camera.pitch*3.14159265f/180;
+        cv.world.up.y=cv.world.forward.z=(int)(cos(pitch)*65536);
+        cv.world.up.z=(int)(sin(pitch)*65536); cv.world.forward.y=-cv.world.up.z;
+        cv.world.position.y=(int)(camera.y*65536); cv.world.position.z=(int)(camera.z*65536);
+        LightField_Clear();
+        for (int side=-1;side<=1;side+=2) {
+            FixVector pos={(int)(side*0.65f*65536),(int)(0.55f*65536),(int)(2.05f*65536)};
+            FixVector dir={0,0,65536};
+            LightField_Add(&pos,&dir,65536,65536,65536,65536);
+        }
+        GfxFogLight forward[LIGHT_FIELD_MAX];
+        int nf=FogBeam_ProjectLights(forward,LIGHT_FIELD_MAX,&cv,W,H,1.0f/1.5f,-0.5f/1.5f);
+        require(nf==2,"camera matrix: two forward lamps");
+        static DWORD off[W*H],on[W*H];
+        putQuad(); Gfx_SetFogLights(nullptr,0); drawAndRead(off);
+        Gfx_SetFogLights(forward,nf);
+        fogLightStrength=0; drawAndRead(on);
+        require(memcmp(off,on,sizeof off)==0,"forward camera matrix: fog-lights 0 is the control");
+        fogLightStrength=100; drawAndRead(on);
+        std::string offTag=std::string(camera.name)+"-off";
+        dumpPpm(prefix,offTag.c_str(),off);
+        int path=0,nearSpots=0,backward=0,beyond=0;
+        for(int yy=0;yy<H;yy++) for(int xx=0;xx<W;xx++) {
+            int lift=red(on,xx,yy)-red(off,xx,yy);
+            if(lift<=5) continue;
+            // Readback has top-left origin, matching the production projector.
+            float u=(xx+0.5f)/W,v=(yy+0.5f)/H;
+            bool ahead=false,near=false,within=false;
+            for(int i=0;i<nf;i++) {
+                float dx=(u-forward[i].x)*W/H,dy=v-forward[i].y;
+                float along=dx*forward[i].beamX+dy*forward[i].beamY;
+                ahead |= along>0.03f;
+                within |= along>=0 && along<=forward[i].beamLen;
+                near |= dx*dx+dy*dy<0.02f*0.02f;
+            }
+            if(ahead) path++; else backward++;
+            if(!within) beyond++;
+            if(near && camera.z>1.0f) nearSpots++;
+        }
+        fprintf(stderr,"forward %s path=%d near=%d backward=%d\n",camera.name,path,nearSpots,backward);
+        dumpPpm(prefix,camera.name,on);
+        require(path>=8,"forward camera matrix: open road/fog path receives light");
+        require(nearSpots==0,"forward camera matrix: no near-camera spots");
+        require(backward==0,"forward camera matrix: no backward wash");
+        require(beyond==0,"forward camera matrix: no continuation past beam endpoints");
+        static DWORD strong[W*H];
+        fogLightStrength=200; drawAndRead(strong); fogLightStrength=100;
+        int extraLift=0;
+        for(int j=0;j<W*H;j++) {
+            require(((strong[j]>>16)&255)>=((on[j]>>16)&255),"fog-lights 200 never dims the beam");
+            if(((strong[j]>>16)&255)>((on[j]>>16)&255)) extraLift++;
+        }
+        require(extraLift>=8,"fog-lights 200 increases the beam response");
+        std::string strongTag=std::string(camera.name)+"-200";
+        dumpPpm(prefix,strongTag.c_str(),strong);
+        // A near scene quad is in front of the production depth gates.
+        GfxVertex *nearVertices=Gfx_LockVertexBuffer(vb);
+        for(int i=0;i<4;i++) nearVertices[i].z=0.6f;
+        Gfx_UnlockVertexBuffer(vb);
+        Gfx_SetFogLights(nullptr,0); drawAndRead(off);
+        Gfx_SetFogLights(forward,nf); drawAndRead(on);
+        require(memcmp(off,on,sizeof off)==0,"forward camera matrix: foreground occlusion");
+    }
     printf("fog_beam_render ok\n");
     return 0;
 }
