@@ -188,6 +188,16 @@ int main(){
     // counts.
     CHECK(!Fog_OccluderCounts(0.067f, 0.8f, 0.f, 0.f, 0.f));
     CHECK(Fog_OccluderCounts(0.467f, 0.8135f, 0.f, 0.f, 0.f));
+    // Beam depth-gate reference (Fog_BeamGateRef, mirrors the gate line in
+    // shaders/fog.frag): forward beams (q < 1) raise the segment reference to
+    // the biased lamp reference (own-bodywork occlusion); backward beams
+    // (q >= 1) approach the camera and gate on the segment reference alone,
+    // so scenery between the segment and the lamp keeps the beam's light
+    // (Devin r4536372133: rear lamp biased ref far, midpoint segment near).
+    CHECK(Fog_BeamGateRef(0.9995f, 0.9741f, 2.0f) == 0.9741f);   // backward: segment ref alone
+    CHECK(Fog_BeamGateRef(0.9995f, 0.9741f, 1.0f) == 0.9741f);   // q == 1 is not a forward tail
+    CHECK(Fog_BeamGateRef(0.9995f, 0.9741f, 0.5f) == 0.9995f);   // forward: biased lamp gate
+    CHECK(Fog_BeamGateRef(0.9741f, 0.9995f, 0.5f) == 0.9995f);   // forward: farther segment wins
     if (!fails) std::puts("fog_math ok");
     // FogUniforms layout pin: shaders/fog.frag declares fog, sun, extra,
     // lights[8], lightInfo[8], beams[8] = 27 vec4; the executors' beam writes

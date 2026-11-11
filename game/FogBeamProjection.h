@@ -140,7 +140,7 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
         // linear along the wedge). 0 when the projection is unknown.
         {   float endZ = endView.z / 65536.0f;
             if (endZ < 1.0039f) endZ = 1.0039f;   // LightField_ClipBeamToNearPlane's plane
-            float d = (proj43 < 0.0f && hasBeam && lampIn) ? proj33 + proj43 / endZ : 0.0f;
+            float d = (proj43 < 0.0f && hasBeam) ? proj33 + proj43 / endZ : 0.0f;
             fl->beamEndRef = (d > 1.0f ? 1.0f : (d < 0.0f ? 0.0f : d)); }
         // Lamp at/behind the near plane (bonnet, bumper, car-mounted cameras): the anchor is the beam's near-plane crossing, which showed as two
         // bright spots beside the camera. Fade the wedge in over a third of the screen height from there.
@@ -166,9 +166,9 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
         // 90-180 degrees off the beam's true screen axis - the detached
         // vertical streaks. Foreshortening still supplies axial stability:
         // the projected run of a truly axial beam collapses onto the lamp,
-        // and the extra fade band (below ~6 degrees off-axis) removes the
-        // rest, so the run direction is only read while it is long enough
-        // to be meaningful.
+        // and backward beams keep the extra fade band below ~6 degrees.
+        // Forward offset lamps retain their real perspective-convergent run;
+        // the shader softly terminates those beams instead of fading them out.
         // Beam depth ratio q = lamp view depth / end view depth, for every
         // beam (clipped or not). Two shader uses:
         // - Per-pixel segment gate: 1/z interpolates linearly in screen space
@@ -185,8 +185,8 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
         //   trim. The shader clamps q to >= 1 for this use, so unclipped
         //   beams keep their previous energy exactly.
         float beamQ = 1.0f;
-        if (hasBeam && lampIn) {
-            const double lampZ = vView.z / 65536.0;
+        if (hasBeam) {
+            const double lampZ = anchorView.z / 65536.0;
             double endZ = endView.z / 65536.0;
             const double clipZ = 1.0039;   // LightField_ClipBeamToNearPlane's plane (0x10100)
             if (endZ < clipZ) endZ = clipZ;   // clipped/camera-crossing: end at the near plane
@@ -195,7 +195,8 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
                 beamQ = (float)(q < 0.05 ? 0.05 : (q > 16.0 ? 16.0 : q));
             }
         }
-        {   float transverse = 0.0f, bdvx = 0.0f, bdvy = 0.0f;
+        {   float transverse = 0.0f;
+            bool forward = false;
             if (hasBeam) {
                 FixVector bd;
                 FixMatrix_RotateVector(&bd, &dirN, &invView);
@@ -203,17 +204,34 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
                 const double bl = sqrt(bx * bx + by * by + bz * bz);
                 if (bl > 0.0) {
                     transverse = (float)(sqrt(bx * bx + by * by) / bl);
-                    bdvx = (float)(bx / bl); bdvy = (float)(by / bl);
+                    forward = bz > 0.0;
                 }
             }
             float dx = (endU - lampU) * aspect, dy = endV - lampV;
             float run = sqrtf(dx * dx + dy * dy);
             float len = run > 0.6f ? 0.6f : run;   // screen-fraction cap
-            float band = transverse / 0.10f;
+            // Forward-facing lamps converge toward the vanishing point even
+            // when their direction is camera-axial. Their projected run is
+            // real (offset lamps), not an unstable direction residual. Keep
+            // it. Retain the fade for backward/camera-crossing beams, where
+            // it prevents the old rear wash and direction flips. The weights meet
+            // at one around bz=0, so the hemisphere boundary is continuous.
+            float band = forward ? 1.0f : transverse / 0.10f;
             len *= band > 1.0f ? 1.0f : band;
             if (len > 1e-4f && run > 1e-4f) {
                 fl->beamX = dx / run; fl->beamY = dy / run; fl->beamLen = len;
             } else { fl->beamX = 0.0f; fl->beamY = 0.0f; fl->beamLen = 0.0f; }
+            // Match forward segment depths to the retained screen run.
+            // Both raw depth and q are affine along this projected segment;
+            // a capped run must not use the uncapped 30m endpoint's depth.
+            if (forward && run > 1e-4f && beamQ < 1.0f) {
+                float kept = fl->beamLen / run;
+                beamQ = 1.0f + (beamQ - 1.0f) * kept;
+                if (fl->beamEndRef > 0.0f) {
+                    float anchorRef = proj33 + proj43 / (anchorView.z / 65536.0f);
+                    fl->beamEndRef = anchorRef + (fl->beamEndRef - anchorRef) * kept;
+                }
+            }
             fl->beamFade = fl->beamLen > 1e-4f ? beamQ : 1.0f;
         }
         // Glow bubbles removed (user steering, 1 Nov 2026: "keep just the
@@ -221,6 +239,10 @@ inline int FogBeam_ProjectLights(GfxFogLight *fogLights, int maxLights, SceneNod
         // paths share it) but are pinned to the lamp anchor with the lamp's
         // own depth gate; the fog shader no longer reads them.
         fl->haloX = lampU; fl->haloY = lampV; fl->haloRef = fl->depthRef;
+        // Reuse the otherwise unused halo depth lane for the UNBIASED
+        // forward segment anchor. Keep depthRef's bodywork bias separate.
+        if (fl->beamFade < 1.0f && proj43 < 0.0f)
+            fl->haloRef = proj33 + proj43 / (anchorView.z / 65536.0f);
     }
     return fogLightTotal;
 }

@@ -11,8 +11,8 @@ layout(std140, set = 3, binding = 0) uniform FogUniforms {
     vec4 extra; // x near-field clear distance in world units (0 = off), y car-light response 0..2, z depth-half-range flag (1 = GL), w unused
     vec4 lights[8];    // xy projected car light (uv, v downwards), z intensity 0..1, w wedge start ramp length (0 = none)
     vec4 lightInfo[8]; // x depth-buffer value 1 world unit in front of the lamp (<= 0: no depth gate), yzw tint
-    vec4 beams[8];     // xy aspect-corrected unit screen beam direction, z wedge length, w energy ratio q = lampZ/endZ (1 = no thinning)
-    vec4 halos[8];     // xy glow anchor (a few units forward along the beam), z halo depth ref (<= 0: no gate), w unused
+    vec4 beams[8];     // xy aspect-corrected unit screen beam direction, z wedge length, w depth ratio q: <1 forward tail, >1 backward thinning
+    vec4 halos[8];     // xy glow anchor (a few units forward along the beam), z unbiased forward segment-anchor ref (legacy ref otherwise), w beam-end depth ref
     vec4 camA;         // camera world xz, camera forward xz (horizontal parts), for the world-anchored banks
     vec4 camB;         // camera right xz, 1/projection x scale, bank strength 0..1 (0 = uniform fog)
 };
@@ -140,7 +140,9 @@ void main()
             vec2 dl = uv - lights[i].xy;
             dl.x *= sun.w;
             vec2 bdir = beams[i].xy;
-            float blen = max(beams[i].z, 0.05);
+            // Forward endpoints can be shorter than the historical backward
+            // stability floor. Do not turn that floor into extra lit road.
+            float blen = max(beams[i].z, beams[i].w < 1.0 ? 0.0001 : 0.05);
             float wedge = 0.0;
             float tAxial = 0.0;
             if (dot(bdir, bdir) > 1e-6) {
@@ -172,6 +174,12 @@ void main()
                 // same energy over q times the area means q times dimmer:
                 // intensity ~ z(a)/zLamp = 1/(1 + (q-1)*t). Beams ending in
                 // front of the near plane carry q = 1 and keep the full wedge.
+                // Forward beams (q < 1) converge into the view, not past
+                // the camera. Bound them to the projected endpoint, with a
+                // soft tail: the old infinite wedge continued beyond the
+                // vanishing point and across the other lamp in bumper view.
+                if (beams[i].w < 1.0)
+                    axial *= 1.0 - smoothstep(0.70, 1.0, max(a, 0.0) / blen);
                 tAxial = t0;
                 wedge = axial * lateral * lateral / (1.0 + 6.0 * max(a, 0.0) / blen) / (1.0 + (max(beams[i].w, 1.0) - 1.0) * tAxial);
             }
@@ -185,8 +193,17 @@ void main()
                 // 1/viewZ, so the raw segment ref is exactly linear in t:
                 // lerp the lamp ref toward the beam-end ref (halos[i].w,
                 // <= 0 = unknown projection: keep the constant lamp gate).
-                segRef = halos[i].w > 0.0 ? mix(lightInfo[i].x, halos[i].w, tAxial) : lightInfo[i].x;
-                gate = step(segRef, depth);
+                float anchorRef = beams[i].w < 1.0 && halos[i].z > 0.0 ? halos[i].z : lightInfo[i].x;
+                segRef = halos[i].w > 0.0 ? mix(anchorRef, halos[i].w, tAxial) : lightInfo[i].x;
+                // The biased lamp gate excludes nearby bodywork separately;
+                // it must not distort segment depths along the whole beam.
+                // Forward beams only: a backward beam approaches the camera,
+                // so its segment depth gets closer while the lamp's biased
+                // ref stays farther - max() would apply that farther ref
+                // across the whole wedge and hide the beam's light on
+                // scenery between the segment and the lamp (Devin
+                // r4536372133). Backward beams gate on the segment ref alone.
+                gate = step(beams[i].w < 1.0 ? max(lightInfo[i].x, segRef) : segRef, depth);
             }
             // Per-beam occluder edge fade: only neighbors IN FRONT of this
             // beam segment count - a silhouette behind the segment (road at
