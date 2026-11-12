@@ -31,6 +31,7 @@
 #include "SceneNode.h"
 #include "LightZone.h"
 #define SDL_MAIN_HANDLED
+#include <chrono>
 #include <SDL3/SDL_main.h>
 #include <cstdio>
 #include <cstdlib>
@@ -164,9 +165,10 @@ struct Probe : Diagnostics::TimingObserver {
         // clock, to place what a device received (tests/ffb_wheel.cpp
         // --record) among the ticks.
         if (getenv("OPENCMR2_PROBE_TICK_CLOCK")) {
-            timespec now;
-            clock_gettime(CLOCK_MONOTONIC, &now);
-            fprintf(stderr, "probe: tick %u clock %lld\n", tick, (long long)now.tv_sec * 1000000000LL + now.tv_nsec);
+            // steady_clock is CLOCK_MONOTONIC on Linux, as the wheel's.
+            long long now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            fprintf(stderr, "probe: tick %u clock %lld\n", tick, now);
         }
         // OPENCMR2_PROBE_RESTART: the race after the finish is the same stage
         // again (Restart in the results menu), not Finland stage 2.
