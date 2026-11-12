@@ -32,23 +32,30 @@ const char *const s_header =
     "# lefty-, lefty+, rightx-, ... and lefttrigger, righttrigger. Joysticks and\n"
     "# wheels use button<n>, hat<n>up/down/left/right, the axis halves axis<n>- and\n"
     "# axis<n>+, and for a pedal axis<n> (released at the axis minimum) or ~axis<n>\n"
-    "# (released at its maximum).\n"
+    "# (released at its maximum). An axis half counts from where the axis rests: a\n"
+    "# pedal or a clutch resting at one end gives nothing towards that end.\n"
+    "# An action left empty is not bound.\n"
     "#\n"
     "# deadzone and saturation are percentages of an axis: the part left out around\n"
     "# its rest, and the part that gives the full value (2 and 95 for gamepads,\n"
     "# whose sticks often stop short of their end; 0 and 100 for wheels; 2 and\n"
     "# 100 for other joysticks). Settings left out follow these defaults.\n"
     "# player is 1 or 2 for a\n"
-    "# device, or auto: the second controller connected plays as player 2 when two\n"
-    "# players race. steering_curve, 0 to 100, makes a steering axis\n"
+    "# device, or auto: the second controller connected that can steer plays as\n"
+    "# player 2 when two players race (pedals and shifters stay player 1's).\n"
+    "# enabled = no leaves a device out. steering_curve, 0 to 100, makes a steering axis\n"
     "# gentler around its centre for finer corrections, keeping full lock at its\n"
     "# end (0 follows the axis linearly, as the original). rumble is the strength\n"
-    "# of a gamepad's vibration in percent (0 turns it off).\n"
+    "# of a gamepad's vibration and force that of a wheel's force feedback, in\n"
+    "# percent (100 is the original's, up to 200; 0 turns either off). A wheel's\n"
+    "# degrees of rotation are set in its own driver, as for the original.\n"
     "#\n"
     "# [keyboard] is player 1's keys and [keyboard2] player 2's. [gamepad] applies\n"
-    "# to every controller SDL knows the layout of, [joystick] is the default for\n"
-    "# other joysticks and wheels, and a [device <GUID>] section applies to one\n"
-    "# model of controller.\n";
+    "# to every controller SDL knows the layout of, [joystick] gives the buttons\n"
+    "# and hats of other joysticks and wheels, and a [device <GUID>] section\n"
+    "# applies to one model of controller. A new device's section takes its axes\n"
+    "# from where they rest: the first centred one steers, and the axes resting\n"
+    "# at an end are its pedals (of three, the first is taken for the clutch).\n";
 
 std::string Trim(const std::string &text)
 {
@@ -266,11 +273,16 @@ void Read(const char *text)
         }
         else if (key == "player")
             profile->player = value == "1" ? 1 : value == "2" ? 2 : 0;
+        else if (key == "enabled")
+            profile->enabled = !(Lower(value) == "no" || value == "0" || Lower(value) == "false");
         else if (key == "smooth_steering")
             ;   // the kind of device decides (Input_IsSmoothSteering)
         else if (key == "steering_curve") {
             profile->steeringCurve = SDL_clamp(SDL_atoi(value.c_str()), 0, 100);
             profile->chosen |= SETTING_CURVE;
+        } else if (key == "force") {
+            profile->force = SDL_clamp(SDL_atoi(value.c_str()), 0, 200);
+            profile->chosen |= SETTING_FORCE;
         } else if (key == "rumble") {
             profile->rumble = SDL_clamp(SDL_atoi(value.c_str()), 0, 100);
             profile->chosen |= SETTING_RUMBLE;
@@ -303,14 +315,33 @@ std::string Write(void)
                 text += "steering_curve = " + std::to_string(profile.steeringCurve) + "\n";
             if (profile.chosen & SETTING_RUMBLE)
                 text += "rumble = " + std::to_string(profile.rumble) + "\n";
-            if (profile.section.compare(0, 7, "device ") == 0)
+            if (profile.chosen & SETTING_FORCE)
+                text += "force = " + std::to_string(profile.force) + "\n";
+
+            if (profile.section.compare(0, 7, "device ") == 0) {
                 text += std::string("player = ") + (profile.player ? std::to_string(profile.player) : "auto") + "\n";
+                if (!profile.enabled)
+                    text += "enabled = no\n";
+            }
         }
     }
     return text;
 }
 
 } // namespace
+
+void Bindings_LogProfile(const Profile &profile, const char *what)
+{
+    auto list = [&](int action) {
+        std::string text;
+        for (const Source &source : profile.actions[action])
+            text += (text.empty() ? "" : " | ") + FormatSource(profile, source);
+        return text.empty() ? std::string("none") : text;
+    };
+    Sys_Log("controls: %s for %s [%s]: steering %s / %s, throttle %s, brake %s", what, profile.name.c_str(),
+            profile.section.c_str(), list(INPUT_STEER_LEFT).c_str(), list(INPUT_STEER_RIGHT).c_str(),
+            list(INPUT_THROTTLE).c_str(), list(INPUT_BRAKE).c_str());
+}
 
 bool IsAnalog(const Source &source)
 {
@@ -395,29 +426,63 @@ void Bindings_MarkChanged(void)
 
 namespace {
 
-// A joystick's: the joystick section, and a wheel's pedals, the axes that
-// rest at one end; throttle and brake stay on the Y axis otherwise.
+bool IsJoystickAxis(const Source &source)
+{
+    return source.kind == SOURCE_JOY_AXIS;
+}
+
+void DropAxes(std::vector<Source> &list)
+{
+    list.erase(std::remove_if(list.begin(), list.end(), IsJoystickAxis), list.end());
+}
+
+// A joystick's: the buttons and hats of the joystick section, and its axes
+// from where they rest. The first centred axis steers (and moves through
+// the menus); the axes resting at an end are pedals, the last two of three
+// (the first is a clutch); without pedals, a second centred axis is the
+// throttle and brake, as the original's joystick Y axis. An axis resting at
+// an end never steers nor moves through the menus: a pedal set has neither.
 void JoystickDefaults(Profile &profile, SDL_Joystick *joystick)
 {
     std::string section = profile.section;
+    int player = profile.player;
+    bool enabled = profile.enabled;
     profile = *Bindings_Find("joystick");
     profile.section = section;
+    profile.player = player;
+    profile.enabled = enabled;
     const char *name = SDL_GetJoystickName(joystick);
     profile.name = name ? name : "";
+    std::vector<int> centred;
     std::vector<Source> pedals;
-    const Sint16 rest = 30000;
-    for (int axis = 1; axis < SDL_GetNumJoystickAxes(joystick) && pedals.size() < 2; axis++) {
-        Sint16 state = 0;
-        if (!SDL_GetJoystickAxisInitialState(joystick, axis, &state))
-            continue;
-        if (state <= -rest)
-            pedals.push_back({ SOURCE_JOY_AXIS, axis, AXIS_RISING });
-        else if (state >= rest)
-            pedals.push_back({ SOURCE_JOY_AXIS, axis, AXIS_FALLING });
+    for (int axis = 0; axis < SDL_GetNumJoystickAxes(joystick); axis++) {
+        switch (Joystick_AxisRest(joystick, axis)) {
+        case REST_CENTRE: centred.push_back(axis); break;
+        case REST_MIN: pedals.push_back({ SOURCE_JOY_AXIS, axis, AXIS_RISING }); break;
+        case REST_MAX: pedals.push_back({ SOURCE_JOY_AXIS, axis, AXIS_FALLING }); break;
+        default: break;
+        }
     }
-    if (pedals.size() == 2) {
+    for (int action : { INPUT_STEER_LEFT, INPUT_STEER_RIGHT, INPUT_THROTTLE, INPUT_BRAKE, INPUT_MENU_LEFT,
+                        INPUT_MENU_RIGHT, INPUT_MENU_UP, INPUT_MENU_DOWN })
+        DropAxes(profile.actions[action]);
+    if (!centred.empty()) {
+        profile.actions[INPUT_STEER_LEFT] = { { SOURCE_JOY_AXIS, centred[0], AXIS_NEGATIVE } };
+        profile.actions[INPUT_STEER_RIGHT] = { { SOURCE_JOY_AXIS, centred[0], AXIS_POSITIVE } };
+        profile.actions[INPUT_MENU_LEFT].push_back({ SOURCE_JOY_AXIS, centred[0], AXIS_NEGATIVE });
+        profile.actions[INPUT_MENU_RIGHT].push_back({ SOURCE_JOY_AXIS, centred[0], AXIS_POSITIVE });
+    }
+    if (pedals.size() >= 2) {
+        size_t first = pedals.size() >= 3 ? 1 : 0;
+        profile.actions[INPUT_THROTTLE] = { pedals[first] };
+        profile.actions[INPUT_BRAKE] = { pedals[first + 1] };
+    } else if (pedals.size() == 1) {
         profile.actions[INPUT_THROTTLE] = { pedals[0] };
-        profile.actions[INPUT_BRAKE] = { pedals[1] };
+    } else if (centred.size() >= 2) {
+        profile.actions[INPUT_THROTTLE] = { { SOURCE_JOY_AXIS, centred[1], AXIS_NEGATIVE } };
+        profile.actions[INPUT_BRAKE] = { { SOURCE_JOY_AXIS, centred[1], AXIS_POSITIVE } };
+        profile.actions[INPUT_MENU_UP].push_back({ SOURCE_JOY_AXIS, centred[1], AXIS_NEGATIVE });
+        profile.actions[INPUT_MENU_DOWN].push_back({ SOURCE_JOY_AXIS, centred[1], AXIS_POSITIVE });
     }
     profile.chosen = 0;
     Bindings_DefaultSettings(profile, joystick);
@@ -438,6 +503,9 @@ void Bindings_DefaultSettings(Profile &profile, SDL_Joystick *joystick)
         profile.steeringCurve = 0;
     if (!(profile.chosen & SETTING_RUMBLE))
         profile.rumble = 100;
+    if (!(profile.chosen & SETTING_FORCE))
+        profile.force = 100;
+
 }
 
 void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick)
@@ -467,9 +535,19 @@ const Profile &Bindings_TouchProfile(void)
     return profile;
 }
 
-Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad)
+AxisRest Joystick_AxisRest(SDL_Joystick *joystick, int axis)
+{
+    const Sint16 end = 24000;
+    Sint16 state = 0;
+    if (!SDL_GetJoystickAxisInitialState(joystick, axis, &state))
+        return REST_UNKNOWN;
+    return state <= -end ? REST_MIN : state >= end ? REST_MAX : REST_CENTRE;
+}
+
+Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad, bool *created)
 {
     Bindings_Get();
+    *created = false;
     char guid[33];
     SDL_GUIDToString(SDL_GetJoystickGUID(joystick), guid, sizeof(guid));
     std::string section = std::string("device ") + guid;
@@ -485,9 +563,8 @@ Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad)
     JoystickDefaults(profile, joystick);
     s_profiles.push_back(profile);
     s_changed = true;
-    Sys_Log("controls: new profile for %s (%s), throttle %s, brake %s", profile.name.c_str(), guid,
-            FormatSource(profile, profile.actions[INPUT_THROTTLE][0]).c_str(),
-            FormatSource(profile, profile.actions[INPUT_BRAKE][0]).c_str());
+    *created = true;
+    Bindings_LogProfile(s_profiles.back(), "new profile");
     return &s_profiles.back();
 }
 

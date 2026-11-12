@@ -30,6 +30,8 @@ struct InputDevice {
     SDL_Joystick *joystick = nullptr;
     SDL_Gamepad *gamepad = nullptr;     // controllers SDL knows the layout of
     SDL_Haptic *haptic = nullptr;
+    Uint32 hapticFeatures = 0;
+    int testEffect = -1;                // the sample played by the controls pages
     std::string identity;               // GUID, plus the serial or path
     std::string name;
     Profile *profile = nullptr;
@@ -37,6 +39,13 @@ struct InputDevice {
     bool wheel = false;
     bool rumble = false;                // a gamepad with rumble motors
     bool used = false;                  // gave an input since it was connected
+    std::vector<AxisRest> rest;         // where each raw axis rests (joysticks)
+    bool restPending = false;           // new defaults wait for where some axes rest
+    // The actions held at each player's previous update, for telling when
+    // one is pressed; primed once read, so that an input held since the
+    // device was connected (an axis resting off centre) is not a press.
+    bool active[INPUT_PLAYERS][INPUT_ACTION_COUNT] = {};
+    bool primed[INPUT_PLAYERS] = {};
     Uint16 rumbleLow = 0, rumbleHigh = 0;
     Uint64 rumbleSent = 0;              // when the rumble was last sent, ms
     std::vector<InputEffect *> effects;
@@ -47,6 +56,7 @@ struct InputEffect {
     int id;                             // SDL's effect, -1 until created on the device
     InputEffectParams params;
     bool playing;
+    bool autocentre;                    // a spring the device plays as its autocentre
 };
 
 namespace {
@@ -64,7 +74,7 @@ enum { CHANNEL_STEERING, CHANNEL_PEDALS, CHANNEL_COUNT };
 struct Player {
     int values[INPUT_ACTION_COUNT];
     Channel channels[CHANNEL_COUNT];
-    const InputDevice *steering;        // the device last steered with an axis
+    const InputDevice *steering;        // the controller last steered with
     const InputDevice *controller;      // the controller last used
 };
 
@@ -133,6 +143,9 @@ int s_localPlayers = 1;
 Player s_players[INPUT_PLAYERS];
 int s_pausePulse[INPUT_PLAYERS];        // updates the pause is held for after a disconnection
 std::string s_lastSection;              // the profile of the input given last
+const Profile *s_shownProfile;          // the profile the controls pages show
+bool s_clearHeld;                       // Delete, Backspace or a gamepad's west button
+bool s_clearPressed;                    // ... pressed at the last update
 
 void EnsureInit()
 {
@@ -238,6 +251,21 @@ void ApplyAndroidControllerProfile(SDL_JoystickID id)
 
 void CreateEffectOnDevice(InputEffect *effect);
 
+// The force feedback effects a device has, for the log.
+std::string HapticText(Uint32 features)
+{
+    static const struct { Uint32 bit; const char *name; } names[] = {
+        { SDL_HAPTIC_CONSTANT, "constant" }, { SDL_HAPTIC_SPRING, "spring" }, { SDL_HAPTIC_DAMPER, "damper" },
+        { SDL_HAPTIC_FRICTION, "friction" }, { SDL_HAPTIC_INERTIA, "inertia" }, { SDL_HAPTIC_SINE, "sine" },
+        { SDL_HAPTIC_AUTOCENTER, "autocentre" }, { SDL_HAPTIC_GAIN, "gain" },
+    };
+    std::string text;
+    for (const auto &name : names)
+        if (features & name.bit)
+            text += std::string(text.empty() ? "" : " ") + name.name;
+    return ", force feedback (" + text + ")";
+}
+
 void Open(SDL_JoystickID id)
 {
 #ifdef __ANDROID__
@@ -276,8 +304,15 @@ void Open(SDL_JoystickID id)
     device->wheel = SDL_GetJoystickType(joystick) == SDL_JOYSTICK_TYPE_WHEEL;
     const char *name = gamepad ? SDL_GetGamepadName(gamepad) : SDL_GetJoystickName(joystick);
     device->name = name ? name : "Joystick";
-    device->profile = Bindings_ForJoystick(joystick, gamepad != NULL);
+    bool created = false;
+    device->profile = Bindings_ForJoystick(joystick, gamepad != NULL, &created);
     device->used = false;
+    device->rest.assign(SDL_GetNumJoystickAxes(joystick), REST_UNKNOWN);
+    for (int axis = 0; axis < (int)device->rest.size(); axis++)
+        device->rest[axis] = Joystick_AxisRest(joystick, axis);
+    device->restPending = created && gamepad == NULL &&
+        std::find(device->rest.begin(), device->rest.end(), REST_UNKNOWN) != device->rest.end();
+    memset(device->primed, 0, sizeof(device->primed));
     device->rumble = gamepad != NULL &&
         SDL_GetBooleanProperty(SDL_GetGamepadProperties(gamepad), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
     device->rumbleLow = device->rumbleHigh = 0;
@@ -290,9 +325,12 @@ void Open(SDL_JoystickID id)
             SDL_CloseHaptic(device->haptic);
             device->haptic = NULL;
         }
-        if (device->haptic != NULL)
+        if (device->haptic != NULL) {
+            device->hapticFeatures = SDL_GetHapticFeatures(device->haptic);
             SDL_SetHapticAutocenter(device->haptic, 0);
+        }
     }
+    device->testEffect = -1;
     for (InputEffect *effect : device->effects)
         CreateEffectOnDevice(effect);
 
@@ -302,7 +340,7 @@ void Open(SDL_JoystickID id)
     Sys_Log("controller: %s (%04x:%04x), %s, %d axes, %d buttons, %d hats%s%s%s; GUID %s, %s; [%s]", device->name.c_str(),
             SDL_GetJoystickVendor(joystick), SDL_GetJoystickProduct(joystick), JoystickKind(joystick, gamepad != NULL),
             SDL_GetNumJoystickAxes(joystick), SDL_GetNumJoystickButtons(joystick), SDL_GetNumJoystickHats(joystick),
-            device->haptic != NULL ? ", force feedback" : "", device->rumble ? ", rumble" : "",
+            device->haptic != NULL ? HapticText(device->hapticFeatures).c_str() : "", device->rumble ? ", rumble" : "",
             (SDL_GetJoystickVendor(joystick) == 0x28de && SDL_GetJoystickProduct(joystick) == 0x11ff) ||
                     (gamepad && SDL_GetGamepadSteamHandle(gamepad)) ? ", Steam virtual gamepad" : "",
             guid, path ? path : "no path", device->profile->section.c_str());
@@ -330,6 +368,8 @@ void Close(InputDevice &device)
     else
         SDL_CloseJoystick(device.joystick);
     device.haptic = NULL;
+    device.hapticFeatures = 0;
+    device.testEffect = -1;
     device.gamepad = NULL;
     device.joystick = NULL;
     device.id = 0;
@@ -362,15 +402,24 @@ void ScanJoysticks()
 
 // ---- actions -------------------------------------------------------------------
 
+bool CanSteer(const Profile &profile)
+{
+    return !profile.actions[INPUT_STEER_LEFT].empty() || !profile.actions[INPUT_STEER_RIGHT].empty();
+}
+
 // The player a connected device belongs to (0 or 1): its profile's, else
-// player 2 for the second controller connected.
+// player 2 for the second controller connected that can steer. Pedals, a
+// shifter or a handbrake of their own stay player 1's.
 int Owner(const InputDevice &device)
 {
     if (device.profile->player != 0)
         return device.profile->player - 1;
+    if (!CanSteer(*device.profile))
+        return 0;
     int earlier = 0;
     for (const InputDevice &other : s_devices)
-        if (other.id != 0 && other.profile->player == 0 && other.order < device.order)
+        if (other.id != 0 && other.profile->enabled && other.profile->player == 0 && CanSteer(*other.profile) &&
+            other.order < device.order)
             earlier++;
     return earlier == 1 ? 1 : 0;
 }
@@ -391,11 +440,15 @@ int Scale(const Profile &profile, int value)
     return (int)((long long)(value - deadzone) * INPUT_FULL / (saturation - deadzone));
 }
 
-int AxisValue(Sint16 raw, int range)
+// An axis half counts from where the axis rests to that end: from the
+// centre, as a stick, or the whole axis from the other end, as a pedal. A
+// half towards the end the axis rests at gives nothing.
+int AxisValue(Sint16 raw, int range, AxisRest rest = REST_CENTRE)
 {
+    long long from = rest == REST_MIN ? -32768 : rest == REST_MAX ? 32767 : 0;
     switch (range) {
-    case AXIS_NEGATIVE: return raw < 0 ? (int)(-(long long)raw * INPUT_FULL / 32768) : 0;
-    case AXIS_POSITIVE: return raw > 0 ? (int)((long long)raw * INPUT_FULL / 32767) : 0;
+    case AXIS_NEGATIVE: return raw < from ? (int)((from - raw) * INPUT_FULL / (from + 32768)) : 0;
+    case AXIS_POSITIVE: return raw > from ? (int)((raw - from) * INPUT_FULL / (32767 - from)) : 0;
     case AXIS_RISING: return (int)(((long long)raw + 32768) * INPUT_FULL / 65535);
     default: return (int)((32767 - (long long)raw) * INPUT_FULL / 65535);
     }
@@ -445,7 +498,9 @@ int SourceValue(const InputDevice *device, const Profile &profile, const Source 
     case SOURCE_JOY_AXIS:
         if (source.index >= SDL_GetNumJoystickAxes(device->joystick))
             return 0;
-        return Scale(profile, AxisValue(SDL_GetJoystickAxis(device->joystick, source.index), source.direction));
+        return Scale(profile, AxisValue(SDL_GetJoystickAxis(device->joystick, source.index), source.direction,
+                                        source.index < (int)device->rest.size() ? device->rest[source.index]
+                                                                                : REST_CENTRE));
     }
     return 0;
 }
@@ -459,38 +514,85 @@ int Curve(int value, int percent)
     return (int)((v * (100 - percent) + cubic * percent) / 100);
 }
 
+// The value of an action from one profile, on one of its devices (NULL for
+// keys): the largest of its inputs, the steering axes curved.
+int ActionValue(const InputDevice *device, const Profile &profile, int action, bool *analog, bool *digital)
+{
+    int best = 0;
+    for (const Source &source : profile.actions[action]) {
+        int value = SourceValue(device, profile, source);
+        if (action <= INPUT_STEER_RIGHT && IsAnalog(source) && profile.steeringCurve != 0)
+            value = Curve(value, profile.steeringCurve);
+        best = std::max(best, value);
+        if (IsAnalog(source)) {
+            if (analog != NULL && value > INPUT_FULL / 4)
+                *analog = true;
+        } else if (digital != NULL && value != 0) {
+            *digital = true;
+        }
+    }
+    return best;
+}
+
 // Takes the larger value of each action from one profile into the player's,
 // and notes whether the steering and the pedals came from keys and buttons
-// or from axes.
-void Accumulate(Player &player, InputDevice *device, const Profile &profile, ChannelUse *use)
+// or from axes. An action pressed (past a quarter, let go under an eighth)
+// makes the device the player's last used, and the one they steer with for
+// a steering action: held since the device was connected, it does not.
+void Accumulate(Player &player, int index, InputDevice *device, const Profile &profile, ChannelUse *use,
+                int firstAction = 0)
 {
-    for (int action = 0; action < INPUT_ACTION_COUNT; action++) {
-        for (const Source &source : profile.actions[action]) {
-            int value = SourceValue(device, profile, source);
-            if (action <= INPUT_STEER_RIGHT && IsAnalog(source) && profile.steeringCurve != 0)
-                value = Curve(value, profile.steeringCurve);
-            player.values[action] = std::max(player.values[action], value);
-            if (value > INPUT_FULL / 4) {
-                if (device != NULL) {
-                    device->used = true;
-                    player.controller = device;
-                }
-                if (use->given == NULL)
-                    use->given = &profile;
+    bool *active = device != NULL ? device->active[index] : profile.keyActive[index];
+    bool primed = device == NULL || device->primed[index];
+    for (int action = firstAction; action < INPUT_ACTION_COUNT; action++) {
+        bool analog = false, digital = false;
+        int value = ActionValue(device, profile, action, &analog, &digital);
+        player.values[action] = std::max(player.values[action], value);
+        bool pressed = value > INPUT_FULL / 4 && !active[action];
+        if (value > INPUT_FULL / 4)
+            active[action] = true;
+        else if (value < INPUT_FULL / 8)
+            active[action] = false;
+        if (pressed && primed) {
+            if (device != NULL) {
+                device->used = true;
+                player.controller = device;
+                if (action <= INPUT_STEER_RIGHT)
+                    player.steering = device;
             }
-            if (action > INPUT_BRAKE)
-                continue;
-            if (IsAnalog(source)) {
-                use->hasAxis[ChannelOf(action)] = use->hasAxis[ChannelOf(action)] || device != NULL;
-                if (value > INPUT_FULL / 4) {
-                    use->analog[ChannelOf(action)] = true;
-                    if (action <= INPUT_STEER_RIGHT)
-                        player.steering = device;
-                }
-            } else if (value != 0) {
-                use->digital[ChannelOf(action)] = true;
-            }
+            if (use->given == NULL)
+                use->given = &profile;
         }
+        if (action > INPUT_BRAKE)
+            continue;
+        int channel = ChannelOf(action);
+        for (const Source &source : profile.actions[action])
+            if (IsAnalog(source))
+                use->hasAxis[channel] = use->hasAxis[channel] || device != NULL;
+        use->analog[channel] = use->analog[channel] || analog;
+        use->digital[channel] = use->digital[channel] || digital;
+    }
+    if (device != NULL)
+        device->primed[index] = true;
+}
+
+// A new device's defaults wait for where its axes rest: SDL knows it from
+// the first reading of each.
+void RefreshRest(InputDevice &device)
+{
+    if (device.gamepad != NULL)
+        return;
+    bool pending = false;
+    for (int axis = 0; axis < (int)device.rest.size(); axis++) {
+        if (device.rest[axis] == REST_UNKNOWN)
+            device.rest[axis] = Joystick_AxisRest(device.joystick, axis);
+        pending = pending || device.rest[axis] == REST_UNKNOWN;
+    }
+    if (device.restPending && !pending) {
+        device.restPending = false;
+        Bindings_SetDefaults(*device.profile, device.joystick);
+        Bindings_LogProfile(*device.profile, "axes found");
+        memset(device.primed, 0, sizeof(device.primed));
     }
 }
 
@@ -513,15 +615,22 @@ const Profile *UpdatePlayer(int index)
     memset(player.values, 0, sizeof(player.values));
     for (Profile &profile : profiles)
         if ((profile.section == "keyboard" && Plays(0, index)) || (profile.section == "keyboard2" && Plays(1, index)))
-            Accumulate(player, NULL, profile, &use);
+            Accumulate(player, index, NULL, profile, &use);
 #ifdef __ANDROID__
     if (index == 0)
-        Accumulate(player, NULL, Bindings_TouchProfile(), &use);
+        Accumulate(player, index, NULL, Bindings_TouchProfile(), &use);
 #endif
     for (InputDevice &device : s_devices) {
         if (device.id == 0 || !Plays(Owner(device), index))
             continue;
-        Accumulate(player, &device, *device.profile, &use);
+        // A device left out still moves through the controls pages while
+        // they show it, to be turned on again.
+        if (!device.profile->enabled) {
+            if (device.profile == s_shownProfile)
+                Accumulate(player, index, &device, *device.profile, &use, INPUT_MENU_LEFT);
+            continue;
+        }
+        Accumulate(player, index, &device, *device.profile, &use);
     }
     if (s_pausePulse[index] > 0) {
         player.values[INPUT_PAUSE] = INPUT_FULL;
@@ -541,28 +650,40 @@ const Profile *UpdatePlayer(int index)
     return use.given;
 }
 
-// The controller the player last used, while it is connected and theirs.
-const InputDevice *LastController(int player)
+// A controller while it is connected, used and the player's.
+const InputDevice *Playing(const InputDevice *device, int player)
 {
-    const InputDevice *controller = s_players[player].controller;
-    return controller != NULL && controller->id != 0 && Plays(Owner(*controller), player) ? controller : NULL;
+    return device != NULL && device->id != 0 && device->profile->enabled && Plays(Owner(*device), player) ? device
+                                                                                                          : NULL;
 }
 
-// The device a player's force feedback goes to: the controller they last
-// used, so that a wheel does not turn by itself while a gamepad drives, and
-// nothing when that one has neither forces nor rumble. Before any is used, a
-// device with force feedback first, wheels first among them.
+// The controller the player's force feedback and rumble go to: the one they
+// steer with, so that pedals, a shifter or a handbrake of their own never
+// take it, and before they steer, the one they last used if it can steer.
+const InputDevice *FeedbackTarget(int player)
+{
+    if (const InputDevice *steering = Playing(s_players[player].steering, player))
+        return steering;
+    const InputDevice *controller = Playing(s_players[player].controller, player);
+    return controller != NULL && CanSteer(*controller->profile) ? controller : NULL;
+}
+
+// The device a player's force feedback goes to: that controller, and
+// nothing when it has neither forces nor rumble (a wheel does not turn by
+// itself while a gamepad drives). Before any, a device with force feedback
+// that can steer first, wheels first among them.
 InputDevice *FeedbackDevice(int player)
 {
-    if (const InputDevice *controller = LastController(player))
-        return controller->haptic != NULL || controller->rumble ? const_cast<InputDevice *>(controller) : NULL;
+    if (const InputDevice *target = FeedbackTarget(player))
+        return target->haptic != NULL || target->rumble ? const_cast<InputDevice *>(target) : NULL;
     InputDevice *best = NULL;
+    auto rank = [](const InputDevice &device) {
+        return (CanSteer(*device.profile) ? 4 : 0) + (device.haptic != NULL ? (device.wheel ? 3 : 2) : 1);
+    };
     for (InputDevice &device : s_devices) {
-        if (device.id == 0 || (device.haptic == NULL && !device.rumble) || !Plays(Owner(device), player))
+        if (Playing(&device, player) == NULL || (device.haptic == NULL && !device.rumble))
             continue;
-        int rank = device.haptic != NULL ? (device.wheel ? 3 : 2) : 1;
-        int bestRank = best == NULL ? 0 : best->haptic != NULL ? (best->wheel ? 3 : 2) : 1;
-        if (rank > bestRank || (rank == bestRank && device.order < best->order))
+        if (best == NULL || rank(device) > rank(*best) || (rank(device) == rank(*best) && device.order < best->order))
             best = &device;
     }
     return best;
@@ -598,15 +719,27 @@ Uint32 Milliseconds(DWORD microseconds)
 // DIJOFS_BUTTON(n) of the trigger button.
 const DWORD kFirstButtonOffset = 0x30;
 
+// The game's constant force along the wheel, to the left, -1..1. It gives a
+// polar direction on X and Y, as the original asked DirectInput: 9000, from
+// the east, for a force to the left, 27000 to the right.
+double ConstantTarget(const InputEffectParams &p)
+{
+    double angle = p.direction * (SDL_PI_D / 18000.0);
+    return SDL_clamp(sin(angle) * (p.magnitude / 10000.0) * (p.gain / 10000.0), -1.0, 1.0);
+}
+
 void BuildEffect(const InputEffectParams &p, SDL_HapticEffect *e)
 {
     SDL_zerop(e);
     if (p.type == INPUT_EFFECT_CONSTANT) {
+        // Along X, from the east (to the left) for a positive level:
+        // DirectInput takes a polar direction only on two axes, and most
+        // wheels have one.
         e->type = SDL_HAPTIC_CONSTANT;
-        e->constant.direction.type = SDL_HAPTIC_POLAR;
-        e->constant.direction.dir[0] = p.direction;
+        e->constant.direction.type = SDL_HAPTIC_CARTESIAN;
+        e->constant.direction.dir[0] = 1;
         e->constant.length = Milliseconds(p.duration);
-        e->constant.level = ClampLevel(p.magnitude, p.gain);
+        e->constant.level = (Sint16)lround(ConstantTarget(p) * 32767.0);
         e->constant.attack_length = (Uint16)(p.attackTime / 1000);
         e->constant.attack_level = ClampUnsigned(p.attackLevel);
         e->constant.fade_length = (Uint16)(p.fadeTime / 1000);
@@ -627,24 +760,88 @@ void BuildEffect(const InputEffectParams &p, SDL_HapticEffect *e)
     e->condition.length = Milliseconds(p.duration);
     e->condition.right_sat[0] = ClampUnsigned(p.saturation);
     e->condition.left_sat[0] = ClampUnsigned(p.saturation);
-    e->condition.right_coeff[0] = ClampLevel(p.coefficient, p.gain);
-    e->condition.left_coeff[0] = ClampLevel(p.coefficient, p.gain);
+    // A negative coefficient (the original's damper can reach one) would
+    // push the wheel along instead of holding it.
+    e->condition.right_coeff[0] = ClampLevel(SDL_max(p.coefficient, 0), p.gain);
+    e->condition.left_coeff[0] = ClampLevel(SDL_max(p.coefficient, 0), p.gain);
     e->condition.deadband[0] = ClampUnsigned((DWORD)(p.deadBand < 0 ? 0 : p.deadBand));
     e->condition.center[0] = ClampLevel(p.offset, 10000);
     if (p.triggerButton != INPUT_EFFECT_NO_TRIGGER)
         e->condition.button = (Uint16)(p.triggerButton - kFirstButtonOffset + 1);
 }
 
+// The strength of a spring played as the device's autocentre, 0..100.
+int AutocentreLevel(const InputEffectParams &p)
+{
+    return SDL_clamp((int)((long long)SDL_max(p.coefficient, 0) * p.gain / 10000 / 100), 0, 100);
+}
+
+// A wheel without the spring the game centres it with (Logitech's on
+// Linux have only a constant force and an autocentre) plays the spring as
+// its autocentre, at the spring's strength.
 void CreateEffectOnDevice(InputEffect *effect)
 {
-    SDL_Haptic *haptic = effect->device->haptic;
+    InputDevice *device = effect->device;
+    SDL_Haptic *haptic = device->haptic;
     if (haptic == NULL)
         return;
+    effect->autocentre = effect->params.type == INPUT_EFFECT_SPRING && !(device->hapticFeatures & SDL_HAPTIC_SPRING) &&
+                         (device->hapticFeatures & SDL_HAPTIC_AUTOCENTER);
+    if (effect->autocentre) {
+        SDL_SetHapticAutocenter(haptic, effect->playing ? AutocentreLevel(effect->params) : 0);
+        return;
+    }
     SDL_HapticEffect e;
     BuildEffect(effect->params, &e);
     effect->id = SDL_CreateHapticEffect(haptic, &e);
+    if (effect->id < 0) {
+        static const char *const names[] = { "constant force", "spring", "damper", "inertia", "friction" };
+        Sys_Log("force feedback: %s has no %s: %s", device->name.c_str(),
+                names[SDL_clamp(effect->params.type, 0, 4)], SDL_GetError());
+    }
     if (effect->id >= 0 && effect->playing)
         SDL_RunHapticEffect(haptic, effect->id, 1);
+}
+
+// A short push one way and the other, at the profile's strength: a
+// periodic effect where the device has one, else a constant force.
+void PlayTest(InputDevice &device)
+{
+    if (device.haptic != NULL) {
+        Sint16 level = (Sint16)SDL_min(32767, 16384 * device.profile->force / 100);
+        SDL_HapticEffect e;
+        SDL_zero(e);
+        // Along X, as the game's forces (BuildEffect).
+        if (device.hapticFeatures & SDL_HAPTIC_SINE) {
+            e.type = SDL_HAPTIC_SINE;
+            e.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
+            e.periodic.direction.dir[0] = 1;
+            e.periodic.length = 900;
+            e.periodic.period = 300;
+            e.periodic.magnitude = level;
+        } else if (device.hapticFeatures & SDL_HAPTIC_CONSTANT) {
+            e.type = SDL_HAPTIC_CONSTANT;
+            e.constant.direction.type = SDL_HAPTIC_CARTESIAN;
+            e.constant.direction.dir[0] = 1;
+            e.constant.length = 400;
+            e.constant.level = level;
+            e.constant.fade_length = 200;
+        } else {
+            return;
+        }
+        if (device.testEffect >= 0 && !SDL_UpdateHapticEffect(device.haptic, device.testEffect, &e)) {
+            SDL_DestroyHapticEffect(device.haptic, device.testEffect);
+            device.testEffect = -1;
+        }
+        if (device.testEffect < 0)
+            device.testEffect = SDL_CreateHapticEffect(device.haptic, &e);
+        if (device.testEffect < 0 || !SDL_RunHapticEffect(device.haptic, device.testEffect, 1))
+            Sys_Log("force feedback: %s cannot play a test: %s", device.name.c_str(), SDL_GetError());
+    } else if (device.rumble) {
+        Uint16 level = (Uint16)(0xc000 * device.profile->rumble / 100);
+        SDL_RumbleGamepad(device.gamepad, level, level, 300);
+        device.rumbleLow = device.rumbleHigh = 0;
+    }
 }
 
 } // namespace
@@ -708,8 +905,11 @@ void Platform_SetTestNoControllers(bool ignore) { s_testNoControllers = ignore; 
 void Input_ReloadBindings(void)
 {
     Bindings_Load();
-    for (InputDevice &device : s_devices)
-        device.profile = device.id != 0 ? Bindings_ForJoystick(device.joystick, device.gamepad != NULL) : NULL;
+    for (InputDevice &device : s_devices) {
+        bool created = false;
+        device.profile = device.id != 0 ? Bindings_ForJoystick(device.joystick, device.gamepad != NULL, &created) : NULL;
+        memset(device.primed, 0, sizeof(device.primed));
+    }
 }
 
 // ---- players and actions -------------------------------------------------------
@@ -719,7 +919,16 @@ extern "C" void Input_Update(void)
     EnsureInit();
     SDL_UpdateJoysticks();
     ScanJoysticks();
+    for (InputDevice &device : s_devices)
+        if (device.id != 0)
+            RefreshRest(device);
     ReleaseHeldBackKeys();
+    bool clear = KeyDown(SDL_SCANCODE_DELETE) || KeyDown(SDL_SCANCODE_BACKSPACE);
+    for (const InputDevice &device : s_devices)
+        clear = clear || (device.id != 0 && device.gamepad != NULL &&
+                          SDL_GetGamepadButton(device.gamepad, SDL_GAMEPAD_BUTTON_WEST));
+    s_clearPressed = clear && !s_clearHeld;
+    s_clearHeld = clear;
     // The input given last, for the controls pages: player 1's update reads
     // both keyboards and player 1's keys come first in it, as the menu keys
     // of both are the same. Android's touch controls press the keyboard's.
@@ -774,12 +983,10 @@ extern "C" BOOL Input_IsSmoothSteering(int player)
     // first that can steer.
     if (player < 0 || player >= INPUT_PLAYERS)
         return FALSE;
-    const InputDevice *steering = s_players[player].steering;
+    if (const InputDevice *steering = Playing(s_players[player].steering, player))
+        return steering->gamepad != NULL && !steering->wheel;
     for (const InputDevice &device : s_devices)
-        if (steering == &device && device.id != 0)
-            return device.gamepad != NULL && !device.wheel;
-    for (const InputDevice &device : s_devices)
-        if (device.id != 0 && Plays(Owner(device), player) && SteersWithAxis(*device.profile))
+        if (Playing(&device, player) != NULL && SteersWithAxis(*device.profile))
             return device.gamepad != NULL && !device.wheel;
     return FALSE;
 }
@@ -806,12 +1013,11 @@ extern "C" void Input_SetRumble(int player, int low, int high)
     Uint64 now = SDL_GetTicks();
     if (player < 0 || player >= INPUT_PLAYERS)
         return;
-    // Only the controller the player last used: every controller drives
+    // Only the controller the player steers with: every controller drives
     // player 1 in a race of one.
-    const InputDevice *controller = LastController(player);
+    const InputDevice *controller = FeedbackTarget(player);
     for (InputDevice &device : s_devices) {
-        if (device.id == 0 || !device.rumble || !Plays(Owner(device), player) ||
-            (controller != NULL && &device != controller))
+        if (Playing(&device, player) == NULL || !device.rumble || (controller != NULL && &device != controller))
             continue;
         int scale = device.profile->rumble;
         Uint16 l = (Uint16)(SDL_clamp(low, 0, INPUT_FULL) * (Sint64)scale * 0xffff / (100 * (Sint64)INPUT_FULL));
@@ -941,6 +1147,7 @@ extern "C" InputEffect *Input_CreateEffect(InputDevice *device, const InputEffec
     effect->id = -1;
     effect->params = *params;
     effect->playing = false;
+    effect->autocentre = false;
     CreateEffectOnDevice(effect);
     device->effects.push_back(effect);
     return effect;
@@ -951,6 +1158,8 @@ extern "C" void Input_UpdateEffect(InputEffect *effect, const InputEffectParams 
     if (effect == NULL)
         return;
     effect->params = *params;
+    if (effect->autocentre && effect->device->haptic != NULL && effect->playing)
+        SDL_SetHapticAutocenter(effect->device->haptic, AutocentreLevel(*params));
     if (effect->id < 0 || effect->device->haptic == NULL)
         return;
     SDL_HapticEffect e;
@@ -963,6 +1172,8 @@ extern "C" void Input_StartEffect(InputEffect *effect)
     if (effect == NULL)
         return;
     effect->playing = true;
+    if (effect->autocentre && effect->device->haptic != NULL)
+        SDL_SetHapticAutocenter(effect->device->haptic, AutocentreLevel(effect->params));
     if (effect->id >= 0 && effect->device->haptic != NULL)
         SDL_RunHapticEffect(effect->device->haptic, effect->id, 1);
 }
@@ -981,6 +1192,8 @@ extern "C" void Input_DestroyEffect(InputEffect *effect)
     if (effect == NULL)
         return;
     InputDevice *device = effect->device;
+    if (effect->autocentre && device->haptic != NULL)
+        SDL_SetHapticAutocenter(device->haptic, 0);
     if (effect->id >= 0 && device->haptic != NULL)
         SDL_DestroyHapticEffect(device->haptic, effect->id);
     device->effects.erase(std::remove(device->effects.begin(), device->effects.end(), effect), device->effects.end());
@@ -993,8 +1206,12 @@ extern "C" void Input_StopAllEffects(InputDevice *device)
         return;
     for (InputEffect *effect : device->effects)
         effect->playing = false;
-    if (device->haptic != NULL)
+    if (device->haptic != NULL) {
         SDL_StopHapticEffects(device->haptic);
+        for (InputEffect *effect : device->effects)
+            if (effect->autocentre)
+                SDL_SetHapticAutocenter(device->haptic, 0);
+    }
 }
 
 extern "C" void Input_SetAutocenter(InputDevice *device, BOOL enable)
@@ -1227,8 +1444,12 @@ bool FindInput(InputDevice *device, const std::vector<Sint16> &base, bool gamepa
         Sint16 value = SDL_GetJoystickAxis(device->joystick, axis);
         if (abs(value - base[axis]) < travel)
             continue;
-        // An axis that was resting at one end is a pedal.
-        int range = base[axis] <= -24000 ? AXIS_RISING : base[axis] >= 24000 ? AXIS_FALLING
+        // An axis resting at one end is a pedal; where it rests is known
+        // from the device, else from where it was when the capture began.
+        AxisRest rest = axis < (int)device->rest.size() ? device->rest[axis] : REST_UNKNOWN;
+        if (rest == REST_UNKNOWN)
+            rest = base[axis] <= -24000 ? REST_MIN : base[axis] >= 24000 ? REST_MAX : REST_CENTRE;
+        int range = rest == REST_MIN ? AXIS_RISING : rest == REST_MAX ? AXIS_FALLING
                   : value > base[axis] ? AXIS_POSITIVE : AXIS_NEGATIVE;
         *out = { SOURCE_JOY_AXIS, axis, range };
         return true;
@@ -1275,6 +1496,34 @@ void Assign(Profile &profile, int action, const Source &source)
     }
     profile.actions[action] = { source };
     Bindings_MarkChanged();
+}
+
+// An axis half given for one steering direction steers both ways: the other
+// half goes to the other direction.
+void AssignCaptured(Profile &profile, int action, const Source &source)
+{
+    Assign(profile, action, source);
+    bool trigger = source.kind == SOURCE_AXIS &&
+        (source.index == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || source.index == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+    bool half = (source.kind == SOURCE_AXIS || source.kind == SOURCE_JOY_AXIS) && !trigger &&
+                (source.direction == AXIS_NEGATIVE || source.direction == AXIS_POSITIVE);
+    if (action > INPUT_STEER_RIGHT || !half)
+        return;
+    Source other = source;
+    other.direction = source.direction == AXIS_NEGATIVE ? AXIS_POSITIVE : AXIS_NEGATIVE;
+    Assign(profile, action == INPUT_STEER_LEFT ? INPUT_STEER_RIGHT : INPUT_STEER_LEFT, other);
+}
+
+void Reprime(const Profile *profile)
+{
+    for (InputDevice &device : s_devices)
+        if (device.profile == profile)
+            memset(device.primed, 0, sizeof(device.primed));
+}
+
+bool IsDeviceProfile(const Profile *profile)
+{
+    return profile->section.compare(0, 7, "device ") == 0;
 }
 
 } // namespace
@@ -1326,6 +1575,55 @@ extern "C" void Input_GetBindingText(int index, int action, char *text, int size
     SDL_strlcpy(text, names.c_str(), size);
 }
 
+extern "C" int Input_GetProfileAction(int index, int action)
+{
+    Profile *profile = EditableProfile(index);
+    if (profile == NULL || action < 0 || action >= INPUT_ACTION_COUNT)
+        return 0;
+    if (profile == &s_touchEntry)
+        return 0;
+    if (IsKeyboardProfile(profile))
+        return ActionValue(NULL, *profile, action, NULL, NULL);
+    int value = 0;
+    for (const InputDevice &device : s_devices)
+        if (device.id != 0 && device.profile == profile)
+            value = std::max(value, ActionValue(&device, *profile, action, NULL, NULL));
+    return value;
+}
+
+extern "C" void Input_ClearBinding(int index, int action)
+{
+    Profile *profile = EditableProfile(index);
+    if (profile == NULL || profile == &s_touchEntry || action < 0 || action >= INPUT_ACTION_COUNT ||
+        profile->actions[action].empty())
+        return;
+    profile->actions[action].clear();
+    Reprime(profile);
+    Bindings_MarkChanged();
+}
+
+extern "C" BOOL Input_IsClearPressed(void)
+{
+    return s_clearPressed;
+}
+
+extern "C" const char *Input_GetClearButtonName(void)
+{
+    static std::string name;
+    for (const InputDevice &device : s_devices) {
+        if (device.id != 0 && device.gamepad != NULL) {
+            name = ButtonName(SDL_GAMEPAD_BUTTON_WEST, Family());
+            return name.c_str();
+        }
+    }
+    return NULL;
+}
+
+extern "C" void Input_SetShownProfile(int index)
+{
+    s_shownProfile = index < 0 ? NULL : EditableProfile(index);
+}
+
 extern "C" int Input_GetSetting(int index, int setting)
 {
     Profile *profile = EditableProfile(index);
@@ -1334,6 +1632,9 @@ extern "C" int Input_GetSetting(int index, int setting)
     switch (setting) {
     case INPUT_SETTING_DEADZONE: return profile->deadzone;
     case INPUT_SETTING_CURVE: return profile->steeringCurve;
+    case INPUT_SETTING_PLAYER: return profile->player;
+    case INPUT_SETTING_ENABLED: return profile->enabled ? 1 : 0;
+    case INPUT_SETTING_FORCE: return profile->force;
     default: return profile->rumble;
     }
 }
@@ -1346,9 +1647,63 @@ extern "C" void Input_SetSetting(int index, int setting, int value)
     switch (setting) {
     case INPUT_SETTING_DEADZONE: profile->deadzone = SDL_clamp(value, 0, 99); profile->chosen |= SETTING_DEADZONE; break;
     case INPUT_SETTING_CURVE: profile->steeringCurve = SDL_clamp(value, 0, 100); profile->chosen |= SETTING_CURVE; break;
-    default: profile->rumble = SDL_clamp(value, 0, 100); profile->chosen |= SETTING_RUMBLE; break;
+    case INPUT_SETTING_PLAYER:
+    case INPUT_SETTING_ENABLED:
+        // A device's own: gamepads share their bindings.
+        if (!IsDeviceProfile(profile))
+            return;
+        if (setting == INPUT_SETTING_PLAYER)
+            profile->player = SDL_clamp(value, 0, 2);
+        else
+            profile->enabled = value != 0;
+        Reprime(profile);
+        break;
+    case INPUT_SETTING_FORCE:
+        profile->force = SDL_clamp(value, 0, 200);
+        profile->chosen |= SETTING_FORCE;
+        Input_TestFeedback(index);
+        break;
+    default:
+        profile->rumble = SDL_clamp(value, 0, 100);
+        profile->chosen |= SETTING_RUMBLE;
+        Input_TestFeedback(index);
+        break;
     }
     Bindings_MarkChanged();
+}
+
+extern "C" BOOL Input_HasForceFeedback(int index)
+{
+    Profile *profile = EditableProfile(index);
+    for (const InputDevice &device : s_devices)
+        if (profile != NULL && device.id != 0 && device.profile == profile && device.haptic != NULL)
+            return TRUE;
+    return FALSE;
+}
+
+extern "C" void Input_TestFeedback(int index)
+{
+    Profile *profile = EditableProfile(index);
+    if (profile == NULL)
+        return;
+    // Of the gamepads, the one used last.
+    const InputDevice *last = s_players[0].controller;
+    InputDevice *chosen = NULL;
+    for (InputDevice &device : s_devices) {
+        if (device.id == 0 || device.profile != profile || (device.haptic == NULL && !device.rumble))
+            continue;
+        if (chosen == NULL || &device == last)
+            chosen = &device;
+    }
+    if (chosen != NULL)
+        PlayTest(*chosen);
+}
+
+extern "C" unsigned int Input_GetFeedbackStrength(int player)
+{
+    const InputDevice *device = player >= 0 && player < INPUT_PLAYERS ? FeedbackDevice(player) : NULL;
+    int force = device != NULL ? device->profile->force : 100;
+    return (unsigned int)SDL_min(0x10000, 0x8000 * force / 100);
 }
 
 extern "C" void Input_RestoreDefaults(int index)
@@ -1357,9 +1712,12 @@ extern "C" void Input_RestoreDefaults(int index)
     if (profile == NULL || profile == &s_touchEntry)
         return;
     int player = profile->player;
+    bool enabled = profile->enabled;
     InputDevice *device = DeviceOf(profile);
     Bindings_SetDefaults(*profile, device != NULL ? device->joystick : NULL);
     profile->player = player;
+    profile->enabled = enabled;
+    Reprime(profile);
     Bindings_MarkChanged();
 }
 
@@ -1402,6 +1760,14 @@ extern "C" int Input_UpdateCapture(void)
         capture.released = !held;
         return 0;
     }
+    // Delete or Backspace leaves the action unbound.
+    if (KeyDown(SDL_SCANCODE_DELETE) || KeyDown(SDL_SCANCODE_BACKSPACE)) {
+        capture.profile->actions[capture.action].clear();
+        Reprime(capture.profile);
+        Bindings_MarkChanged();
+        capture.profile = NULL;
+        return 1;
+    }
     Source source;
     bool found = false;
     if (keyboard) {
@@ -1427,7 +1793,8 @@ extern "C" int Input_UpdateCapture(void)
     }
     if (!found)
         return 0;
-    Assign(*capture.profile, capture.action, source);
+    AssignCaptured(*capture.profile, capture.action, source);
+    Reprime(capture.profile);
     capture.profile = NULL;
     return 1;
 }

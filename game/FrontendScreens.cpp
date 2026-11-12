@@ -12306,9 +12306,13 @@ char *FrontendMenu_GetScreenOptionsLabel(void)
 // PORT: the controls pages, in place of the original's (Options >
 // Controllers). The first chooses the bindings to edit, player 1's keys,
 // player 2's, the gamepads' or a connected joystick's or wheel's (src/input,
-// controls.ini), and sets their deadzone, steering curve and rumble; the
-// second binds each driving action to the next key,
-// button or axis given. OK saves controls.ini; Back drops the changes.
+// controls.ini), and sets their deadzone, steering curve and rumble, and for
+// a joystick or wheel whether it is used, which player it belongs to and
+// its force feedback's strength;
+// the second binds each driving action to the next key, button or axis
+// given, clears it with Delete or a gamepad's west button, and shows under
+// each action what its inputs give. OK saves controls.ini; Back drops the
+// changes.
 
 Menu g_controlsMenu;
 Menu g_controlsBindingsMenu;
@@ -12320,6 +12324,9 @@ enum ControlsItem {
     CONTROLS_ITEM_CURVE,
     CONTROLS_ITEM_RUMBLE,
     CONTROLS_ITEM_DEFAULT,
+    CONTROLS_ITEM_ENABLED,
+    CONTROLS_ITEM_PLAYER,
+    CONTROLS_ITEM_FORCE,
     CONTROLS_ITEM_OK = 0xe
 };
 
@@ -12335,6 +12342,14 @@ enum ControlsText {
     CONTROLS_TEXT_PRESS_INPUT,
     CONTROLS_TEXT_TOUCH,
     CONTROLS_TEXT_TOUCH_NOTE,
+    CONTROLS_TEXT_USE,
+    CONTROLS_TEXT_YES,
+    CONTROLS_TEXT_NO,
+    CONTROLS_TEXT_PLAYER,
+    CONTROLS_TEXT_AUTO,
+    CONTROLS_TEXT_CLEAR,
+    CONTROLS_TEXT_CLEAR_PAD,
+    CONTROLS_TEXT_FORCE,
     CONTROLS_TEXT_COUNT
 };
 
@@ -12342,23 +12357,29 @@ enum ControlsText {
 static const char *const g_controlsText[6][CONTROLS_TEXT_COUNT] = {
     { "Device", "Keyboard", "Keyboard (Player 2)", "Gamepad", "Deadzone", "Steering Curve", "Vibration",
       "Press a key", "Press a button or move an axis (Escape cancels)",
-      "Touch Controls", "Set up in the app's Controls screen" },
+      "Touch Controls", "Set up in the app's Controls screen", "Use Device", "Yes", "No", "Player", "Auto",
+      "Delete clears an input", "Delete or %s clears an input", "Force Feedback" },
     { "P\xe9riph\xe9rique", "Clavier", "Clavier (joueur 2)", "Manette", "Zone morte", "Courbe de direction",
       "Vibrations", "Appuyez sur une touche",
       "Appuyez sur un bouton ou bougez un axe (\xc9" "chap annule)", "Commandes tactiles",
-      "R\xe9glages dans l'\xe9" "cran Commandes de l'appli" },
+      "R\xe9glages dans l'\xe9" "cran Commandes de l'appli", "Utiliser", "Oui", "Non", "Joueur", "Auto",
+      "Suppr efface une affectation", "Suppr ou %s efface une affectation", "Retour de force" },
     { "Dispositivo", "Teclado", "Teclado (jugador 2)", "Mando", "Zona muerta", "Curva de direcci\xf3n", "Vibraci\xf3n",
       "Pulsa una tecla", "Pulsa un bot\xf3n o mueve un eje (Esc cancela)", "Controles t\xe1" "ctiles",
-      "Se configuran en la pantalla Controles de la app" },
+      "Se configuran en la pantalla Controles de la app", "Usar dispositivo", "S\xed", "No", "Jugador", "Auto",
+      "Supr borra una asignaci\xf3n", "Supr o %s borra una asignaci\xf3n", "Fuerza del volante" },
     { "Dispositivo", "Tastiera", "Tastiera (giocatore 2)", "Gamepad", "Zona morta", "Curva dello sterzo",
       "Vibrazione", "Premi un tasto", "Premi un pulsante o muovi un asse (Esc annulla)", "Comandi touch",
-      "Si impostano nella schermata Controlli dell'app" },
+      "Si impostano nella schermata Controlli dell'app", "Usa dispositivo", "S\xec", "No", "Giocatore", "Auto",
+      "Canc cancella un'assegnazione", "Canc o %s cancella un'assegnazione", "Force feedback" },
     { "Ger\xe4t", "Tastatur", "Tastatur (Spieler 2)", "Gamepad", "Totzone", "Lenkkurve", "Vibration",
       "Taste dr\xfc" "cken", "Knopf dr\xfc" "cken oder Achse bewegen (Esc bricht ab)",
-      "Touch-Steuerung", "Einstellung im Steuerung-Bildschirm der App" },
+      "Touch-Steuerung", "Einstellung im Steuerung-Bildschirm der App", "Ger\xe4t verwenden", "Ja", "Nein",
+      "Spieler", "Auto", "Entf l\xf6scht eine Belegung", "Entf oder %s l\xf6scht eine Belegung", "Force Feedback" },
     { "Urzadzenie", "Klawiatura", "Klawiatura (gracz 2)", "Pad", "Martwa strefa", "Krzywa skretu", "Wibracje",
       "Nacisnij klawisz", "Nacisnij przycisk lub porusz osia (Esc anuluje)", "Sterowanie dotykowe",
-      "Ustawienia na ekranie Sterowanie aplikacji" },
+      "Ustawienia na ekranie Sterowanie aplikacji", "Uzywaj urzadzenia", "Tak", "Nie", "Gracz", "Auto",
+      "Delete usuwa przypisanie", "Delete lub %s usuwa przypisanie", "Force feedback" },
 };
 
 // The settings offered: deadzone 0..20%, curve and rumble 0..100% by tens.
@@ -12409,6 +12430,20 @@ static void Controls_LoadRows(Menu *pMenu)
                                           kind != INPUT_PROFILE_TOUCH &&
                                           (settings[i] != CONTROLS_ITEM_RUMBLE || kind == INPUT_PROFILE_GAMEPAD);
     }
+    // A joystick or wheel can be left out, and given to a player: gamepads
+    // share their bindings.
+    pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_ENABLED);
+    pItem->enabled = pItem->visible = kind == INPUT_PROFILE_JOYSTICK;
+    pItem->max = (BYTE)Input_GetSetting(g_controlsProfile, INPUT_SETTING_ENABLED);
+    pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_PLAYER);
+    pItem->enabled = pItem->visible = kind == INPUT_PROFILE_JOYSTICK;
+    pItem->max = (BYTE)Input_GetSetting(g_controlsProfile, INPUT_SETTING_PLAYER);
+    // A wheel's force feedback's strength, by tens up to 200%, as the
+    // original's controls pages set it.
+    pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_FORCE);
+    pItem->enabled = pItem->visible = kind == INPUT_PROFILE_JOYSTICK && Input_HasForceFeedback(g_controlsProfile);
+    pItem->max = (BYTE)((Input_GetSetting(g_controlsProfile, INPUT_SETTING_FORCE) + 5) / 10);
+    Input_SetShownProfile(g_controlsProfile);
     // The touch controls are set up in the launcher: their buttons show the
     // actions they press, so they are not bound here.
     pItem = Menu_GetItem(pMenu, CONTROLS_ITEM_BINDINGS);
@@ -12425,6 +12460,12 @@ static void Controls_StoreRows(Menu *pMenu)
     Input_SetSetting(g_controlsProfile, INPUT_SETTING_DEADZONE, Menu_GetItem(pMenu, CONTROLS_ITEM_DEADZONE)->max);
     Input_SetSetting(g_controlsProfile, INPUT_SETTING_CURVE, Menu_GetItem(pMenu, CONTROLS_ITEM_CURVE)->max * 10);
     Input_SetSetting(g_controlsProfile, INPUT_SETTING_RUMBLE, Menu_GetItem(pMenu, CONTROLS_ITEM_RUMBLE)->max * 10);
+    if (Input_GetProfileKind(g_controlsProfile) == INPUT_PROFILE_JOYSTICK) {
+        Input_SetSetting(g_controlsProfile, INPUT_SETTING_ENABLED, Menu_GetItem(pMenu, CONTROLS_ITEM_ENABLED)->max);
+        Input_SetSetting(g_controlsProfile, INPUT_SETTING_PLAYER, Menu_GetItem(pMenu, CONTROLS_ITEM_PLAYER)->max);
+        if (Menu_GetItem(pMenu, CONTROLS_ITEM_FORCE)->visible)
+            Input_SetSetting(g_controlsProfile, INPUT_SETTING_FORCE, Menu_GetItem(pMenu, CONTROLS_ITEM_FORCE)->max * 10);
+    }
 }
 
 // Coming from the options (param 0) starts the changes afresh, on the
@@ -12481,6 +12522,7 @@ void FrontendMenu_LeaveControls(Menu *pMenu, char v)
 {
     if (v == 0)
         return;
+    Input_SetShownProfile(-1);
     if (g_controlsSaved)
         Input_SaveBindings();
     else
@@ -12495,10 +12537,19 @@ void FrontendMenu_BeginControlsCapture(Menu *pMenu, MenuItem *pItem)
     Menu_SetFlags(pMenu, 0, 0, 0, 0);
 }
 
+// Delete, Backspace or a gamepad's west button clears the action under the
+// cursor; while an input is awaited, Delete and Backspace do.
 void FrontendMenu_UpdateControlsBindings(Menu *pMenu)
 {
-    if (!g_controlsCapturing)
+    if (!g_controlsCapturing) {
+        int action = pMenu->items[pMenu->cursor].value;
+        if (Input_IsClearPressed() && action <= INPUT_PAUSE &&
+            Input_GetProfileKind(g_controlsProfile) != INPUT_PROFILE_TOUCH) {
+            Input_ClearBinding(g_controlsProfile, action);
+            Menu_PlaySound(CInput::m_menuChangeSound);
+        }
         return;
+    }
     Menu_SetFlags(pMenu, 0, 0, 0, 0);
     if (Input_UpdateCapture() == 0)
         return;
@@ -12581,8 +12632,35 @@ static void Controls_Draw(Menu *pMenu, int rowHeight, BOOL carousel)
                 strcpy(binding, "...");
             else
                 Input_GetBindingText(g_controlsProfile, pItem->value, binding, sizeof(binding));
+            if (binding[0] == 0)
+                strcpy(binding, "-");
             Font_DrawText(1, CFrontend::GetTextString(pItem->id), x, textY, (int *)pColour, 0x11);
             Font_DrawText(1, binding, valueX, textY, (int *)pColour, 0x11);
+            // What the action's inputs give now, along the foot of the row.
+            j = Input_GetProfileAction(g_controlsProfile, pItem->value);
+            if (j > 0) {
+                short bar[4];
+                bar[0] = (short)x;
+                bar[2] = (short)((long long)((int)(g_pGraphics->resX * 250) / 640) * j / INPUT_FULL);
+                bar[3] = (short)((int)(g_pGraphics->resY * 2) / 480 > 0 ? (int)(g_pGraphics->resY * 2) / 480 : 1);
+                bar[1] = (short)(g_frontendDrawRect[1] + step - bar[3] - (int)(g_pGraphics->resY * 3) / 480);
+                if (bar[2] > 0)
+                    Sprite_FillRect(&g_pGraphics->field309_0x150, bar, g_colourWhite0x00524968, 1);
+            }
+        } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_ENABLED) {
+            sprintf(CFrontend::m_stringDest, "%s  < %s >", Controls_Text(CONTROLS_TEXT_USE),
+                    Controls_Text(pItem->max ? CONTROLS_TEXT_YES : CONTROLS_TEXT_NO));
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_FORCE) {
+            sprintf(CFrontend::m_stringDest, "%s  < %d%% >", Controls_Text(CONTROLS_TEXT_FORCE), pItem->max * 10);
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
+        } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_PLAYER) {
+            if (pItem->max == 0)
+                sprintf(CFrontend::m_stringDest, "%s  < %s >", Controls_Text(CONTROLS_TEXT_PLAYER),
+                        Controls_Text(CONTROLS_TEXT_AUTO));
+            else
+                sprintf(CFrontend::m_stringDest, "%s  < %d >", Controls_Text(CONTROLS_TEXT_PLAYER), pItem->max);
+            Font_DrawText(1, CFrontend::m_stringDest, x, textY, (int *)pColour, 0x11);
         } else if (pMenu == &g_controlsMenu && pItem->value == CONTROLS_ITEM_DEVICE) {
             sprintf(CFrontend::m_stringDest, "%s  < %s >", Controls_Text(CONTROLS_TEXT_DEVICE),
                     Controls_ProfileName(pItem->max));
@@ -12621,14 +12699,29 @@ static void Controls_Draw(Menu *pMenu, int rowHeight, BOOL carousel)
         Font_DrawText(1, Controls_Text(kind == INPUT_PROFILE_KEYBOARD || kind == INPUT_PROFILE_KEYBOARD2
                                        ? CONTROLS_TEXT_PRESS_KEY : CONTROLS_TEXT_PRESS_INPUT),
                       (int)(g_pGraphics->resX * 122) / 640, step * row + y + step, (int *)g_colourWhite0x00524968, 0x11);
+    } else if (pMenu == &g_controlsBindingsMenu && Input_GetProfileKind(g_controlsProfile) != INPUT_PROFILE_TOUCH) {
+        const char *button = Input_GetClearButtonName();
+        if (button != NULL)
+            sprintf(CFrontend::m_stringDest, Controls_Text(CONTROLS_TEXT_CLEAR_PAD), button);
+        else
+            strcpy(CFrontend::m_stringDest, Controls_Text(CONTROLS_TEXT_CLEAR));
+        Font_DrawText(1, CFrontend::m_stringDest, (int)(g_pGraphics->resX * 122) / 640, step * row + y + step,
+                      (int *)g_colourText0x0052496c, 0x11);
     }
     if (carousel)
         FrontendDraw_Carousel(FrontendMenu_GetMain(), 0, NULL);
 }
 
+// A wheel's page has more rows: they are closer, as the bindings'.
 void FrontendMenu_DrawControls(Menu *pMenu)
 {
-    Controls_Draw(pMenu, 36, TRUE);
+    int rows;
+    int i;
+
+    rows = 0;
+    for (i = 0; i < pMenu->itemCount; i++)
+        rows += pMenu->items[i].visible ? 1 : 0;
+    Controls_Draw(pMenu, rows > 8 ? 30 : 36, TRUE);
 }
 
 void FrontendMenu_DrawControlsBindings(Menu *pMenu)
@@ -12642,10 +12735,13 @@ void FrontendMenu_BuildInputControls(void)
 
     Menu_Init(&g_controlsMenu, NULL, 0x18, 0, FrontendMenu_GetOptions(), NULL, 1, 0, 1);
     Menu_AddItemType3(&g_controlsMenu, 0, -1, 1, 0, 0, 0, 0, CONTROLS_ITEM_DEVICE);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, 2, 0, 0, 0, 0, CONTROLS_ITEM_ENABLED);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, 3, 0, 0, 0, 0, CONTROLS_ITEM_PLAYER);
     Menu_AddItemType2(&g_controlsMenu, 0, 0x65, &g_controlsBindingsMenu, 0, CONTROLS_ITEM_BINDINGS);
     Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_DEADZONE_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_DEADZONE);
     Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_CURVE);
     Menu_AddItemType3(&g_controlsMenu, 0, -1, CONTROLS_PERCENT_COUNT, 0, 0, 0, 0, CONTROLS_ITEM_RUMBLE);
+    Menu_AddItemType3(&g_controlsMenu, 0, -1, 2 * CONTROLS_PERCENT_COUNT - 1, 0, 0, 0, 0, CONTROLS_ITEM_FORCE);
     Menu_AddItemType4(&g_controlsMenu, 0, 0x1fe, (MenuItemAction)FrontendMenu_RestoreControlsDefaults, CONTROLS_ITEM_DEFAULT);
     Menu_AddItemType1(&g_controlsMenu, 0, 0x67, (MenuItemAction)FrontendMenu_ApplyControls, CONTROLS_ITEM_OK);
     Menu_SetCallbacks(&g_controlsMenu, FrontendMenu_EnterControls, (MenuCallback)FrontendMenu_UpdateControls,

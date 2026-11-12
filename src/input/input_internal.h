@@ -22,11 +22,22 @@ enum SourceKind {
 
 // How an axis gives an action its value.
 enum AxisRange {
-    AXIS_NEGATIVE,          // the half below the centre
-    AXIS_POSITIVE,          // the half above it (a gamepad trigger)
+    AXIS_NEGATIVE,          // from where the axis rests towards its minimum
+    AXIS_POSITIVE,          // from where it rests towards its maximum (a trigger)
     AXIS_RISING,            // the whole axis, released at its minimum (a pedal)
     AXIS_FALLING,           // the whole axis, released at its maximum
 };
+
+// Where a joystick's axis rests, snapped to its centre or one of its ends:
+// a pedal, a clutch or a throttle lever rests at an end. Without a reading
+// yet, nothing is known.
+enum AxisRest {
+    REST_UNKNOWN,
+    REST_CENTRE,
+    REST_MIN,
+    REST_MAX,
+};
+AxisRest Joystick_AxisRest(SDL_Joystick *joystick, int axis);
 
 struct Source {
     SourceKind kind;
@@ -45,7 +56,12 @@ struct Profile {
     int player = 0;                 // 1 or 2; 0 follows the connection order
     int rumble = 100;               // percent of the gamepad's rumble
     int steeringCurve = 0;          // percent of cubic response of the steering axes
+    int force = 100;                // percent of the game's force feedback (the original's at 100)
+    bool enabled = true;            // a device section: false leaves the device out
     unsigned chosen = 0;            // SETTING_* bits set by the user (written to controls.ini)
+    // The keys' actions held at each player's previous update (keyboard
+    // profiles), for telling when one is pressed.
+    mutable bool keyActive[INPUT_PLAYERS][INPUT_ACTION_COUNT] = {};
 };
 
 // Settings of a profile; those not chosen follow the defaults of its kind.
@@ -54,6 +70,7 @@ enum {
     SETTING_SATURATION = 2,
     SETTING_CURVE = 4,
     SETTING_RUMBLE = 8,
+    SETTING_FORCE = 16,
 };
 
 bool IsAnalog(const Source &source);
@@ -62,11 +79,13 @@ std::string FormatSource(const Profile &profile, const Source &source);
 // controls.ini: defaults, reading and writing.
 std::deque<Profile> &Bindings_Get(void);
 Profile *Bindings_Find(const std::string &section);
-// The profile of a joystick or wheel without one: SDL's layout of a known
-// gamepad, else the joystick defaults with its pedals found from where its
-// axes rest.
-Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad);
+// The profile of a joystick or wheel: SDL's layout of a known gamepad, else
+// its device section, made from where its axes rest when it has none
+// (*created set).
+Profile *Bindings_ForJoystick(SDL_Joystick *joystick, bool gamepad, bool *created);
 void Bindings_Load(void);
+// Writes the driving bindings of a profile to the log.
+void Bindings_LogProfile(const Profile &profile, const char *what);
 void Bindings_MarkChanged(void);
 // The defaults of a profile, from the device for a joystick's.
 void Bindings_SetDefaults(Profile &profile, SDL_Joystick *joystick);

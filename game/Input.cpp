@@ -88,7 +88,8 @@ static void Input_InitKeyboardConfiguration(int index)
 }
 
 // The configuration of a player's joystick (records 2 and 3): its axes,
-// and bit 1 << action for every action, as the keyboard records give them.
+// bit 1 << action for every action, as the keyboard records give them, and
+// the force feedback's strength.
 static void Input_InitPlayerConfiguration(int index)
 {
     static const BYTE axes[4] = { 0, 0, 5, 2 };   // steering left, right, throttle, brake
@@ -101,8 +102,10 @@ static void Input_InitPlayerConfiguration(int index)
     memset(pController, 0, sizeof(*pController));
     pController->index = (BYTE)index;
     strcpy(pController->name, pDevice->deviceInstanceName);
-    pController->textureForce = 0x8000;
-    pController->effectsForce = 0x8000;
+    // The strength chosen for the device the force feedback goes to (0x8000,
+    // the original's default, at 100%).
+    pController->textureForce = Input_GetFeedbackStrength(index - 2);
+    pController->effectsForce = pController->textureForce;
     pController->hasAxes = 1;
     pController->analogSteering = 1;
     pController->analogPedals = 1;

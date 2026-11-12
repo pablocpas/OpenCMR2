@@ -485,7 +485,8 @@ void CheckManualMapping()
     Input_Update();
 }
 
-// A wheel's pedals are found from where its axes rest.
+// A wheel's pedals are found from where its axes rest: of three, the first
+// is the clutch.
 void CheckWheel()
 {
     SDL_VirtualJoystickDesc desc;
@@ -500,27 +501,166 @@ void CheckWheel()
     SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
     SDL_Joystick *virt = SDL_OpenJoystick(id);
     SDL_SetJoystickVirtualAxis(virt, 0, 0);
-    SDL_SetJoystickVirtualAxis(virt, 1, SDL_JOYSTICK_AXIS_MIN);   // clutch: not a pedal used
+    SDL_SetJoystickVirtualAxis(virt, 1, SDL_JOYSTICK_AXIS_MIN);   // clutch
     SDL_SetJoystickVirtualAxis(virt, 2, SDL_JOYSTICK_AXIS_MAX);
     SDL_SetJoystickVirtualAxis(virt, 3, SDL_JOYSTICK_AXIS_MAX);
     SDL_UpdateJoysticks();
     Input_Update();
     Check(Input_GetAction(0, INPUT_THROTTLE) == 0 && Input_GetAction(0, INPUT_BRAKE) == 0, "released pedals");
     SDL_SetJoystickVirtualAxis(virt, 1, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == 0 && Input_GetAction(0, INPUT_BRAKE) == 0 &&
+          Input_GetAction(0, INPUT_STEER_LEFT) == 0 && Input_GetAction(0, INPUT_STEER_RIGHT) == 0,
+          "the clutch does nothing");
+    SDL_SetJoystickVirtualAxis(virt, 1, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(virt, 2, SDL_JOYSTICK_AXIS_MIN);
     SDL_SetJoystickVirtualAxis(virt, 0, SDL_JOYSTICK_AXIS_MAX);
     Input_Update();
-    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL, "the first pedal is the throttle");
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL, "the second pedal is the throttle");
     Check(Input_GetAction(0, INPUT_STEER_RIGHT) == INPUT_FULL, "the wheel steers on X, without deadzone");
     Check(!Input_IsSmoothSteering(0), "a wheel is followed directly");
-    SDL_SetJoystickVirtualAxis(virt, 2, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(virt, 3, SDL_JOYSTICK_AXIS_MIN);
     Input_Update();
-    Check(Input_GetAction(0, INPUT_BRAKE) == INPUT_FULL, "a pedal resting at the maximum is the brake");
+    Check(Input_GetAction(0, INPUT_BRAKE) == INPUT_FULL, "the third is the brake");
     SDL_SetJoystickVirtualHat(virt, 0, SDL_HAT_DOWN);
     SDL_SetJoystickVirtualButton(virt, 0, true);
     Input_Update();
     Check(Input_GetAction(0, INPUT_MENU_DOWN) == INPUT_FULL && Input_GetAction(0, INPUT_MENU_CONFIRM) == INPUT_FULL,
           "the hat and first button work in the menus");
     SDL_CloseJoystick(virt);
+    SDL_DetachVirtualJoystick(id);
+    Input_Update();
+}
+
+SDL_JoystickID AttachJoystick(SDL_JoystickType type, const char *name, Uint16 product, int axes, int buttons,
+                              int hats, SDL_Joystick **out, const Sint16 *rest,
+                              SDL_VirtualJoystickDesc *descOut = nullptr)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = type;
+    desc.name = name;
+    desc.vendor_id = 0x046d;
+    desc.product_id = product;
+    desc.naxes = axes;
+    desc.nbuttons = buttons;
+    desc.nhats = hats;
+    if (descOut != nullptr) {
+        desc.Rumble = descOut->Rumble;
+        desc.userdata = descOut->userdata;
+    }
+    SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    *out = SDL_OpenJoystick(id);
+    for (int axis = 0; axis < axes; axis++)
+        SDL_SetJoystickVirtualAxis(*out, axis, rest[axis]);
+    SDL_UpdateJoysticks();
+    return id;
+}
+
+// A wheel and pedals of their own (issue 55): the pedals, whose first axis
+// is a clutch resting at its minimum, neither steer nor move through the
+// menus, and the wheel keeps the force feedback while they are pressed.
+void CheckWheelAndPedals()
+{
+    const Sint16 wheelRest[1] = { 0 };
+    const Sint16 pedalRest[3] = { SDL_JOYSTICK_AXIS_MIN, SDL_JOYSTICK_AXIS_MIN, SDL_JOYSTICK_AXIS_MIN };
+    SDL_Joystick *wheel, *pedals;
+    SDL_JoystickID wheelId = AttachJoystick(SDL_JOYSTICK_TYPE_WHEEL, "Virtual Wheel Base", 0xc261, 1, 10, 1, &wheel,
+                                            wheelRest);
+    SDL_JoystickID pedalsId = AttachJoystick(SDL_JOYSTICK_TYPE_UNKNOWN, "Virtual Pedals", 0xc262, 3, 0, 0, &pedals,
+                                             pedalRest);
+    RaceFrame();
+    MenuFrame();
+    Check(Input_GetAction(0, INPUT_STEER_LEFT) == 0 && Input_GetAction(0, INPUT_STEER_RIGHT) == 0,
+          "resting pedals do not steer");
+    Check((Device(0).held & 0x3f) == 0, "nor move through the menus");
+    SDL_SetJoystickVirtualAxis(pedals, 0, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_STEER_LEFT) == 0 && Input_GetAction(0, INPUT_STEER_RIGHT) == 0 &&
+          Input_GetAction(0, INPUT_THROTTLE) == 0, "the clutch does nothing");
+    SDL_SetJoystickVirtualAxis(pedals, 0, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MAX);
+    SDL_SetJoystickVirtualAxis(wheel, 0, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL && Input_GetAction(0, INPUT_STEER_RIGHT) == INPUT_FULL,
+          "the pedals accelerate while the wheel steers");
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(pedals, 2, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_BRAKE) == INPUT_FULL, "and brake");
+    Check(Input_IsAnalogSteering(0) && Input_IsAnalogPedals(0), "both analogue");
+    SDL_SetJoystickVirtualAxis(pedals, 2, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(!Input_IsSmoothSteering(0), "the wheel is followed directly");
+
+    int wheelIndex = -1;
+    for (int i = 0; i < Input_GetProfileCount(); i++)
+        if (strcmp(Input_GetProfileName(i), "Virtual Wheel Base") == 0)
+            wheelIndex = i;
+    Check(wheelIndex >= 0 && Input_GetSetting(wheelIndex, INPUT_SETTING_FORCE) == 100,
+          "a wheel starts at the original's force");
+    Check(Input_GetFeedbackStrength(0) == 0x8000, "the original's force feedback strength");
+
+    // Two players: the pedals stay player 1's, the wheel does not become
+    // player 2's for being connected first among two.
+    g_selectedRallyData = 2 << 14;
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL && Input_GetAction(1, INPUT_THROTTLE) == 0,
+          "with two players, the pedals are player 1's");
+    g_selectedRallyData = 0;
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(wheel, 0, 0);
+    Input_Update();
+
+    // Left out, the pedals give nothing.
+    Profile *profile = nullptr;
+    for (Profile &each : Bindings_Get())
+        if (each.name == "Virtual Pedals")
+            profile = &each;
+    bool menuAxes = false;
+    for (int action = INPUT_MENU_LEFT; profile != nullptr && action <= INPUT_MENU_DOWN; action++)
+        for (const Source &source : profile->actions[action])
+            menuAxes = menuAxes || source.kind == SOURCE_JOY_AXIS;
+    Check(profile != nullptr && profile->actions[INPUT_STEER_LEFT].empty() && !menuAxes,
+          "the pedals' section has no steering nor menu axes");
+    int index = -1;
+    for (int i = 0; i < Input_GetProfileCount(); i++)
+        if (strcmp(Input_GetProfileName(i), "Virtual Pedals") == 0)
+            index = i;
+    Input_SetSetting(index, INPUT_SETTING_ENABLED, 0);
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == 0, "pedals left out do not accelerate");
+    Check(Input_GetProfileAction(index, INPUT_THROTTLE) == INPUT_FULL, "the controls pages still show them");
+    Input_SetSetting(index, INPUT_SETTING_ENABLED, 1);
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MIN);
+    Input_Update();
+
+    SDL_CloseJoystick(pedals);
+    SDL_DetachVirtualJoystick(pedalsId);
+    SDL_CloseJoystick(wheel);
+    SDL_DetachVirtualJoystick(wheelId);
+    Input_Update();
+}
+
+// A wheel whose Y axis is a pedal resting at an end (issue 9) does not hold
+// the menus' up direction, and a stick held aside since it was connected
+// does not make its device the one used last.
+void CheckRestingAxes()
+{
+    const Sint16 rest[3] = { 0, SDL_JOYSTICK_AXIS_MIN, SDL_JOYSTICK_AXIS_MIN };
+    SDL_Joystick *wheel;
+    SDL_JoystickID id = AttachJoystick(SDL_JOYSTICK_TYPE_WHEEL, "Virtual Pedal Wheel", 0xc263, 3, 8, 1, &wheel, rest);
+    MenuFrame();
+    MenuFrame();
+    Check((Device(0).held & 0x3f) == 0, "a pedal on Y does not move through the menus");
+    SDL_SetJoystickVirtualAxis(wheel, 1, SDL_JOYSTICK_AXIS_MAX);
+    MenuFrame();
+    Check((Device(0).held & 0x3f) == 0, "nor when it is pressed");
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL, "it is the throttle");
+    SDL_SetJoystickVirtualAxis(wheel, 1, SDL_JOYSTICK_AXIS_MIN);
+    SDL_CloseJoystick(wheel);
     SDL_DetachVirtualJoystick(id);
     Input_Update();
 }
@@ -643,6 +783,7 @@ void CheckRumble(Pad &first)
     Input_Update();
     Check(!Input_DevicesChanged(), "once");
     Pad plain = AttachPad("Virtual Pad B", 0x02ea);
+    Input_Update();
     SDL_SetJoystickVirtualButton(plain.joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
     Input_Update();
     Release(plain);
@@ -659,6 +800,49 @@ void CheckRumble(Pad &first)
     SDL_DetachVirtualJoystick(id);
     first = AttachPad("Virtual Xbox 360 Controller", 0x028e);
     Input_Update();
+}
+
+// The force feedback and rumble follow the controller the player steers
+// with: pedals of their own, pressed after it, do not take them.
+void CheckFeedbackFollowsSteering(Pad &first)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x045e;
+    desc.product_id = 0x0b13;
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.name = "Virtual Rumble Pad";
+    desc.Rumble = RecordRumble;
+    SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    SDL_Joystick *pad = SDL_OpenJoystick(id);
+    const Sint16 pedalRest[3] = { SDL_JOYSTICK_AXIS_MIN, SDL_JOYSTICK_AXIS_MIN, SDL_JOYSTICK_AXIS_MIN };
+    SDL_Joystick *pedals;
+    SDL_JoystickID pedalsId = AttachJoystick(SDL_JOYSTICK_TYPE_UNKNOWN, "Virtual Pedals", 0xc262, 3, 0, 0, &pedals,
+                                             pedalRest);
+    Release(first);
+    Input_Update();
+    SDL_SetJoystickVirtualAxis(pad, SDL_GAMEPAD_AXIS_LEFTX, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    SDL_SetJoystickVirtualAxis(pad, SDL_GAMEPAD_AXIS_LEFTX, 0);
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MAX);
+    Input_Update();
+    Check(Input_GetAction(0, INPUT_THROTTLE) == INPUT_FULL, "the pedals accelerate");
+    InputDevice *feedback = Input_GetFeedbackDevice(0);
+    Check(feedback != NULL, "the controller steered with keeps the force feedback");
+    s_rumbleCalls = 0;
+    Input_SetRumble(0, 0, INPUT_FULL);
+    Check(s_rumbleCalls == 1, "and its rumble");
+    Input_SetRumble(0, 0, 0);
+    Check(!Input_DevicesChanged() || Input_GetFeedbackDevice(0) == feedback, "pressing the pedals changes nothing");
+    SDL_SetJoystickVirtualAxis(pedals, 1, SDL_JOYSTICK_AXIS_MIN);
+    SDL_CloseJoystick(pedals);
+    SDL_DetachVirtualJoystick(pedalsId);
+    SDL_CloseJoystick(pad);
+    SDL_DetachVirtualJoystick(id);
+    Input_Update();
+    Input_DevicesChanged();
 }
 
 // The controls pages, driven with a gamepad as the frontend runs them:
@@ -741,6 +925,34 @@ void CheckControlsPages(Pad &pad)
     Input_GetBindingText(2, INPUT_BRAKE, text, sizeof(text));
     Check(strcmp(text, "RB") == 0, "the brake trades places with it");
 
+    // X clears the action under the cursor.
+    press(SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    Check(bindings->cursor == INPUT_SHIFT_DOWN, "on the gear down");
+    press(SDL_GAMEPAD_BUTTON_WEST);
+    Input_GetBindingText(2, INPUT_SHIFT_DOWN, text, sizeof(text));
+    Check(text[0] == 0, "X leaves it unbound");
+
+    // An axis half given for one steering direction steers both ways.
+    for (int i = 0; i < INPUT_SHIFT_DOWN; i++)
+        press(SDL_GAMEPAD_BUTTON_DPAD_UP);
+    Check(bindings->cursor == INPUT_STEER_LEFT, "on the steering");
+    press(SDL_GAMEPAD_BUTTON_SOUTH);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHTX, SDL_JOYSTICK_AXIS_MIN);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHTX, 0);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Input_GetBindingText(2, INPUT_STEER_LEFT, text, sizeof(text));
+    Check(strcmp(text, "RS Left") == 0, "the right stick steers left");
+    Input_GetBindingText(2, INPUT_STEER_RIGHT, text, sizeof(text));
+    Check(strcmp(text, "RS Right") == 0, "and right");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHTX, SDL_JOYSTICK_AXIS_MAX);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+    Check(Input_GetProfileAction(2, INPUT_STEER_RIGHT) == INPUT_FULL && Input_GetProfileAction(2, INPUT_STEER_LEFT) == 0,
+          "the page shows what it gives");
+    SDL_SetJoystickVirtualAxis(pad.joystick, SDL_GAMEPAD_AXIS_RIGHTX, 0);
+    frame(SDL_GAMEPAD_BUTTON_INVALID, false);
+
     press(SDL_GAMEPAD_BUTTON_EAST);
     frame(SDL_GAMEPAD_BUTTON_INVALID, false);
     Check(active() == controls, "Back returns to the controls page");
@@ -817,6 +1029,16 @@ void CheckBindingsFile(Pad &pad)
     SDL_free(text);
     Check(content.find("rumble = 10") != std::string::npos && content.find("saturation =") == std::string::npos,
           "only the chosen settings are written");
+    old = "[gamepad]\nforce = 150\n";
+    SDL_SaveFile(file.string().c_str(), old.data(), old.size());
+    Input_ReloadBindings();
+    Check(Bindings_Find("gamepad")->force == 150, "the force is read");
+    Bindings_MarkChanged();
+    Input_SaveBindings();
+    text = (char *)SDL_LoadFile(file.string().c_str(), nullptr);
+    content = text ? text : "";
+    SDL_free(text);
+    Check(content.find("force = 150") != std::string::npos, "and written");
 
     // An older Controller.rcf only gives the keys while controls.ini is
     // missing.
@@ -847,7 +1069,8 @@ int main()
     // Only the virtual devices below: a controller connected to the machine
     // would take a place among them.
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT,
-                "0x045e/0x028e,0x045e/0x02ea,0x045e/0x0b12,0x045e/0x0b13,0x046d/0xc24f,0x0000/0x0000");
+                "0x045e/0x028e,0x045e/0x02ea,0x045e/0x0b12,0x045e/0x0b13,0x046d/0xc24f,0x046d/0xc261,"
+                "0x046d/0xc262,0x046d/0xc263,0x0000/0x0000");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD)) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
@@ -872,8 +1095,11 @@ int main()
     CheckTwoPlayers(pad);
     CheckManualMapping();
     CheckWheel();
+    CheckWheelAndPedals();
+    CheckRestingAxes();
     CheckDisconnectPause();
     CheckRumble(pad);
+    CheckFeedbackFollowsSteering(pad);
     CheckControlsPages(pad);
     CheckBindingsFile(pad);
 

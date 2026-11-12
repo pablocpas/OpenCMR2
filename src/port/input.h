@@ -81,7 +81,9 @@ void Input_SetTextEntryOpen(BOOL open);
 int Input_GetAction(int player, int action);
 /* Whether the player steers with an axis rather than keys or buttons, and
    whether the throttle and brake are axes: the last input of each came from
-   an axis. */
+   an axis. An axis counts from where it rests, so a pedal or clutch resting
+   at one end, or an axis held since the device was connected, gives no
+   input of its own: a device becomes the one used only when it moves. */
 BOOL Input_IsAnalogSteering(int player);
 BOOL Input_IsAnalogPedals(int player);
 /* Whether the game eases the steering towards the player's axis rather
@@ -93,13 +95,15 @@ BOOL Input_IsSmoothSteering(int player);
    previous call. */
 BOOL Input_DevicesChanged(void);
 /* The device the game sends a player's force feedback to: the controller
-   the player last used, if it has force feedback or rumble (NULL if not).
-   Before one is used, a wheel or joystick with force feedback, else a
-   gamepad that can rumble; NULL without either. When the player then uses
-   another, Input_DevicesChanged reports it, for the menus to set it up. */
+   the player steers with, if it has force feedback or rumble (NULL if not),
+   so that pedals, a shifter or a handbrake of their own never take it.
+   Before the player steers, the controller they last used if it can steer,
+   else a wheel or joystick with force feedback, else a gamepad that can
+   rumble; NULL without either. When that changes, Input_DevicesChanged
+   reports it, for the menus to set it up. */
 InputDevice *Input_GetFeedbackDevice(int player);
-/* Rumble of the gamepad the player last used (all of the player's before
-   one is used), 0..INPUT_FULL for the low and the high frequency motor,
+/* Rumble of the gamepad the player steers with, as the force feedback
+   (all of the player's before one is used), 0..INPUT_FULL for the low and the high frequency motor,
    scaled by the rumble setting of each. Fades out unless it is set again
    within a quarter of a second. */
 void Input_SetRumble(int player, int low, int high);
@@ -126,7 +130,10 @@ enum InputProfileKind {
 enum InputSetting {
     INPUT_SETTING_DEADZONE,     /* percent */
     INPUT_SETTING_CURVE,        /* percent */
-    INPUT_SETTING_RUMBLE        /* percent */
+    INPUT_SETTING_RUMBLE,       /* percent */
+    INPUT_SETTING_PLAYER,       /* a joystick's or wheel's: 0 automatic, 1 or 2 */
+    INPUT_SETTING_ENABLED,      /* a joystick's or wheel's: 0 leaves it out */
+    INPUT_SETTING_FORCE         /* percent of the force feedback, 0..200 (100: the original's) */
 };
 
 /* Listed: the touch controls (Android), the keyboard players while a
@@ -141,14 +148,45 @@ int Input_GetLastUsedProfile(void);
 /* The device's name for a joystick or wheel, in the game's character set. */
 const char *Input_GetProfileName(int profile);
 /* The inputs bound to an action, named as on the device (A or Cross, a key
-   in the keyboard's layout), in the game's character set. */
+   in the keyboard's layout), in the game's character set; empty when the
+   action is not bound. */
 void Input_GetBindingText(int profile, int action, char *text, int size);
+/* The value an action has now from the profile's keys or devices alone,
+   0..INPUT_FULL, to show what each input does. */
+int Input_GetProfileAction(int profile, int action);
+/* Leaves the action without inputs. */
+void Input_ClearBinding(int profile, int action);
+/* Whether the input that clears a binding was pressed at the last update:
+   Delete or Backspace, or a gamepad's west face button (X, Square). */
+BOOL Input_IsClearPressed(void);
+/* The name of a gamepad's west face button as on the gamepads connected,
+   NULL without one. */
+const char *Input_GetClearButtonName(void);
+/* The profile the controls pages show, -1 when they are closed: a device
+   left out still moves through those pages, so that it can be turned on
+   again with it. */
+void Input_SetShownProfile(int profile);
 int Input_GetSetting(int profile, int setting);
+/* Changing the force or the vibration plays a short sample of it on the
+   profile's device. */
 void Input_SetSetting(int profile, int setting, int value);
+/* Whether a connected device of the profile has force feedback (a wheel's
+   or joystick's motor; a gamepad's rumble is not). */
+BOOL Input_HasForceFeedback(int profile);
+/* Plays a short sample of the force feedback or rumble on the profile's
+   device, at its strength. */
+void Input_TestFeedback(int profile);
+/* The strength of the force feedback of the device a player's goes to,
+   0..0x10000 as ControllerData's textureForce and effectsForce (0x8000 is
+   the original's). */
+unsigned int Input_GetFeedbackStrength(int player);
+
 void Input_RestoreDefaults(int profile);
 /* Waits for the next key, button, axis or hat of the profile's devices and
    binds it to the action; an input bound to another driving action of the
-   profile trades places with the action's own. */
+   profile trades places with the action's own. An axis half given for one
+   steering direction binds the other half to the other. Delete or
+   Backspace leaves the action unbound instead. */
 void Input_BeginCapture(int profile, int action);
 /* 1 once bound, -1 if given up (Escape for a controller, or ten seconds),
    0 while waiting. */
