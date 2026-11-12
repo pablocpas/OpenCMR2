@@ -124,6 +124,11 @@ installation. The installation itself, a folder inside it or a parent folder
 all work. The location is checked and remembered, and the game files stay
 where they are.
 
+On Arch Linux and its derivatives, the community package
+[opencmr2-git](https://aur.archlinux.org/packages/opencmr2-git), maintained by
+sxdot, builds the latest source: `yay -S opencmr2-git`, `paru -S opencmr2-git`,
+or `makepkg -si` in a folder with its PKGBUILD.
+
 If you have the CD or an ISO, install the game or extract it first: OpenCMR2
 reads the installed folders `Game`, `FrontEnd`, `Sounds`, `CountrySpecific`
 and `SetupRep`, and does not start when one of them is missing.
