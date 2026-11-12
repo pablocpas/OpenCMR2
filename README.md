@@ -239,6 +239,16 @@ The installation can also be set with the `OPENCMR2_DATA` environment variable
 or `[paths] data` in `opencmr2.ini`, or copied into a `Data` folder next to the
 executable, which is found without asking.
 
+### Cheats
+
+The original's cheat codes are typed as a driver's full name: create a new
+driver profile, enter any initials, type the code as the name and confirm it.
+The game accepts the code and returns to the profile menu without creating
+the profile. Entering the code again turns it off.
+
+`greatnews` unlocks the Expert difficulty and all eight arcade tracks on
+Intermediate and Expert. Novice has three arcade tracks by design.
+
 ## Configuration
 
 Settings are stored in `opencmr2.ini` in the user directory
