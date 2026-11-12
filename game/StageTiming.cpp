@@ -8303,7 +8303,9 @@ classes:
     g_unk0x0054260c[car] = model;
     letterInt = letter;
     sprintf(CFrontend::m_stringDest, g_strCarModelFormat, Car_GetDirectoryPath(model), letterInt, lod);
-    sprintf(CFrontend::m_stringDest, g_strPathConcat, CFrontend::m_stringDest, g_strCarC3dExt);
+    // PORT: the original printed the buffer into itself ("%s%s"), which a
+    // fortified glibc sprintf empties first, leaving the model name "N.c3d".
+    strcat(CFrontend::m_stringDest, g_strCarC3dExt);
     if (pRecord->detailCode == 'A')
         strncpy(CFrontend::m_stringDest + strlen(CFrontend::m_stringDest) - 6, g_strDamageModelC3d, 8);
     pData = CFileBuffer::GetGenericFileBuffer(CFrontend::m_stringDest, FALSE);
@@ -8401,13 +8403,15 @@ wheelsDone:
     }
     pRecord->variantCode = variant;
     sprintf(CFrontend::m_stringDest, g_strCarModelFormat, Car_GetDirectoryPath(model), (int)variant, lod);
-    sprintf(CFrontend::m_stringDest, g_strPathConcat, CFrontend::m_stringDest, g_strCarC3dExt);
+    // PORT: appended, as above.
+    strcat(CFrontend::m_stringDest, g_strCarC3dExt);
     pData = CFileBuffer::GetGenericFileBuffer(CFrontend::m_stringDest, FALSE);
     if (pData == NULL)
         return 0;
     g_carAlternateBodyBuffers[car] = pData;
     CFrontend::m_stringDest[strlen(CFrontend::m_stringDest) - strlen(g_strCarC3dExt)] = 0;
-    sprintf(CFrontend::m_stringDest, g_strBflFormat, CFrontend::m_stringDest);
+    // PORT: appended, as above ("%s.bfl" into itself).
+    strcat(CFrontend::m_stringDest, ".bfl");
     pArchive = &g_carModelArchives[car * 2 + 1];
     CGenericFileLoader::LoadIntoFileRecord(pArchive, CFrontend::m_stringDest);
     pCar = Car_Get(car);
