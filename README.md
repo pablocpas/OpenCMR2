@@ -283,6 +283,14 @@ It is created with comments on first launch. The Screen page of the
 graphics options sets `hud_scale`, `menu_scale`, `vsync` and `fullscreen` in
 the game.
 
+The game's own options and cheats are kept in `Configuration/GameInfo.rcf`,
+next to the profiles (`pps`) and saved games (`gamesave`) in the same folder.
+They are read from the game data until the first save. Options, cheats and
+profile changes are saved when the menu screen they were made in is left and
+when the window is closed; changes made during a race are saved when it ends.
+Every file is written to a temporary copy first, so a crash while saving
+leaves the previous one.
+
 | Setting | Default | Description |
 | --- | --- | --- |
 | `[video] fullscreen` | `1` | Fullscreen (`1`) or window (`0`), changed and saved by Alt+Enter |

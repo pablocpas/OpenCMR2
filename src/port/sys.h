@@ -132,6 +132,10 @@ DWORD Sys_SeekFile(SysFile *file, LONG offset, int origin);
 DWORD Sys_GetFileSize(SysFile *file);
 void Sys_FlushFile(SysFile *file);
 
+/* Replaces a whole file under the user directory in one step: a crash or a
+   full disk leaves the previous copy. Returns 0 on failure (logged). */
+BOOL Sys_SaveFile(const char *path, const void *data, DWORD size);
+
 BOOL Sys_FileExists(const char *path);
 BOOL Sys_DeleteFile(const char *path);
 

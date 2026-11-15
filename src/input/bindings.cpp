@@ -587,7 +587,7 @@ extern "C" void Input_SaveBindings(void)
     if (!s_loaded || !s_changed || Path().empty())
         return;
     std::string text = Write();
-    if (!SDL_SaveFile(Path().c_str(), text.data(), text.size())) {
+    if (!Platform_SaveFile(Path().c_str(), text.data(), text.size())) {
         Sys_Log("controls.ini: cannot write: %s", SDL_GetError());
         return;
     }

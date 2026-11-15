@@ -6,6 +6,7 @@
 #include "port/gfx.h"
 #include "port/input.h"
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +25,10 @@
 #include <string>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
 #include "opencmr2_icon.h"
 #endif
 
@@ -56,6 +60,43 @@ FILE *OpenHostFile(const char *path, const char *mode)
     return fopen(path, mode);
 #endif
 }
+
+// Hands what was written to the disk, not only to the system's cache.
+bool SyncToDisk(FILE *file)
+{
+#ifdef _WIN32
+    return fflush(file) == 0 && _commit(_fileno(file)) == 0;
+#else
+    return fflush(file) == 0 && fsync(fileno(file)) == 0;
+#endif
+}
+
+} // namespace
+
+// Writes the whole file to a temporary next to it, syncs it to the disk and
+// renames it over the file, so a crash, a power cut or a full disk leaves the
+// previous copy instead of a truncated one.
+bool Platform_SaveFile(const char *path, const void *data, size_t size)
+{
+    const std::string temporary = std::string(path) + ".tmp";
+    FILE *file = OpenHostFile(temporary.c_str(), "wb");
+    if (file == NULL)
+        return SDL_SetError("%s", strerror(errno));
+    bool written = fwrite(data, 1, size, file) == size && SyncToDisk(file);
+    const int error = errno;
+    if (fclose(file) != 0 || !written) {
+        SDL_RemovePath(temporary.c_str());
+        return SDL_SetError("%s", strerror(written ? errno : error));
+    }
+    if (!SDL_RenamePath(temporary.c_str(), path)) {
+        std::string message = SDL_GetError();
+        SDL_RemovePath(temporary.c_str());
+        return SDL_SetError("%s", message.c_str());
+    }
+    return true;
+}
+
+namespace {
 
 // ---- paths -----------------------------------------------------------------
 
@@ -263,14 +304,8 @@ bool SaveSetting(const std::string &file, const std::string &section, const std:
     std::string output;
     for (const std::string &l : lines)
         output += l + '\n';
-    const std::string temporary = file + ".tmp";
-    if (!SDL_SaveFile(temporary.c_str(), output.data(), output.size()))
+    if (!Platform_SaveFile(file.c_str(), output.data(), output.size()))
         return false;
-    if (!SDL_RenamePath(temporary.c_str(), file.c_str())) {
-        std::string error = SDL_GetError();
-        SDL_RemovePath(temporary.c_str());
-        return SDL_SetError("%s", error.c_str());
-    }
     s_settings[section + "." + key] = value;
     return true;
 }
@@ -1394,6 +1429,19 @@ extern "C" DWORD Sys_GetFileSize(SysFile *file)
 extern "C" void Sys_FlushFile(SysFile *file)
 {
     fflush(file->f);
+}
+
+extern "C" BOOL Sys_SaveFile(const char *path, const void *data, DWORD size)
+{
+    std::vector<std::string> parts = SplitGamePath(path);
+    if (parts.empty())
+        return FALSE;
+    std::string host = PathForWriting(parts);
+    if (!Platform_SaveFile(host.c_str(), data, size)) {
+        Sys_Log("cannot save %s: %s", host.c_str(), SDL_GetError());
+        return FALSE;
+    }
+    return TRUE;
 }
 
 extern "C" BOOL Sys_FileExists(const char *path)

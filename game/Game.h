@@ -223,4 +223,17 @@ public:
     
 };
 
+// PORT: saving the configuration outside the original's race transitions.
+// The menus call Game_SaveOnMenuChange every frame; when another screen is
+// shown it saves the configuration and the edited profiles that changed.
+void Game_SaveOnMenuChange(void);
+// Records the configuration just saved or loaded as the saved one.
+void Game_NoteSavedConfiguration(void);
+// The menus are left for a race, which changes the configuration for itself.
+void Game_LeaveMenus(void);
+// Saves the changes of the menus right away (the window lost the focus).
+void Game_SaveMenuChanges(void);
+// The window is closed: saves what Quit in the main menu saves.
+void Game_SaveBeforeQuit(void);
+
 #endif

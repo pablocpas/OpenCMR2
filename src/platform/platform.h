@@ -14,6 +14,10 @@ SDL_Window *Platform_GetWindow(void);
 const char *Platform_GetDataDir(void);
 const char *Platform_GetUserDir(void);
 
+// Writes a whole file through a temporary renamed over it, so it is never
+// left truncated. On failure returns false with the SDL error set.
+bool Platform_SaveFile(const char *path, const void *data, size_t size);
+
 // OpenCMR2 settings (opencmr2.ini in the user directory): "section.key".
 const char *Platform_GetSetting(const char *key, const char *fallback);
 int Platform_GetSettingInt(const char *key, int fallback);

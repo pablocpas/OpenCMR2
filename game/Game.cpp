@@ -12,6 +12,7 @@
 #include "Graphics.h"
 #include "Input.h"
 #include "FileBuffer.h"
+#include "SavedGame.h"
 #include "Mesh.h"
 #include "Frontend.h"
 #include "Texture.h"
@@ -645,6 +646,7 @@ void Game_RunFrontendBootFrame(CallbackStateMachine *p1, BYTE p2)
     g_frontendTimestamp = Sys_GetTicks();
     g_frontendElapsedMs = g_frontendTimestamp - GameInfo_GetSessionTimestamp();
     FrontendMenu_UpdateAndSwitchActive();
+    Game_SaveOnMenuChange();   // PORT: saves what the screen left changed
 }
 
 // Fade step of the boot/HUD colour: 1/1500 per elapsed millisecond.
@@ -782,6 +784,7 @@ BYTE g_unk0x008180fa;
 // FUNCTION: CMR2 0x004d1e90
 void Game_FinishRaceAndAdvanceBootState(CallbackStateMachine *p1, BYTE unused)
 {
+    Game_LeaveMenus();   // PORT
     CGame::SetSecondaryOptionStateByte(0);
     if (CGameInfo::IsRecordFlagSet(0x11))
         CGameInfo::SetFrontendSessionFlag(1);
@@ -1042,6 +1045,8 @@ void CGame::InitializeGame(CallbackStateMachine *p1, BYTE p2)
         CGameInfo::ApplyStageOptionUnlockFlags();
         CGameInfo::SetupInputs(2);
         didLoadGameInfo = CGameInfo::LoadGameInfo();
+        if (didLoadGameInfo)
+            Game_NoteSavedConfiguration();   // PORT
         CNetworkLeaderboards::Reset();
         CNetworkLeaderboards::LoadLeaderboards();
         CGameInfo::SetGameModeOptionBit19(0);
@@ -1554,6 +1559,76 @@ void Game_SaveConfigurationPreservingFullscreen(void)
     CGameInfo::SetFullscreen((BYTE)g_pGraphics->isFullscreen);
     sprintf(CFrontend::m_stringDest, CGameInfo::m_stringGameInfoRCF, CInstallInfo::GetGameHDPath());
     CInstallInfo::WriteFileToDisk(CFrontend::m_stringDest, 0, &CGameInfo::m_gameInfo, sizeof(GameInfo));
+    Game_NoteSavedConfiguration();   // PORT
+}
+
+// PORT: the original saved the configuration and the edited profiles only on
+// its way to and from a race, or through Quit in the main menu, so what was
+// changed in the menus was lost when the window was closed. The menus now save
+// their changes when a screen is left, the window is closed or loses the
+// focus. A race keeps what it started with: it and the attract demo change
+// the configuration for their own use, and it is saved after the race.
+
+extern BYTE g_newProfileUndoPending;
+Menu *FrontendMenu_GetActiveMenu(void);
+
+static GameInfo s_savedConfiguration;   // as last saved or loaded
+static Menu *s_shownMenu;               // the menu screen of the last frame
+static bool s_inMenus;                  // the menus run; the configuration is theirs
+
+void Game_NoteSavedConfiguration(void)
+{
+    memcpy(&s_savedConfiguration, &CGameInfo::m_gameInfo, sizeof(GameInfo));
+}
+
+// Whether a profile waits to be saved, as Profile_SaveEditedNames picks them
+// (0x200000 marks a temporary one, such as the attract demo's). Not while a
+// new one is being made: its initials and date of birth name the file and are
+// stored as they are entered, and backing out discards it; the original
+// writes it when the date is accepted.
+static bool Game_ProfilesUnsaved(void)
+{
+    if (g_newProfileUndoPending != 0)
+        return false;
+    for (int i = 0; i < 4; i++) {
+        if ((g_saveProfiles[i].identifier.flags & 0x200000) == 0 &&
+            g_saveProfiles[i].identifier.name[0] != 0 && g_saveDirty[i] != 0)
+            return true;
+    }
+    return false;
+}
+
+void Game_SaveMenuChanges(void)
+{
+    if (!s_inMenus || CGameInfo::GetGameInfoSessionFlag() != 0)
+        return;
+    if (memcmp(&CGameInfo::m_gameInfo, &s_savedConfiguration, sizeof(GameInfo)) != 0)
+        Game_SaveConfigurationPreservingFullscreen();
+    if (Game_ProfilesUnsaved())
+        Profile_SaveEditedNames();
+}
+
+void Game_SaveOnMenuChange(void)
+{
+    s_inMenus = true;
+    if (FrontendMenu_GetActiveMenu() == s_shownMenu)
+        return;
+    s_shownMenu = FrontendMenu_GetActiveMenu();
+    Game_SaveMenuChanges();
+}
+
+void Game_LeaveMenus(void)
+{
+    s_inMenus = false;
+}
+
+void Game_SaveBeforeQuit(void)
+{
+    CInput::SaveControllerInfo();
+    if (!s_inMenus)
+        return;
+    Game_SaveMenuChanges();
+    CNetworkLeaderboards::SaveLeaderboards();
 }
 
 // FUNCTION: CMR2 0x004ea880

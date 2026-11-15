@@ -321,12 +321,12 @@ char* CInstallInfo::GetGameCDPath(void) {
 }
 
 // FUNCTION: CMR2 0x004aa5a0
-// PORT: written through Sys (into the user directory).
+// PORT: written through Sys into the user directory, replacing the file in one
+// step: the original truncated it first, so a crash while saving left an
+// empty profile, saved game or configuration.
 int CInstallInfo::WriteFileToDisk(char *name, int mode, LPCVOID data, DWORD size)
 {
     char path[MAX_PATH];
-    DWORD bytesWritten;
-    SysFile *file;
 
     if (mode == 1) {
         strcpy(path, m_hdPath);
@@ -335,17 +335,10 @@ int CInstallInfo::WriteFileToDisk(char *name, int mode, LPCVOID data, DWORD size
         strcpy(path, name);
     }
 
-    file = Sys_OpenFile(path, SYS_FILE_WRITE);
-    if (file == NULL) {
-        if (Sys_FileExists(path))
-            return 2;
-        return 0;
-    }
-
-    bytesWritten = Sys_WriteFile(file, data, size);
-    Sys_CloseFile(file);
-    if (bytesWritten == size)
+    if (Sys_SaveFile(path, data, size))
         return 1;
+    if (Sys_FileExists(path))
+        return 2;
     return 0;
 }
 
