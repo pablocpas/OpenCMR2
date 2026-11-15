@@ -58,6 +58,13 @@ static void Write(const fs::path &path, const void *data, size_t size)
     file.write((const char *)data, size);
     Check(bool(file), "write fixture");
 }
+// Reads a whole file and closes it: Windows cannot replace a file that is
+// still open, and the game saves by replacing.
+static std::vector<BYTE> Read(const fs::path &path)
+{
+    std::ifstream file(path, std::ios::binary);
+    return std::vector<BYTE>((std::istreambuf_iterator<char>(file)), {});
+}
 static unsigned Word(const std::vector<BYTE> &bytes, size_t offset)
 {
     unsigned value;
@@ -119,8 +126,7 @@ int main()
         Check(SavedGames_WriteSessionImage(-1, title) == 1, "write actual session");
         char fileName[32];
         snprintf(fileName, sizeof(fileName), "game%05d.rcs", players - 1);
-        std::ifstream file(user / "gamesave" / fileName, std::ios::binary);
-        std::vector<BYTE> bytes((std::istreambuf_iterator<char>(file)), {});
+        std::vector<BYTE> bytes = Read(user / "gamesave" / fileName);
         Check(bytes.size() == 0x7f4, "original disk size");
         Check(Word(bytes, 0x30) == unsigned(1 | (2 << 7) | (players << 10) | ((players > 1) << 14)), "original packed options");
         Check(!memcmp(bytes.data() + 0x10, title, sizeof(title)), "literal save name at original offset");

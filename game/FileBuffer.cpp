@@ -74,8 +74,10 @@ void *CFileBuffer::GetGenericFileBuffer(char *fileName, BOOL isLocalFile)
     iHeaderSize = gzread(unk0x004bdee0, &pFileHeaderOut, 8);
     if (iHeaderSize == 8U && pFileHeaderOut.ident[0] == 0x43 && pFileHeaderOut.ident[1] == 0x4d && pFileHeaderOut.ident[2] == 0x50 && pFileHeaderOut.ident[3] == 0x52)
     {
-        if (pFileHeaderOut.archiveSize == 0xffffffff)
+        if (pFileHeaderOut.archiveSize == 0xffffffff) {
+            gzclose(unk0x004bdee0);   // PORT: the original left it open
             return NULL;
+        }
 
         lpBuffer = AllocateLockedBuffer(pFileHeaderOut.archiveSize);
         CGenericFileLoader::m_fileSize = pFileHeaderOut.archiveSize;
