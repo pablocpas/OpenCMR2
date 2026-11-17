@@ -170,4 +170,90 @@ assert all(a <= b + 1 for a, b in zip(ramp, ramp[1:])), ('feather ramps monotoni
 zero = blur_step(cur, prev, 0.9, keep=1.0, rect=(0.0, 0.0, 0.0, 0.0))
 assert abs(int(zero[H // 2, W // 2, 0]) - round(200 * 0.1 + 40 * 0.9)) <= 1, ('zero rect = no gate', int(zero[H // 2, W // 2, 0]))
 print('car keep: inside %d, outside %d, zero-rect %d (current 200, previous 40, mix 0.9)' % (mid, edge, int(zero[H // 2, W // 2, 0])))
-print('PASS translated dof.frag and motionblur.frag semantics on', ctx.info['GL_RENDERER'], '(shader maths only; no SDL_GPU/Metal/depth-buffer/native claim)')
+
+# ---------------- bloom half-resolution chain ----------------
+# The bloom chain (brightpass -> 2x blur H/V -> composite) runs at half resolution with
+# offsetScale 0.5, and the composite upsamples the bloom buffer with a linear filter. This
+# section proves the half-res chain approximates the full-res chain on the PRODUCTION
+# shaders: same halo, bounded pixel error. It says nothing about SDL_GPU/Metal/native pixels.
+import struct
+
+bright = ctx.program(vertex_shader=VERT, fragment_shader=translate('brightpass'))
+blurp = ctx.program(vertex_shader=VERT, fragment_shader=translate('blur'))
+comp = ctx.program(vertex_shader=VERT, fragment_shader=translate('composite'))
+
+
+def pass_(program, block, ubo_bytes, textures, out_size):
+    """One full-screen pass. textures: [(uniform, array_or_texture, filter, repeat)] - repeat
+    matches the production address mode (GfxStageState defaults to WRAP; only the composite's
+    bloom binding clamps). out_size=(w,h)."""
+    program[block].binding = 0
+    ubo = ctx.buffer(ubo_bytes); ubo.bind_to_uniform_block(0)
+    held = []
+    for unit, (uniform, tex, filt, repeat) in enumerate(textures):
+        t = tex if hasattr(tex, 'filter') else ctx.texture((tex.shape[1], tex.shape[0]), 4, np.ascontiguousarray(tex).tobytes())
+        t.filter = (filt, filt); t.repeat_x = t.repeat_y = repeat
+        t.use(unit); program[uniform].value = unit; held.append(t)
+    target = ctx.texture(out_size, 4); fbo = ctx.framebuffer([target]); fbo.use()
+    vao = ctx.vertex_array(program, []); vao.render(vertices=3)
+    out = np.frombuffer(fbo.read(components=4), dtype='u1').reshape(out_size[1], out_size[0], 4).copy()
+    for o in held + [vao, fbo, target, ubo]: o.release()
+    return out, target and ctx.texture(out_size, 4, np.ascontiguousarray(out).tobytes())
+
+
+def bloom_chain(scene, size, scale, up_filter):
+    """bright -> two H/V blur iterations -> composite. Returns the composited frame."""
+    w, h = size
+    b1, _ = pass_(bright, 'BrightPassUniforms', struct.pack('=2f2f', 0.75, 0.3, 0, 0),
+                  [('scene', scene, moderngl.NEAREST, True)], size)
+    t1 = ctx.texture(size, 4, np.ascontiguousarray(b1).tobytes())
+    for _ in range(2):
+        b2, t2 = pass_(blurp, 'BlurUniforms', struct.pack('=3fi4f', 1.0, 0.0, scale, 3, 0, 0, 0, 0),
+                       [('source', t1, moderngl.NEAREST, True)], size); t1.release()
+        b1, t1 = pass_(blurp, 'BlurUniforms', struct.pack('=3fi4f', 0.0, 1.0, scale, 3, 0, 0, 0, 0),
+                       [('source', t2, moderngl.NEAREST, True)], size); t2.release()
+    out, _ = pass_(comp, 'CompositeUniforms', struct.pack('=4f', 60.0 / 255.0, 0, 0, 0),
+                   [('scene', scene, moderngl.NEAREST, True), ('bloom', t1, up_filter, False)], (W, H))
+    t1.release()
+    return out
+
+
+bscene = np.full((H, W, 4), 13, dtype='u1'); bscene[:, :, 3] = 255
+bscene[24:40, 40:56, :3] = 255   # one bright 16x16 block on a dark background
+ref = bloom_chain(bscene, (W, H), 1.0, moderngl.NEAREST)
+half = bloom_chain(bscene, (W // 2, H // 2), 0.5, moderngl.LINEAR)
+
+diff = np.abs(half[:, :, :3].astype(int) - ref[:, :, :3].astype(int))
+print('bloom half-res vs full-res: mean abs diff %.2f/255, max %d/255' % (diff.mean(), diff.max()))
+assert diff.mean() < 3.0, ('half-res bloom must track the full-res chain closely', diff.mean())
+assert diff.max() <= 40, ('no pixel may diverge wildly', diff.max())
+
+# The halo grows by roughly the blur spread beyond the bright block, in both chains alike.
+floor = 13 + 4   # background plus rounding
+rows_ref = np.where(ref[:, :, :3].max(axis=2).max(axis=1) > floor)[0]
+rows_half = np.where(half[:, :, :3].max(axis=2).max(axis=1) > floor)[0]
+cols_ref = np.where(ref[:, :, :3].max(axis=2).max(axis=0) > floor)[0]
+cols_half = np.where(half[:, :, :3].max(axis=2).max(axis=0) > floor)[0]
+assert abs(len(rows_ref) - len(rows_half)) <= 3, ('halo height differs', len(rows_ref), len(rows_half))
+assert abs(len(cols_ref) - len(cols_half)) <= 3, ('halo width differs', len(cols_ref), len(cols_half))
+e_ref, e_half = int(ref[:, :, :3].sum()), int(half[:, :, :3].sum())
+assert abs(e_ref - e_half) <= 0.1 * e_ref, ('bloom energy preserved', e_ref, e_half)
+print('bloom halo: full-res %dx%d vs half-res %dx%d, energy %d vs %d' %
+      (len(cols_ref), len(rows_ref), len(cols_half), len(rows_half), e_ref, e_half))
+
+# Corner case: production blurs WRAP at the texture edge (GfxStageState default), so a bright
+# block in the corner bleeds its halo onto the opposite edges. The half-res chain must track
+# the full-res chain there too (Devin review: the centred block alone left this untested).
+escene = np.full((H, W, 4), 13, dtype='u1'); escene[:, :, 3] = 255
+escene[H - 10:, W - 10:, :3] = 255   # bright block touching the bottom-right corner
+eref = bloom_chain(escene, (W, H), 1.0, moderngl.NEAREST)
+ehalf = bloom_chain(escene, (W // 2, H // 2), 0.5, moderngl.LINEAR)
+ediff = np.abs(ehalf[:, :, :3].astype(int) - eref[:, :, :3].astype(int))
+assert ediff.mean() < 3.0 and ediff.max() <= 40, ('corner wrap equivalence', ediff.mean(), ediff.max())
+# the block touches the bottom/right edges, so wrapped sampling must bleed the halo onto row 0 / column 0
+wrap_row = int(ehalf[0, W - 5, 0]); wrap_col = int(ehalf[H - 5, 0, 0])
+assert wrap_row > 13 + 8, ('the wrapped halo must cross the bottom edge in the half-res chain too', wrap_row)
+assert wrap_col > 13 + 8, ('the wrapped halo must cross the right edge in the half-res chain too', wrap_col)
+print('bloom corner wrap: mean abs diff %.2f/255, wrapped bleed row0 %d col0 %d (background 13)' % (ediff.mean(), wrap_row, wrap_col))
+
+print('PASS translated dof/motionblur/bloom shader semantics on', ctx.info['GL_RENDERER'], '(shader maths only; no SDL_GPU/Metal/depth-buffer/native claim)')
