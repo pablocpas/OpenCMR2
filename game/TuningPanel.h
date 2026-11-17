@@ -55,6 +55,7 @@ inline const TuningRow *Tuning_Rows(int &count)
         {"Drone accel/brake spring %", "video.drone_spring", 1, 400, 5, 100},
         {"Drone speed height drop %", "video.drone_speed_drop", 0, 500, 5, 100},
         {"Brush wall depth (0-100)", "video.brush_relief", 0, 100, 5, 100},
+        {"Motion blur keeps the car sharp (0/1)", "video.motion_blur_car", 0, 1, 1, 1},   // appended: earlier row positions are pinned by tests/tuning_runtime.cpp
     };
     count = (int)(sizeof(rows) / sizeof(*rows));
     return rows;

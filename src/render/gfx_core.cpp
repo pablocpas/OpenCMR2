@@ -437,6 +437,8 @@ extern "C" void Gfx_SetBodyDirt(float amount,float red,float green,float blue){
 extern "C" void Gfx_SetObjectId(unsigned id){s_state.objectId=id;Touch();}
 static unsigned s_playerObject=0;
 extern "C" void Gfx_SetPlayerObject(unsigned id){s_playerObject=id;}
+static BOOL s_playerInterior=FALSE;
+extern "C" void Gfx_SetPlayerInterior(BOOL interior){s_playerInterior=interior;}
 extern "C" void Gfx_GetBlendDepthState(int *out){
  if(!out)return;
  out[0]=s_state.depthTest;out[1]=s_state.depthWrite;out[2]=s_state.depthFunc;out[3]=s_state.alphaBlend;out[4]=s_state.srcBlend;out[5]=s_state.destBlend;
@@ -450,7 +452,7 @@ extern "C" void Gfx_SetCloudEnvironment(float coverage,float base,float x,float 
 extern "C" void Gfx_SetRaceWorld(BOOL enabled) { s_raceWorld=enabled!=0; }
 extern "C" void Gfx_EndWorldEffects(void)
 {
-    if (!s_target) { GfxCommand c={}; c.type=GFX_CMD_WORLD_END; c.raceWorld=s_raceWorld; c.playerObject=s_playerObject; c.state=RecordState(); memcpy(c.clouds,s_clouds,sizeof(c.clouds)); c.clouds[5]=Sys_GetTicksPrecise()/1000.f;
+    if (!s_target) { GfxCommand c={}; c.type=GFX_CMD_WORLD_END; c.raceWorld=s_raceWorld; c.playerObject=s_playerObject; c.interiorView=s_playerInterior!=0; c.state=RecordState(); memcpy(c.clouds,s_clouds,sizeof(c.clouds)); c.clouds[5]=Sys_GetTicksPrecise()/1000.f;
         if(s_raceWorld && s_executor){
             // Direction has no translation. Project against the actual race
             // view/projection, independent of the legacy flare/icon texture.

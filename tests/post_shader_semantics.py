@@ -120,8 +120,8 @@ def solid(v):
     a = np.zeros((H, W, 4), dtype='u1'); a[:, :, :3] = v; a[:, :, 3] = 255; return a
 
 
-def blur_step(cur, prev, mix):
-    return run(mb, 'MotionBlurUniforms', [mix, 0, 0, 0], [('current', cur, 4, 'f1'), ('previous', prev, 4, 'f1')])
+def blur_step(cur, prev, mix, keep=0.0, rect=(0.0, 0.0, 0.0, 0.0), feather=0.02):
+    return run(mb, 'MotionBlurUniforms', [mix, keep, feather, 0.0, *rect], [('current', cur, 4, 'f1'), ('previous', prev, 4, 'f1')])
 
 
 # one-frame blend is mix(current, previous, m)
@@ -154,4 +154,20 @@ n90, _ = frames_to_reach(m, 230)
 # recorded behaviour, not a desired look: the ghost of a flip from black to white lasts this many frames at the clamp
 print('clamp mix', mix_max, '/255; frames for a hard cut to reach 230/255 (90%%): %s; fraction of old frame left after 20 frames: %.2f' % (n90, m ** 20))
 assert n90 is not None
+
+# car keep (video.motion_blur_car): inside the followed car's screen rectangle the mix is gated to 0 -
+# the car stays sharp while the world around it blends. rect = u0 v0 u1 v1 (uv, v downwards).
+cur, prev = solid(200), solid(40)
+gated = blur_step(cur, prev, 0.9, keep=1.0, rect=(0.25, 0.25, 0.75, 0.75))
+mid = int(gated[H // 2, W // 2, 0])
+edge = int(gated[H // 2, 4, 0])
+assert abs(mid - 200) <= 1, ('inside the car rect the pixel is the current frame', mid)
+assert abs(edge - round(200 * 0.1 + 40 * 0.9)) <= 1, ('outside the rect the world still blurs', edge)
+# feather: across the rect boundary the blend ramps smoothly, no hard edge
+ramp = [int(gated[H // 2, x, 0]) for x in range(int(0.25 * W) - 4, int(0.25 * W) + 5)]
+assert all(a <= b + 1 for a, b in zip(ramp, ramp[1:])), ('feather ramps monotonically from world to car', ramp)
+# a zero rectangle never gates (no valid car region, e.g. cockpit camera)
+zero = blur_step(cur, prev, 0.9, keep=1.0, rect=(0.0, 0.0, 0.0, 0.0))
+assert abs(int(zero[H // 2, W // 2, 0]) - round(200 * 0.1 + 40 * 0.9)) <= 1, ('zero rect = no gate', int(zero[H // 2, W // 2, 0]))
+print('car keep: inside %d, outside %d, zero-rect %d (current 200, previous 40, mix 0.9)' % (mid, edge, int(zero[H // 2, W // 2, 0])))
 print('PASS translated dof.frag and motionblur.frag semantics on', ctx.info['GL_RENDERER'], '(shader maths only; no SDL_GPU/Metal/depth-buffer/native claim)')

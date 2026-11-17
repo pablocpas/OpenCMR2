@@ -5,6 +5,7 @@
 #include "render/tunnel_vision.h"
 #include "render/dof_focus.h"
 #include "render/car_region.h"
+#include "render/motion_blur_uniforms.h"
 #include "render/vapor_trail.h"
 #include "render/speed_streak.h"
 #include "render/weather_glint.h"
@@ -2878,12 +2879,51 @@ struct Executor : GfxExecutor {
             }
         }
 
+        // The followed car's screen rectangle, shared by motion blur (keep the car sharp,
+        // video.motion_blur_car, default 1 per the user's request) and DoF whole-scene mode
+        // (video.blur_mode). From the car's own projected vertices: a bounding rectangle plus a
+        // depth interval, not a per-pixel mask (render/car_region.h). In the interior view the
+        // exterior windscreen mesh keeps the car's objectId, so the region is VALID there -
+        // the motion-blur gate is forced off via MotionBlurUniformParams.interiorView instead.
+        CarRegion carRegion;
+        const bool interiorView =
+            worldEnd < frame.commands.size() && frame.commands[worldEnd].interiorView;
+        const bool wantCarRegion =
+            Sys_GetOption("video.blur_mode", 0) != 0 ||
+            (motionBlurEnabled && motionBlurMix > 0 && !interiorView && Sys_GetOption("video.motion_blur_car", 1) != 0);
+        if (wantCarRegion && worldEnd < frame.commands.size() && frame.commands[worldEnd].playerObject != 0) {
+            for (const GfxCommand &oc : frame.commands)
+                if (oc.type == GFX_CMD_DRAW && oc.target == NULL && !oc.transformed) {
+                    const GfxDrawState &os = frame.states[oc.state];
+                    if (os.objectId != frame.commands[worldEnd].playerObject) continue;
+                    const GfxVertex *vs = NULL;
+                    if (oc.buffer != NULL) {
+                        size_t first = oc.firstVertexByte / sizeof(GfxVertex);
+                        if (first + oc.vertexCount <= oc.buffer->vertices.size()) vs = oc.buffer->vertices.data() + first;
+                    } else if ((size_t)oc.firstVertexByte + (size_t)oc.vertexCount * sizeof(GfxVertex) <= frame.vertices.size())
+                        vs = (const GfxVertex *)(frame.vertices.data() + oc.firstVertexByte);
+                    if (vs == NULL) continue;
+                    GfxViewport cv = ToTarget(os.viewport, os.screenW, os.screenH, true, backWidth, backHeight);
+                    CarRegion_AddDraw(carRegion, &os.world._11, &os.view._11, &os.projection._11, (const unsigned char *)vs, (unsigned)sizeof(GfxVertex), oc.vertexCount,
+                                      (float)cv.x, (float)cv.y, (float)cv.width, (float)cv.height, (float)backWidth, (float)backHeight);
+                }
+        }
+
         // Motion blur: blend the current frame (plain or bloomed) with the
-        // previous one, then remember it for the next frame.
+        // previous one, then remember it for the next frame. The car-keep gate
+        // scales the mix to 0 inside the car's screen rectangle.
         if (motionBlurEnabled && motionBlurMix > 0 && motionBlurPrevious != NULL) {
             SDL_GPUTexture *output =
                 (presentSource == motionBlurTemp && backColor != NULL) ? backColor : motionBlurTemp;
-            float mix = motionBlurMix / 255.0f;
+            MotionBlurUniformParams mbp;
+            mbp.mix = motionBlurMix / 255.0f;
+            mbp.keepCar = Sys_GetOption("video.motion_blur_car", 1);
+            mbp.regionValid = carRegion.Valid() ? 1 : 0;
+            mbp.interiorView = interiorView ? 1 : 0;
+            mbp.u0 = carRegion.u0; mbp.v0 = carRegion.v0; mbp.u1 = carRegion.u1; mbp.v1 = carRegion.v1;
+            mbp.feather = 0.02f;
+            float mix[kMotionBlurUniformFloats];
+            MotionBlurUniforms_Pack(mix, mbp);
             SDL_GPUTextureSamplerBinding bindings[2] = {
                 { presentSource != NULL ? presentSource : white2D, Sampler(GfxStageState()) },
                 { motionBlurPrevious, Sampler(GfxStageState()) },
@@ -3007,24 +3047,6 @@ struct Executor : GfxExecutor {
             // Blur mode (video.blur_mode): 0 peripheral (default, the old look), 1 whole scene except the car. The car is located from its own
             // projected vertices (bounding rectangle + depth range), so this is an approximate region, not a per-pixel mask. No car (cockpit) = peripheral.
             int blurMode = Sys_GetOption("video.blur_mode", 0) != 0 ? 1 : 0, blurShown = 0;
-            CarRegion carRegion;
-            if (blurMode == 1 && sceneNear > 0.0f && worldEnd < frame.commands.size() && frame.commands[worldEnd].playerObject != 0) {
-                for (const GfxCommand &oc : frame.commands)
-                    if (oc.type == GFX_CMD_DRAW && oc.target == NULL && !oc.transformed) {
-                        const GfxDrawState &os = frame.states[oc.state];
-                        if (os.objectId != frame.commands[worldEnd].playerObject) continue;
-                        const GfxVertex *vs = NULL;
-                        if (oc.buffer != NULL) {
-                            size_t first = oc.firstVertexByte / sizeof(GfxVertex);
-                            if (first + oc.vertexCount <= oc.buffer->vertices.size()) vs = oc.buffer->vertices.data() + first;
-                        } else if ((size_t)oc.firstVertexByte + (size_t)oc.vertexCount * sizeof(GfxVertex) <= frame.vertices.size())
-                            vs = (const GfxVertex *)(frame.vertices.data() + oc.firstVertexByte);
-                        if (vs == NULL) continue;
-                        GfxViewport cv = ToTarget(os.viewport, os.screenW, os.screenH, true, backWidth, backHeight);
-                        CarRegion_AddDraw(carRegion, &os.world._11, &os.view._11, &os.projection._11, (const unsigned char *)vs, (unsigned)sizeof(GfxVertex), oc.vertexCount,
-                                          (float)cv.x, (float)cv.y, (float)cv.width, (float)cv.height, (float)backWidth, (float)backHeight);
-                    }
-            }
             float carPosMin = 0.0f, carPosMax = 0.0f;
             if (blurMode == 1 && carRegion.Valid() && DofFocus_Position(carRegion.zMin, sceneNear, sceneFar, &carPosMin) && DofFocus_Position(carRegion.zMax, sceneNear, sceneFar, &carPosMax)) blurShown = 1;
             else blurMode = 0;

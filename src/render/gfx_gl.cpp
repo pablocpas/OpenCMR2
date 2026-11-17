@@ -17,6 +17,7 @@
 #include "render/dof_focus.h"
 #include "render/fog_math.h"
 #include "render/fog_uniforms.h"
+#include "render/motion_blur_uniforms.h"
 #include "render/weather_glint.h"
 #include "render/tunnel_vision.h"
 #include "render/projection_vote.h"

@@ -209,7 +209,17 @@ GLuint ApplyEffects()
     }
     if (motionOn && motionMix > 0) {
         if (historyValid) {
-            float mix[4] = {motionMix / 255.0f, 0, 0, 0};
+            // The GL renderer records no car screen region: the car-keep gate stays off here
+            // (SDL_GPU only), but the full block is uploaded so no lane reads stale data.
+            MotionBlurUniformParams mbp;
+            mbp.mix = motionMix / 255.0f;
+            mbp.keepCar = 0;
+            mbp.regionValid = 0;
+            mbp.interiorView = 0;
+            mbp.u0 = mbp.v0 = mbp.u1 = mbp.v1 = 0.0f;
+            mbp.feather = 0.02f;
+            float mix[kMotionBlurUniformFloats];
+            MotionBlurUniforms_Pack(mix, mbp);
             run(3, historyTex, mix, sizeof(mix));
         }
         // Seed history on the FIRST frame without blending uninitialized pixels.

@@ -116,6 +116,7 @@ struct GfxCommand {
     GfxCommandType type;
     bool raceWorld = false; // meaningful only at the world-end marker
     unsigned playerObject = 0; // world-end marker: objectId (car slot + 1) of the view's car, 0 = none (debug object mask)
+    bool interiorView = false; // world-end marker: the view's camera is the interior one (type 3)
     float clouds[8] = {}; // coverage, layer base, sun direction xyz, time, reserved
     // draw
     int primitive;              // list/strip types only (fans are converted)

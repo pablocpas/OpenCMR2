@@ -42,6 +42,9 @@ void Gfx_SetBodyDirt(float amount, float red, float green, float blue);
 void Gfx_SetObjectId(unsigned id);
 /* Debug object mask: objectId (car slot + 1) of the car the current view follows; recorded with the world-end marker. */
 void Gfx_SetPlayerObject(unsigned id);
+/* OpenCMR2: the followed view's camera is the interior one (type 3). Recorded on the next
+   world-end marker like Gfx_SetPlayerObject; the motion-blur car gate stays off there. */
+void Gfx_SetPlayerInterior(BOOL interior);
 void Gfx_SetCloudEnvironment(float coverage, float baseHeight, float sunX, float sunY, float sunZ);
 
 
