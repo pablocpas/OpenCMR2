@@ -48,6 +48,11 @@ the camera type (Gfx_SetPlayerInterior, camera type 3) and the blend is the old
 whole-frame one. With no followed-car draw in front at all, the gate is off as well.
 The OpenGL renderer records no car region and keeps the old behaviour there.
 
+Cost: two history textures ping-pong (render/motion_blur_history.h) - the blend
+writes the slot it did not read and that slot is next frame's history, so a frame
+with motion blur on costs one full-screen blend pass and nothing else (one seed
+copy on the first frame after any toggle, resize or non-race frame).
+
 ## Taste and limits
 
 The intent is less white fog, actual soft defocus and a subtle grade, rather than

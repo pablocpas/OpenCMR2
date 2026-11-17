@@ -6,6 +6,7 @@
 #include "render/dof_focus.h"
 #include "render/car_region.h"
 #include "render/motion_blur_uniforms.h"
+#include "render/motion_blur_history.h"
 #include "render/vapor_trail.h"
 #include "render/speed_streak.h"
 #include "render/weather_glint.h"
@@ -247,8 +248,9 @@ struct Executor : GfxExecutor {
     MetalFXBlit metalFXBlit = nullptr;
     SDL_GPUTexture *backColor = nullptr, *backDepth = nullptr;
     SDL_GPUTexture *backdrop = nullptr;    // the copy of backColor the distance fade reads
-    SDL_GPUTexture *motionBlurPrevious = nullptr;  // the previous frame, for motion blur
-    SDL_GPUTexture *motionBlurTemp = nullptr;      // the blended frame, before the swapchain blit
+    SDL_GPUTexture *motionBlurPrevious = nullptr;  // motion blur history slot 0: a previous blended frame
+    SDL_GPUTexture *motionBlurPreviousB = nullptr; // history slot 1 (ping-pong, render/motion_blur_history.h)
+    SDL_GPUTexture *motionBlurTemp = nullptr;      // the bloom composite output; the blend itself writes a history slot
     SDL_GPUTexture *bloomBuf1 = nullptr, *bloomBuf2 = nullptr;  // bloom ping-pong buffers
     SDL_GPUGraphicsPipeline *motionBlurPipeline = nullptr;  // the full-screen blend pass
     SDL_GPUGraphicsPipeline *bloomBrightPassPipeline = nullptr;  // bright-pass extract
@@ -277,7 +279,7 @@ struct Executor : GfxExecutor {
     // the current one at present time; 0 turns it off.
     bool motionBlurEnabled = false;
     int motionBlurMix = 0;
-    bool motionBlurHasPrevious = false;
+    MotionBlurHistory motionBlurHistory = {};      // ping-pong state; seeded == the old motionBlurHasPrevious
     // OpenCMR2: video.bloom — enabled and intensity (0..255).
     bool bloomEnabled = false;
     int bloomIntensity = 0;
@@ -453,6 +455,7 @@ struct Executor : GfxExecutor {
         SDL_ReleaseGPUTexture(device, backDepth);
         SDL_ReleaseGPUTexture(device, backdrop);
         SDL_ReleaseGPUTexture(device, motionBlurPrevious);
+        SDL_ReleaseGPUTexture(device, motionBlurPreviousB);
         SDL_ReleaseGPUTexture(device, motionBlurTemp);
         SDL_ReleaseGPUTexture(device, bloomBuf1);
         SDL_ReleaseGPUTexture(device, bloomBuf2);
@@ -691,7 +694,9 @@ struct Executor : GfxExecutor {
             SDL_ReleaseGPUTexture(device, backDepth);
             SDL_ReleaseGPUTexture(device, backdrop);
             SDL_ReleaseGPUTexture(device, motionBlurPrevious);
+            SDL_ReleaseGPUTexture(device, motionBlurPreviousB);
             SDL_ReleaseGPUTexture(device, motionBlurTemp);
+            motionBlurHistory = MotionBlurHistory_Reset();   // the recreated slots hold no previous frame
             SDL_ReleaseGPUTexture(device, bloomBuf1);
             SDL_ReleaseGPUTexture(device, bloomBuf2);
             SDL_ReleaseGPUTexture(device, dofBuf1);
@@ -716,6 +721,8 @@ struct Executor : GfxExecutor {
                                      SDL_GPU_TEXTUREUSAGE_SAMPLER);
             motionBlurPrevious = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
                                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
+            motionBlurPreviousB = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
+                                               SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
             motionBlurTemp = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
                                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
             bloomBuf1 = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
@@ -736,7 +743,7 @@ struct Executor : GfxExecutor {
             backWidth = width;
             backHeight = height;
             if (backColor == NULL || backDepth == NULL || backdrop == NULL ||
-                motionBlurPrevious == NULL || motionBlurTemp == NULL ||
+                motionBlurPrevious == NULL || motionBlurPreviousB == NULL || motionBlurTemp == NULL ||
                 bloomBuf1 == NULL || bloomBuf2 == NULL ||
                 dofBuf1 == NULL || godRaysBuf1 == NULL || fogBuf1 == NULL || gradingTarget == NULL)
                 return false;
@@ -808,7 +815,7 @@ struct Executor : GfxExecutor {
     // (0..255). Takes effect at the next present.
     void SetMotionBlur(BOOL enabled, int mix) override
     {
-        if(motionBlurEnabled!=(enabled!=0))motionBlurHasPrevious=false;
+        if(motionBlurEnabled!=(enabled!=0))motionBlurHistory=MotionBlurHistory_Reset();
         motionBlurEnabled = enabled != 0;
         motionBlurMix = mix < 0 ? 0 : mix > 255 ? 255 : mix;
     }
@@ -2732,7 +2739,7 @@ struct Executor : GfxExecutor {
             precipitationEncoded=RenderParticles(cmd);
         }
 
-        if(!raceWorld){particleCount=0;particleLastTicks=0;motionBlurHasPrevious=false;}
+        if(!raceWorld){particleCount=0;particleLastTicks=0;motionBlurHistory=MotionBlurHistory_Reset();}
 
         // OpenCMR2: bloom (bright-pass extract, separable blur, additive
         // composite) followed by motion blur (previous-frame blend).
@@ -2910,11 +2917,13 @@ struct Executor : GfxExecutor {
         }
 
         // Motion blur: blend the current frame (plain or bloomed) with the
-        // previous one, then remember it for the next frame. The car-keep gate
-        // scales the mix to 0 inside the car's screen rectangle.
-        if (motionBlurEnabled && motionBlurMix > 0 && motionBlurPrevious != NULL) {
-            SDL_GPUTexture *output =
-                (presentSource == motionBlurTemp && backColor != NULL) ? backColor : motionBlurTemp;
+        // previous blended one. Two history textures ping-pong
+        // (render/motion_blur_history.h): the blend writes the slot it did not
+        // read, so the steady state has no full-screen copy per frame. The
+        // car-keep gate scales the mix to 0 inside the car's screen rectangle.
+        if (motionBlurEnabled && motionBlurMix > 0 && motionBlurPrevious != NULL && motionBlurPreviousB != NULL) {
+            SDL_GPUTexture *historyRead = motionBlurHistory.read ? motionBlurPreviousB : motionBlurPrevious;
+            SDL_GPUTexture *historyWrite = motionBlurHistory.read ? motionBlurPrevious : motionBlurPreviousB;
             MotionBlurUniformParams mbp;
             mbp.mix = motionBlurMix / 255.0f;
             mbp.keepCar = Sys_GetOption("video.motion_blur_car", 1);
@@ -2926,27 +2935,20 @@ struct Executor : GfxExecutor {
             MotionBlurUniforms_Pack(mix, mbp);
             SDL_GPUTextureSamplerBinding bindings[2] = {
                 { presentSource != NULL ? presentSource : white2D, Sampler(GfxStageState()) },
-                { motionBlurPrevious, Sampler(GfxStageState()) },
+                { historyRead, Sampler(GfxStageState()) },
             };
-            if (!motionBlurHasPrevious) {
+            if (!motionBlurHistory.seeded) {
+                // First frame after any reset: seed the read slot once, no blend of uninitialized pixels.
                 SDL_GPUCopyPass *copy=SDL_BeginGPUCopyPass(cmd);
-                if(copy){SDL_GPUTextureLocation src={},dst={};src.texture=presentSource;dst.texture=motionBlurPrevious;
-                    SDL_CopyGPUTextureToTexture(copy,&src,&dst,backWidth,backHeight,1,false);SDL_EndGPUCopyPass(copy);motionBlurHasPrevious=true;}
-            } else if (PostProcessPass(cmd, MotionBlurPipeline(), output, bindings, 2, &mix, sizeof(mix))) {
+                if(copy){SDL_GPUTextureLocation src={},dst={};src.texture=presentSource;dst.texture=historyRead;
+                    SDL_CopyGPUTextureToTexture(copy,&src,&dst,backWidth,backHeight,1,false);SDL_EndGPUCopyPass(copy);MotionBlurHistory_Seed(motionBlurHistory);}
+            } else if (historyWrite != presentSource && PostProcessPass(cmd, MotionBlurPipeline(), historyWrite, bindings, 2, &mix, sizeof(mix))) {
                 encoded|=4;
-                SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
-                if (copy != nullptr) {
-                    SDL_GPUTextureLocation src = {}, dst = {};
-                    src.texture = output;
-                    dst.texture = motionBlurPrevious;
-                    SDL_CopyGPUTextureToTexture(copy, &src, &dst, backWidth, backHeight, 1, false);
-                    SDL_EndGPUCopyPass(copy);
-                    motionBlurHasPrevious = true;
-                }
-                presentSource = output;
+                MotionBlurHistory_Commit(motionBlurHistory);
+                presentSource = historyWrite;
             }
         } else {
-            motionBlurHasPrevious = false;
+            motionBlurHistory = MotionBlurHistory_Reset();
         }
 
         // OpenCMR2: lens grime — chromatic aberration, vignette, film grain —
@@ -3214,8 +3216,8 @@ struct Executor : GfxExecutor {
             }
         }
 
-        } else motionBlurHasPrevious=false;
-        if(!raceWorld)motionBlurHasPrevious=false;
+        } else motionBlurHistory=MotionBlurHistory_Reset();
+        if(!raceWorld)motionBlurHistory=MotionBlurHistory_Reset();
         if(worldEffects) {
             if(presentSource!=backColor){
                 SDL_GPUBlitInfo blit={};blit.source.texture=presentSource;blit.source.w=backWidth;blit.source.h=backHeight;

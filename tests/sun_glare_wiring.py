@@ -1,7 +1,7 @@
 import pathlib
 r=pathlib.Path(__file__).resolve().parents[1]
 g=(r/'src/render/gfx_gpu.cpp').read_text();gl=(r/'src/render/gl_effects_executor.h').read_text();s=(r/'src/render/shaders/sun_glare.frag').read_text()
-a=g.index('// Restrained sun response');b=g.index('} else motionBlurHasPrevious=false;',a)
+a=g.index('// Restrained sun response');b=g.index('} else motionBlurHistory=MotionBlurHistory_Reset();',a)
 assert a>g.index('SDL_GPUTexture *gradeOut =')
 assert b<g.index('drawCommands(worldEnd+1',b)
 assert 'presentSource==gradingTarget?godRaysBuf1:gradingTarget' in g[a:b]
