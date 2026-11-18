@@ -2499,6 +2499,7 @@ void StageObject_SpawnRandomDebrisBurst(void);
 BYTE View_GetActiveCameraFlags(BYTE);
 int RallyData_IsChampionshipFinalStage(void);
 void Race_StartPlayerAndOpponentReplays(int player);
+void StageTiming_ResetPartDamageForReplay(void);
 extern BYTE g_unk0x0053811f;
 // GLOBAL: CMR2 0x005191a4
 int g_unk0x005191a4 = 0xacb49c;
@@ -3057,6 +3058,14 @@ void Race_StartPlayerAndOpponentReplays(int player)
 {
     int i;
 
+    // OpenCMR2: race-end replay viewing starts here (the inter-stage fade
+    // callback). Clear the raced end-state part damage first so the replay
+    // re-accrues it from the recorded inputs instead of opening on it (a
+    // broken windshield the recording didn't have yet). The ghost lane init
+    // (Replay_RestartGhostCar) goes straight to Replay_SelectAndInitializeLane
+    // and does not pass here, so live sessions with a ghost keep their damage;
+    // any later live stage rebuilds the table in CarDamage_SetupOrderedCarParts.
+    StageTiming_ResetPartDamageForReplay();
     Replay_SelectAndInitializeLane((ReplayStream *)g_playerReplayStreams[(BYTE)player], 0, 0, player);
     if (CGameInfo::GetGameModeOptionBit19()) {
         for (i = 0; i < 7; i++) {

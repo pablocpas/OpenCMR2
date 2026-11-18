@@ -49,6 +49,33 @@ struct CarPartSet {
     int brokenLightFlickerPhase;       // 0x4cc toggles at expiry of the countdown
 };
 
+// Clears one car's accumulated scalar damage so a replay session re-accrues it
+// from the recorded inputs instead of showing the race's end state: appearance
+// flags, derived damage values and biases, the dent grid and the glass burst
+// counters. Flags must clear together with the values because the accrual pass
+// (StageTiming_FlagCarPartBreaks) re-sets flags from damageValues[i+26] on its
+// next run. Setup/performance scales (damageScales, engine/brake scales, drags,
+// steering wobble) are not accumulation and are left alone. Pure so the test
+// pins the rule without a loaded car.
+inline void CarPartDamage_ClearAccumulated(CarPartSet *set) {
+    int i;
+    for (i = 0; i < 34; i++) {
+        set->damageValues[i] = 0;
+        set->damageBiases[i] = 0;
+    }
+    for (i = 0; i < 8; i++) {
+        set->partDamaged[i] = 0;
+        set->partBroken[i] = 0;
+    }
+    for (i = 0; i < 3; i++) {
+        set->damageGrid[i][0] = 0;
+        set->damageGrid[i][1] = 0;
+        set->damageGrid[i][2] = 0;
+    }
+    set->glassCooldown = 0;
+    set->glassDebrisEmitted = 0;
+}
+
 struct CarFlexibleLineState {
     FixVector position;             // 0x00 deflection, or world position if grounded
     FixVector previousPosition;     // 0x0c
