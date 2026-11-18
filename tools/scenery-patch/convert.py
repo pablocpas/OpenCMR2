@@ -72,11 +72,14 @@ def tree(a,rel,adaptive=False,stem=True):
  for j in range(len(rows)-1):
   for k in range(RING-1):
    aa=j*RING+k;bb=aa+RING;triangles.extend([(aa,aa+1,bb),(aa+1,bb+1,bb)])
- # Inner core: a 0.55-scale copy of the tube with reversed winding (inward normals). The bare tube is
- # one open wall - through an alpha hole you saw sky out the far side, so the crown read hollow. The
- # core puts shaded foliage behind every hole; its open rings stay hidden inside the capped outer shell.
+ # Inner core: a 0.55-scale copy of the tube with reversed winding. The bare tube is one open wall -
+ # through an alpha hole you saw sky out the far side, so the crown read hollow. The core puts foliage
+ # behind every hole; its open rings stay hidden inside the capped outer shell. The renderer disables
+ # lighting for these meshes (SceneryPack.cpp State: SetLighting FALSE), so normals cannot darken it:
+ # the depth cue is the darkened core.tga the core faces use.
  # inner0 sits on a row boundary (outer block = len(rows)*RING), so the theta lookup idx%RING stays
  # correct for inner vertices too.
+ outer_tris=len(triangles)
  inner0=len(verts)
  for y,lo,hi in rows:
   cx=((lo+hi)/2-w/2)/h;r=(hi-lo)/extent*(w/h)/2*.55
@@ -86,9 +89,9 @@ def tree(a,rel,adaptive=False,stem=True):
   for k in range(RING-1):
    aa=inner0+j*RING+k;bb=aa+RING;triangles.extend([(aa,bb,aa+1),(aa+1,bb,bb+1)])
  out=[];faces=[]
- for f in triangles:
+ for fi,f in enumerate(triangles):
   q=np.array([verts[i][:3] for i in f]);nm=np.cross(q[1]-q[0],q[2]-q[0]);nm/=max(np.linalg.norm(nm),1e-12)
-  faces.append(('crown',len(out)+1))
+  faces.append(('crown' if fi<outer_tris else 'core',len(out)+1))
   for idx in f:
    x,y,z,sy,lo,hi=verts[idx];theta=(idx%RING)/(RING-1)
    out.append(((x,y,z),(theta,min(.999,max(.001,1-sy/cut))),nm))
@@ -119,6 +122,9 @@ def tree(a,rel,adaptive=False,stem=True):
   alpha=(ca[:,3]*wx+cb[:,3]*wz)/den;prem=(ca[:,:3]*ca[:,3,None]*wx[:,None]+cb[:,:3]*cb[:,3,None]*wz[:,None])/den[:,None];rgb=prem/np.maximum(alpha[:,None],1e-6)
   atlas[iy,:,:3]=np.clip(rgb*255,0,255).astype('uint8');atlas[iy,:,3]=np.clip(alpha*255,0,255).astype('uint8')
  Image.fromarray(atlas).save(p/'crown.tga')
+ # Lighting is off for these meshes, so the inner core's depth cue is baked: same atlas, darker rgb.
+ core=atlas.copy();core[:,:,:3]=np.clip(atlas[:,:,:3].astype(float)*.55,0,255).astype('uint8')
+ Image.fromarray(core).save(p/'core.tga')
  # Stem diameter measured from source opaque pixels, capped at 6% source width.
  stem_rows=[y for y in (range(min(cut+2,last_row-2),max(cut+3,last_row-1)) if adaptive else range(round(h*.82),round(h*.90))) if y<h] # rows past the image do not exist (canopy to the last row)
  stemwidth=min(w*.06,np.median([np.sum(a[y,:,3]>=220) for y in stem_rows])) if stem_rows else 0
@@ -134,7 +140,7 @@ def tree(a,rel,adaptive=False,stem=True):
   lines.append('f '+' '.join(f'{k}/{k}/{k}' for k in range(i,i+3)))
  (p/'source-vertices.json').write_text(json.dumps({'schema':'source-uv-per-obj-v-1','source_canvas_wh':[w,h],'vertices':[{'obj_v':i+1,'source_uv':[.5+float(q[0][0])*h/w,1-float(q[0][1])]} for i,q in enumerate(out)]},indent=2))
  (p/'recipe.json').write_text(json.dumps({'schema':'source-canvas-tree-1','source_canvas_wh':[w,h],'source_mapping':str(rel),'method':'4x premultiplied interpolation, no new detail; continuous cross-projection atlas','triangles':len(faces),'crown_pixels':[aw,ah],'stem_radius':float(radius)},indent=2)+'\n')
- (p/'tree.obj').write_text('\n'.join(lines)+'\n');(p/'tree.mtl').write_text('newmtl crown\nKd 1 1 1\nd 1\nmap_Kd crown.tga\nnewmtl trunk\nKd 1 1 1\nd 1\nmap_Kd trunk.tga\n')
+ (p/'tree.obj').write_text('\n'.join(lines)+'\n');(p/'tree.mtl').write_text('newmtl crown\nKd 1 1 1\nd 1\nmap_Kd crown.tga\nnewmtl core\nKd 1 1 1\nd 1\nmap_Kd core.tga\nnewmtl trunk\nKd 1 1 1\nd 1\nmap_Kd trunk.tga\n')
  return str(rel/'tree.obj')
 
 def crossed_tree(a,rel,with_stem=True):
