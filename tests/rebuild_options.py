@@ -40,6 +40,8 @@ with tempfile.TemporaryDirectory() as d:
     need(rc == 0 and "--fog-clear 60 --fog-cull 1" in out, "equals form normalizes to space form; tuning flags need no --data")
     rc, out = run("--data", d, "--all-mods", "--mods-dir", d, "--run", "--dry-run", "--test-preset", "atmosphere", "--fog-clear", "60")
     need(rc == 0 and "--test-preset overdo,atmosphere" in out and "--fog-clear 60" in out, "tuning flags combine with --all-mods")
+    rc, out = run("--data", d, "--all-mods", "--mods-dir", d, "--run", "--dry-run")
+    need(rc == 0 and "--windshield-crack-overlay 1" in out, "all-mods carries the windshield crack overlay (his standard launch); without it no-glass-part cockpits never break")
     rc, out = run("--data", d, "--run", "--dry-run", "--fog-spatial", "1", "--fog-evolve=-40")
     need(rc == 0 and "--fog-spatial 1 --fog-evolve -40" in out, "fog spatial/evolve passthrough, equals normalizes")
     rc, out = run("--data", d, "--run", "--dry-run", "--fog-lights", "150")
