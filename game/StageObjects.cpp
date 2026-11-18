@@ -8715,12 +8715,13 @@ void StageObject_BuildCarMountWorldMatrix(CameraRecord *object, void *unused)
         // Positive = forward axis, negative = the other way; which sign hides the model edges is to be tuned natively.
         int shiftPct = Sys_GetOption("video.cockpit_eye_shift", 0);
         {   // diagnostics: what this view's eye actually did on its latest build, for the F10 overlay
-            int widening0 = View_CurrentWidening(object->index);
-            g_lastCockpitWidening[object->index & 7] = widening0;
-            g_lastCockpitStep[object->index & 7] = CockpitEyeShift_Amount(widening0, shiftPct);
+            // The record's VIEW keys the per-view widening (the dolly note in FixedPoint.cpp): the record index is not the view.
+            int widening0 = View_CurrentWidening(object->view);
+            g_lastCockpitWidening[object->view & 7] = widening0;
+            g_lastCockpitStep[object->view & 7] = CockpitEyeShift_Amount(widening0, shiftPct);
         }
         if (shiftPct != 0) {
-            int widening = View_CurrentWidening(object->index);
+            int widening = View_CurrentWidening(object->view);
             int step = CockpitEyeShift_Amount(widening, shiftPct);
             object->matrix.position.x += FixMul(object->matrix.forward.x, step);
             object->matrix.position.y += FixMul(object->matrix.forward.y, step);
@@ -8728,7 +8729,7 @@ void StageObject_BuildCarMountWorldMatrix(CameraRecord *object, void *unused)
         }
     }
     {   // OpenCMR2 debug camera move (video.camera_move_cockpit), signed along the camera forward axis, + forward, - back, 0.05 model units per step, scaled by speed (0 standing still).
-        int step = View_CameraMoveStep(3, object->index);
+        int step = View_CameraMoveStep(3, object->view);
         if (step != 0) {
             object->matrix.position.x += FixMul(object->matrix.forward.x, step);
             object->matrix.position.y += FixMul(object->matrix.forward.y, step);
