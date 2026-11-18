@@ -856,6 +856,7 @@ int g_unk0x0053708c[2];
 int g_unk0x00537198[2];
 
 #include "Car.h"
+#include "BrakeGlow.h"
 #include "CameraOperator.h"
 #include "TunnelRoadProjection.h"
 #include "FogBeamProjection.h"
@@ -2646,6 +2647,7 @@ big:
     CGame::PromoteCallbackEntryByRule(param1, param2, 0, 2);
     StageTiming_ResetClockAndPreviousTime();
     Windshield_ResetAll();   // OpenCMR2: replay/session start drops dirt from the previous run
+    BrakeGlow_Reset();         // and cold brake discs
     if ((char)RallyData_GetFlag22() != 0 && (char)RallyData_GetFlag25() == 0 &&
         CGameInfo::GetGameModeOptionBit19() == 0) {
         Car_ReloadModels(RallyDataState() & 0xff,
@@ -3304,6 +3306,7 @@ void Race_TeardownStage(CallbackStateMachine *param1, int param2, char flag)
     StageTiming_ResetParticipatingDriverRecords(1);
     RallyData_ResetStageClockAndRecords(g_unk0x0053810c & 0xff);
     Windshield_ResetAll();   // OpenCMR2: a race restart starts with clean glass, not only a stage load
+    BrakeGlow_Reset();         // and cold brake discs
     CarSkid_ClearWheelTrails();
     RallyData_MarkAllElementsReached();
     if (RallyData_GetSelectionFlag26())

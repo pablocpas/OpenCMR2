@@ -20,6 +20,7 @@
 #include "Frontend.h"
 #include "GenericFileLoader.h"
 #include "Car.h"
+#include "BrakeGlow.h"
 #include "RallyRouteNode.h"
 #include "CarResources.h"
 #include "CarPhysics.h"
@@ -2031,6 +2032,7 @@ void StageObject_InitCarSceneTables(void)
     *(short *)g_carSteeringBlendLastGears = 0;
     *(short *)g_carSteeringBlendFrames = 0x303;
     Windshield_ResetAll();   // stages start with clean glass
+    BrakeGlow_Reset();         // and cold brake discs
     WindshieldGlass_ResetCache();   // drop patched interior glass textures
     for (i = 0; i < 2; i++) {
         g_carDriverPoseStates[i].rotation.x = 0;

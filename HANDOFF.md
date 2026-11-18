@@ -16,6 +16,24 @@ layout-pinning wiring tests moved to the 264-float block. Visual only, no
 physics. UNVERIFIED: native look (Metal), band tightness at extreme drone
 zooms; 219/219 ctest on linux.
 
+# Brake disc glow (18 November 2026)
+
+Asked for 11 November ("brake discs glowing red"), verified never built: no PR,
+issue or code path existed. Per-wheel heat model in game/BrakeGlow.h (pedal x
+bias-axle share x speed in, heat-proportional radiation + airflow cooling out,
+frame-rate independent through g_physicsTimeStep); an additive radial quad is
+drawn on each hot wheel's disc plane at world-end of the 3D pass
+(Game.cpp, before the dust flush), depth tested, no depth write. Resets with
+Windshield_ResetAll at session/restart/stage boundaries. video.brake_glow=0
+disables. tests/brake_glow.cpp was red before the model existed (no target)
+and pins braking-heats, bias axle split, cooling, clamping, dt scaling and the
+disc-quad geometry (threshold gate, up/forward plane, steered-wheel axes).
+Visual only: no physics, replay or render-state writes outside Push/PopState.
+UNVERIFIED: native Metal look, and the disc-plane axis assumption (quad spans
+the wheel node's up/forward plane, axle = node right axis) - the user's native
+check; if discs read as hubcaps, swap the spanned axes. 220/220 ctest, 113/113
+python on linux.
+
 # Texture memory stats in the F10 panel (18 November 2026)
 
 The 10 GB process-memory report needs texture retention separated from other

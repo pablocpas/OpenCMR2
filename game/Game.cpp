@@ -1,6 +1,7 @@
 #include "SceneryPack.h"
 #include "CarBodyDirt.h"
 #include "Car.h"
+#include "BrakeGlow.h"
 #include "port/sys.h"
 #include "CockpitWindow.h"
 #include "RaceCallbackStorage.h"
@@ -3001,6 +3002,7 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
         }
         if (bit == 0 && pCamera == g_viewNodes[0])
             Race_ApplyTunnelFocus(); // this frame's view matrix/projection, not the previous simulation frame
+        BrakeGlow_Draw();      // OpenCMR2: brake disc glow (video.brake_glow), additive, depth tested
         Gfx_FlushDustVolume(); // completed world depth/projection, before HUD
     }
     Flare_SampleVisibility(NULL, NULL, 0);
