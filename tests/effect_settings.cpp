@@ -17,7 +17,9 @@ extern "C" void Gfx_SetPostFogClearDistance(int u){fogClear=u;}
 extern "C" void Gfx_SetColorGrading(int temp,int,int sat,int contrast){grade=temp+sat+contrast-200;}
 #define CHECK(x) do{if(!(x)){printf("FAIL line%d %s\n",__LINE__,#x);return 1;}}while(0)
 int main(){
- EffectSettings::Apply();CHECK(blur&&bloom&&particles==1&&amount==40&&shadow==1024&&soft==25&&grade==0&&!dof&&!rays);CHECK(settings.empty());
+ // Motion blur is retired: off by default at every layer (owner decision 2026-11-18); only an explicit
+ // --effect motion_blur=on or a saved video.motion_blur=1 still enables it.
+ EffectSettings::Apply();CHECK(!blur&&bloom&&particles==1&&amount==40&&shadow==1024&&soft==25&&grade==0&&!dof&&!rays);CHECK(settings.empty());
  CHECK(fog==0&&fogAmount==65&&fogGlow==60);   // fog defaults: off, 65 percent amount, modest glow
  CHECK(fogClear==0);   // near-field clear distance defaults off
  settings={{"video.motion_blur",0},{"video.bloom",0},{"video.color_grading",1},{"video.shadow_quality",2},{"video.shadow_softness",200},{"video.depth_of_field",1},{"video.god_rays",1},{"video.particles",2}};

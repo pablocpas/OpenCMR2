@@ -36,7 +36,10 @@ details, controls and evidence: docs/ATMOSPHERE.md.
 ## Motion blur keeps the car sharp
 
 Motion blur (video.motion_blur / video.motion_blur_amount) blends the frame with
-the previous one, which smeared the followed car along with the world. With
+the previous one, which smeared the followed car along with the world. The effect
+is retired: it defaults to off at every layer (startup restore, graphics menu,
+F10 panel, tuned defaults, all test presets) since 2026-11-18, and only an
+explicit --effect motion_blur=on or a saved video.motion_blur=1 enables it. With
 video.motion_blur_car (default 1, per the user's request) the SDL_GPU renderer
 scales the blend to zero inside the followed car's screen rectangle, from the
 car's own projected vertices (the same region DoF whole-scene mode uses,
