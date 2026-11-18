@@ -2331,15 +2331,19 @@ void Game_DrawDeferredObjects(void)
         if (g_depthSortDrawLists != 0)
             qsort(sorted, CGame::m_deferredDrawCount, sizeof(sorted[0]), Game_CompareDeferredDistance);
         {
-            // Camera eye in world units for the tree wind distance falloff.
+            // Camera eye in world units for the tree wind distance falloff and 3D-shell LOD.
+            // The active scene camera (the depth sort above already reads it), not
+            // g_viewNodes[0]: in split-screen each viewport draws with its own camera, and the
+            // near/far latch keys on the camera so one player's far draw cannot flip the
+            // other player's nearby trees to cards.
             float packEye[3];const float *packEyePtr=nullptr;
-            if (g_viewNodes[0]) {
+            if (g_unk0x0059be6c) {
                 FixVector packEyeFix;
-                FixMatrix_GetPosition(&packEyeFix, &g_viewNodes[0]->world);
+                FixMatrix_GetPosition(&packEyeFix, &g_unk0x0059be6c->world);
                 packEye[0]=packEyeFix.x/65536.f;packEye[1]=packEyeFix.y/65536.f;packEye[2]=packEyeFix.z/65536.f;
                 packEyePtr=packEye;
             }
-            SceneryPack_BeginBatch(packEyePtr);
+            SceneryPack_BeginBatch(packEyePtr, g_unk0x0059be6c);
         }
         for (i = 0; i < (unsigned int)CGame::m_deferredDrawCount; i++) {
             pObject = sorted[i].pObject;

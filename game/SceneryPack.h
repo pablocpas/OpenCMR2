@@ -15,7 +15,7 @@ bool SceneryPack_Draw(StageObject *object, const float *billboardMatrix);
 // eye: camera position in world units; pass null to disable distance effects.
 // Batch callers must supply it so the tree wind distance falloff does not
 // depend on game globals (tests link SceneryPack.cpp standalone).
-void SceneryPack_BeginBatch(const float *eye);
+void SceneryPack_BeginBatch(const float *eye, const void *eyeKey);
 void SceneryPack_BeginBatch(void);
 void SceneryPack_FlushBatch(void);
 void SceneryPack_EndBatch(void);
@@ -31,5 +31,5 @@ void SceneryPack_GetFrameTotals(unsigned long long *crowdDraws,unsigned long lon
 // Diagnostics: running totals (ns, calls) of wall-clock time inside SceneryPack_Draw and inside its whole-tree replacement part.
 void SceneryPack_GetTimeSplit(unsigned long long *windMathNs,unsigned long long *submitNs);
 void SceneryPack_GetTimeTotals(unsigned long long *replacementNs,unsigned long long *totalNs,unsigned long long *calls);
-void SceneryPack_GetTreeStatus(unsigned *replacements,unsigned *wind,unsigned *originalSources);
+void SceneryPack_GetTreeStatus(unsigned *replacements,unsigned *wind,unsigned *originalSources,unsigned *farCards);
 #endif

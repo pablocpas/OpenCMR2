@@ -6750,9 +6750,9 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             pt=now;pe=ex;pw=wt;ptn2=tn;
             Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?6:5)*layout.line,layout.font,layout.width-2*layout.pad,colour);
         }
-        unsigned treeDraws=0,windDraws=0,originalTrees=0;
-        SceneryPack_GetTreeStatus(&treeDraws,&windDraws,&originalTrees);
-        snprintf(text,sizeof(text),"Tree draws %u | wind %u | original %u",treeDraws,windDraws,originalTrees);
+        unsigned treeDraws=0,windDraws=0,originalTrees=0,farCards=0;
+        SceneryPack_GetTreeStatus(&treeDraws,&windDraws,&originalTrees,&farCards);
+        snprintf(text,sizeof(text),"Tree draws %u | wind %u | original %u | far cards %u",treeDraws,windDraws,originalTrees,farCards);
         Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?3:2)*layout.line,layout.font,layout.width-2*layout.pad,colour);
         int row=spectator?7:6;
         auto line=[&](const char*s,const BYTE*c=nullptr){Font_DrawTextScaled(1,(char*)s,layout.x+layout.pad,layout.y+layout.pad+row++*layout.line,layout.font,layout.width-2*layout.pad,(BYTE*)(c?c:colour));};

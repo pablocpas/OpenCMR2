@@ -390,7 +390,15 @@ tests/tree_wind_radius green; suite 170/171 with only the pre-existing
 replay_controls_wiring failure. One frame does not prove the whole slowdown;
 executor encode (2.3M verts) and GPU swapchain wait point at total tree tri
 volume as the next lever (distance LOD to original cards), deliberately NOT
-bundled here.
+bundled there. That lever is now video.tree_3d_radius (world units, default
+250, 0 = unlimited): past the radius a tree declines the 3D shell replacement
+and the original card draws instead, with a 0.8x/1.2x per-tree hysteresis band
+(first sight uses the plain radius) so boundary trees do not flicker. Added
+after the 5.9 fps Finland run where trees were 1.85M of 1.9M frame triangles
+(crown caps + inner core from the non-hollow crown change roughly doubled crown
+geometry) and the whole-trees path took 20.7 of 20.8 ms scenery CPU. The debug
+overlay's Tree draws line now ends with far cards N (declines since stage
+load). Config-only option like tree_wind_radius, no menu row.
 
 ## What's New changelog (31 October 2026)
 

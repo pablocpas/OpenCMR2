@@ -55,6 +55,12 @@ static unsigned long long windBatchSmall=0,windBatchLarge=0,windBatchTrees=0;
 static unsigned long long timeReplacementNs=0,timeOtherNs=0,timeCalls=0;static int drawDepth=0,replacementDepth=0;static std::vector<GfxVertex> windScratch;
 unsigned long long crowdDrawsTotal=0,crowdTrianglesTotal=0,treeTrianglesTotal=0,treeRustledVerticesTotal=0;
 unsigned loggedSecond=0,treeReplacementDraws=0,treeWindDraws=0,crowdDraws=0;unsigned long long crowdTriangles=0;
+// Distance LOD latch for the 3D tree replacement (video.tree_3d_radius): per-tree near/far state
+// with a hysteresis band so a tree hovering at the boundary does not flicker card/shell.
+// Stage-scoped cache: stage objects live in one arena (Sector.cpp:144-161, g_stageObjects), so
+// addresses are stable until sector unload, where Sector.cpp:312 calls SceneryPack_Clear and drops it.
+static std::unordered_map<const void*,std::unordered_map<StageObject*,bool>> treeLodNear;
+static int treeLodRadius=250;static unsigned treeLodCardDraws=0;static bool treeLodLogged=false;
 std::unordered_map<const Mesh*,CrowdMesh::Template<GfxVertex>> crowdMeshes;
 
 struct Part { std::vector<GfxVertex> vertices; PackTexture *texture=nullptr; std::vector<SceneryMotion::WindVertex> wind; float windBottom=0,windHeight=0; };
@@ -210,11 +216,12 @@ void SceneryPack_RegisterSource(Texture *texture,const void *bytes,unsigned size
 }
 void SceneryPack_RegisterArchive(GenericFile *file,const char *path){if(file&&path)archives[file]=Leaf(path);}
 struct ReactCar{float x=0,z=0,speed=0;bool valid=false;uint64_t at=0;};static ReactCar reactCars[8];
-void SceneryPack_Clear(){pendingTrees.Clear();fixedParts.clear();crowdMeshes.clear();assets.clear();windIdentities.clear();windLogged.clear();treeOriginalLogged.clear();archives.clear();sourceIdentities.clear();identities.clear();unmatched.clear();for(auto t:ownedTextures)Gfx_DestroyTexture(t);ownedTextures.clear();textures.clear();loaded=false;identityContract=false;treeLogged=false;spectatorLogged=false;root.clear();animationTime=0;for(auto &c:reactCars)c=ReactCar();diagnosticObject=nullptr;diagnosticArticulated=false;diagnosticFrame=diagnosticChanges=loggedSecond=treeReplacementDraws=treeWindDraws=0;diagnosticTime=0;}
+void SceneryPack_Clear(){pendingTrees.Clear();fixedParts.clear();crowdMeshes.clear();assets.clear();windIdentities.clear();windLogged.clear();treeOriginalLogged.clear();archives.clear();sourceIdentities.clear();identities.clear();unmatched.clear();for(auto t:ownedTextures)Gfx_DestroyTexture(t);ownedTextures.clear();textures.clear();loaded=false;identityContract=false;treeLogged=false;spectatorLogged=false;root.clear();animationTime=0;for(auto &c:reactCars)c=ReactCar();diagnosticObject=nullptr;diagnosticArticulated=false;diagnosticFrame=diagnosticChanges=loggedSecond=treeReplacementDraws=treeWindDraws=0;diagnosticTime=0;treeLodNear.clear();treeLodCardDraws=0;treeLodLogged=false;}
 void SceneryPack_Advance(int step){if(step>0)animationTime+=(unsigned)step;}
 void SceneryPack_SetReactionSource(int slot,int x,int z,int speed,bool valid){if(slot<0||slot>=8)return;reactCars[slot]={x/65536.f,z/65536.f,speed/65536.f,valid,animationTime};}
 static bool treeBatch=false;
 static float batchEye[4]={0,0,0,0}; // xyz + valid flag, set by SceneryPack_BeginBatch(eye)
+static const void *batchEyeKey=nullptr; // active camera identity: the near/far latch is per camera (split-screen)
 static void FlushTrees();
 static ParallelWork::Pool &treePool(){
     // video.tree_threads: 0 = automatic (cores, at most 8), 1 = no worker threads. Read once.
@@ -317,6 +324,27 @@ static bool DrawReplacement(StageObject *object,const float *billboard,unsigned 
             }
         }
         return true;
+    }
+    // Distance LOD (video.tree_3d_radius, world units, default 250, 0 = unlimited): past the
+    // radius a tree declines the 3D shell replacement and the original card draws instead. Forest
+    // depth was ~98% of frame triangles (1.85M of 1.9M) at double-sided shell cost in the 5.9 fps
+    // run; far cards restore the original look where a tree is a few dozen pixels tall. First
+    // sight uses the plain radius; afterwards a 0.8x/1.2x hysteresis band prevents flicker.
+    {
+        int lodRadius=treeLodRadius;
+        if(lodRadius>0&&batchEye[3]>0.5f){
+            float dx=object->position.x/65536.f-batchEye[0],dy=object->position.y/65536.f-batchEye[1],dz=object->position.z/65536.f-batchEye[2];
+            float d2=dx*dx+dy*dy+dz*dz,r=(float)lodRadius;
+            auto slot=treeLodNear[batchEyeKey].try_emplace(object,d2<=r*r);
+            bool &near=slot.first->second;
+            if(near){if(d2>(r*1.2f)*(r*1.2f))near=false;}
+            else if(d2<(r*0.8f)*(r*0.8f))near=true;
+            if(!near){
+                ++treeLodCardDraws;
+                if(!treeLodLogged){Sys_Log("options: tree 3D radius %d: far trees draw as original cards (video.tree_3d_radius, 0 = unlimited)",lodRadius);treeLodLogged=true;}
+                return false;
+            }
+        }
     }
     if(source->width!=asset->sourceWidth||source->height!=asset->sourceHeight){
         Reject(*asset,"source texture dimensions differ from tree header");LogRejection(*asset);return false;
@@ -425,12 +453,16 @@ void FlushTrees(){
     if(replacementDepth==0)timeReplacementNs+=dt;
     if(drawDepth==0)timeOtherNs+=dt;
 }
-void SceneryPack_BeginBatch(const float *eye){
+void SceneryPack_BeginBatch(const float *eye, const void *eyeKey){
+    // Read once per viewport batch, not thousands of string lookups per forest frame.
+    // Nonpositive radius means unlimited; promote to float before squared thresholds.
+    treeLodRadius=std::max(0,Sys_GetOption("video.tree_3d_radius",250));
+    batchEyeKey=eyeKey;
     treeBatch=true;
     if(eye){batchEye[0]=eye[0];batchEye[1]=eye[1];batchEye[2]=eye[2];batchEye[3]=1.f;}
     else batchEye[3]=0.f;
 }
-void SceneryPack_BeginBatch(){SceneryPack_BeginBatch(nullptr);}
+void SceneryPack_BeginBatch(){SceneryPack_BeginBatch(nullptr,nullptr);}
 void SceneryPack_FlushBatch(){FlushTrees();}
 void SceneryPack_EndBatch(){
     FlushTrees();treeBatch=false;
@@ -495,10 +527,11 @@ void SceneryPack_GetFrameTotals(unsigned long long *crowdDraws,unsigned long lon
  if(crowdDraws)*crowdDraws=crowdDrawsTotal;if(crowdTris)*crowdTris=crowdTrianglesTotal;if(treeTris)*treeTris=treeTrianglesTotal;if(treeUvVertices)*treeUvVertices=treeRustledVerticesTotal;
 }
 
-void SceneryPack_GetTreeStatus(unsigned *replacements,unsigned *wind,unsigned *originalSources){
+void SceneryPack_GetTreeStatus(unsigned *replacements,unsigned *wind,unsigned *originalSources,unsigned *farCards){
  if(replacements)*replacements=treeReplacementDraws;
  if(wind)*wind=treeWindDraws;
  if(originalSources)*originalSources=(unsigned)treeOriginalLogged.size();
+ if(farCards)*farCards=treeLodCardDraws;
 }
 
 // Called AFTER the original material/state binding. No world transform, material,
