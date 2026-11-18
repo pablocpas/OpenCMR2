@@ -73,6 +73,48 @@ int main() {
         float axle = (p[v][0]-1.f)*0.f + (p[v][1]-0.3f)*0.f + (p[v][2]-2.f)*(-1.f);  // dot with right
         CHECK(std::fabs(axle) < 1e-4f);
         CHECK(std::fabs(std::fabs(p[v][0] - 1.f) - BRAKE_GLOW_RADIUS) < 1e-4f); } }
+    // 13. Disc radius scales off the measured wheel extent and clamps: a Subaru-sized
+    // wheel (~0.31 tyre radius) gets a disc inside the hubcap, huge and tiny meshes
+    // stay in sane bounds.
+    { float r = BrakeGlow_DiscRadius(0.31f);
+      CHECK(r > 0.14f && r < 0.20f);
+      CHECK(BrakeGlow_DiscRadius(1.0f) == 0.30f);
+      CHECK(BrakeGlow_DiscRadius(0.1f) == 0.10f);
+      // the quad built with that radius never spans past 60% of the wheel
+      float p4[4][3], uv4[4][2], a4;
+      float ident[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+      CHECK(BrakeGlow_BuildDiscQuad(ident, BrakeGlow_DiscRadius(0.31f), 0.5f, p4, uv4, &a4) == 1);
+      for (int v = 0; v < 4; v++)
+        CHECK(std::fabs(p4[v][1]) <= 0.6f * 0.31f + 1e-4f && std::fabs(p4[v][2]) <= 0.6f * 0.31f + 1e-4f); }
+    // 14. Mesh extent: half the largest bounding-box dimension of a raw vertex
+    // stream (the engine's single 0x30 layout, position first), robust to the
+    // mesh origin sitting away from the hub; unreadable streams return 0.
+    { struct V { float p[3]; float rest[9]; } tyre[8] = {};   // 0x30 stride
+      // wheel 0.62 across in z, offset from the origin: z in [-0.31, 0.31],
+      // y in [-0.05, 0.57] (also 0.62), x in [0.10, 0.30] -> extent 0.31
+      for (int i = 0; i < 8; i++) {
+        tyre[i].p[0] = (i & 1) ? 0.30f : 0.10f;
+        tyre[i].p[1] = (i & 2) ? 0.57f : -0.05f;
+        tyre[i].p[2] = (i & 4) ? 0.31f : -0.31f; }
+      CHECK(std::fabs(BrakeGlow_MeshExtent(tyre, 0x30, 8) - 0.31f) < 1e-6f);
+      // y narrower than z: z wins
+      tyre[0].p[2] = 0.9f;
+      CHECK(std::fabs(BrakeGlow_MeshExtent(tyre, 0x30, 8) - 0.605f) < 1e-6f);
+      CHECK(BrakeGlow_MeshExtent(0, 0x30, 8) == 0.f);
+      CHECK(BrakeGlow_MeshExtent(tyre, 0x30, 0) == 0.f);
+      CHECK(BrakeGlow_MeshExtent(tyre, 0x30, -3) == 0.f);
+      CHECK(BrakeGlow_MeshExtent(tyre, 0x30, 100001) == 0.f);
+      CHECK(BrakeGlow_MeshExtent(tyre, 8, 8) == 0.f); }   // stride too small for xyz
+    // 15. A wheel whose mesh is unreadable (extent 0) borrows the largest
+    // measured sibling extent - the four wheels of a car share a tyre radius,
+    // so any readable sibling beats the oversized fixed fallback. All-zero
+    // stays zero, measured wheels are untouched.
+    { float e[4] = { 0.31f, 0.f, 0.30f, 0.f };
+      BrakeGlow_FillMissingExtents(e);
+      CHECK(e[0] == 0.31f && e[1] == 0.31f && e[2] == 0.30f && e[3] == 0.31f);
+      float z[4] = {};
+      BrakeGlow_FillMissingExtents(z);
+      for (int w = 0; w < 4; w++) CHECK(z[w] == 0.f); }
     std::puts("brake glow heat model: pass");
     return 0;
 }
