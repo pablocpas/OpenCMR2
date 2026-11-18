@@ -73,3 +73,7 @@ speed_lines=off
 1
 --brush-volume
 1
+# His standard launch since 2026-11-05: without this the Subaru-class open cockpits
+# (no interior glass part) never show windshield damage.
+--windshield-crack-overlay
+1
