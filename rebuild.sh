@@ -7,7 +7,7 @@
 # Asset options. They run the game binary's own helper with --prepare-only after the build, so the
 # private pack is made the same way as at launch: originals are verified by hash and never written, the cache lives under enhancements/ in your
 # profile, an old cache is never overwritten, nothing is downloaded (unless you add --install-enhancement-deps), no selection is saved to the INI.
-#   --update                    Fast-forward origin/main first (clean checkout only); never resets/stashes
+#   --update                    Fast-forward origin/main first (no tracked changes; untracked files are left alone); never resets/stashes
 #   --all-mods                  Current audiovisual preset (not every effect on); needs data and owned car ZIPs.
 #                               Includes the EXPERIMENTAL Greece1 brush-wall extrusion (--brush-volume 1): visual only,
 #                               collision unchanged, extrusion direction not verified natively; only part of the walls change
@@ -110,7 +110,10 @@ done
 # Update before using preset definitions: re-enter the newly fetched script, without
 # --update, so options/launch settings are taken from the same source being built.
 if [ "$UPDATE" = 1 ]; then
-    [ -z "$(git status --porcelain)" ] || die "--update needs a clean checkout (including untracked files); save your work first"
+    # Tracked changes must be clean: switching/fast-forwarding would touch them. Untracked files
+    # (his mods/ ZIP folder, Licenses/, shaders/, local experiments) are left alone; if a pull would
+    # overwrite one, git itself refuses loudly, so nothing is lost silently.
+    [ -z "$(git status --porcelain -uno)" ] || die "--update needs a clean checkout of tracked files (untracked files such as mods/ are left alone); commit or stash tracked work first"
     if [ "$DRY" = 1 ]; then
         echo "==> Dry run: would fetch origin main, switch to main and fast-forward only; no git changes"
     else
