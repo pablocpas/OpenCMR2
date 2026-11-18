@@ -50,6 +50,16 @@ class PrepareTests(unittest.TestCase):
         self.assertNotEqual(self.prep('crossed'), a)
         self.assertTrue(a.is_dir())
 
+    def test_prepare_narrates_steps(self):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.prep()
+        out = buf.getvalue()
+        self.assertIn('Verifying original', out)
+        self.assertIn('Generating scenery pack', out)
+        self.assertLess(out.index('Verifying original'), out.index('Generating scenery pack'))
+
     def test_changed_pack_not_overwritten(self):
         a = self.prep()
         (a / 'tree.obj').write_text('edited')

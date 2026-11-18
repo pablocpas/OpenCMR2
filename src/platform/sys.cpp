@@ -9,6 +9,7 @@
 #include "platform/platform.h"
 #include "platform/testing.h"
 #include "platform/enhancements.h"
+#include "platform/process_stream.h"
 #include "tuned_defaults.h"
 #include "port/sys.h"
 #include "port/gfx.h"
@@ -718,9 +719,8 @@ bool PrepareEnhancementPack(bool cars=false,bool roads=false,bool textures=false
         }
         std::vector<const char*> raw;for(auto &arg:args)raw.push_back(arg.c_str());raw.push_back(nullptr);
         SDL_Process *process=SDL_CreateProcess(raw.data(),true);if(!process)continue;
-        size_t length=0;int code=-1;char *out=(char*)SDL_ReadProcess(process,&length,&code);
-        std::string text=out?std::string(out,length):"";SDL_free(out);SDL_DestroyProcess(process);
-        fprintf(stdout,"%s",text.c_str());
+        int code=-1;std::string text=StreamProcessOutput(SDL_GetProcessOutput(process));
+        SDL_WaitProcess(process,true,&code);SDL_DestroyProcess(process);
         if(code==78)continue;
         if(code!=0){fprintf(stderr,"Enhancement helper exited %d; stopping without starting game.\n",code);return false;}
         const std::string marker=textures?"OPENCMR2_TEXTURES=":roads?"OPENCMR2_ROADS=":cars?"OPENCMR2_CARS=":"OPENCMR2_PACK=";auto pos=text.rfind(marker);

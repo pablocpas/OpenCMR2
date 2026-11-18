@@ -93,6 +93,7 @@ def prepare(data, cache, mode, install=False, all_trees=False, gain=1.0):
     pack = cache / ('scenery-' + mode + '-' + key)
     # Always reverify original archives, even when a cached derived pack exists.
     # check-only requires new/empty output, so use an absent path inside a temp.
+    print('Verifying original game archives (hash check of owned data)...', flush=True)
     with tempfile.TemporaryDirectory(prefix='.verify-', dir=cache) as tmp:
         run(command + [HERE / 'convert.py', '--input-dir', data, '--output-dir', Path(tmp) / 'unused', '--tree-geometry', mode] + extra + ['--check-only'])
     if pack.is_symlink():
@@ -107,6 +108,7 @@ def prepare(data, cache, mode, install=False, all_trees=False, gain=1.0):
         print('Reusing verified private scenery:', pack)
     else:
         # Converter already stages atomically, then make helper completion atomic too.
+        print(f'Generating scenery pack ({mode}, first run for this recipe; can take minutes)...', flush=True)
         with tempfile.TemporaryDirectory(prefix='.prepare-', dir=cache) as tmp:
             stage = Path(tmp) / 'pack'
             run(command + [HERE / 'convert.py', '--input-dir', data, '--output-dir', stage, '--tree-geometry', mode] + extra)

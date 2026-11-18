@@ -1,5 +1,6 @@
 #include <vector>
 #include "platform/enhancements.h"
+#include "platform/process_stream.h"
 #include "platform/testing.h"
 #include "render/gpu_startup_options.h"
 #include "Input.h"
@@ -148,5 +149,15 @@ CHECK(run({"t","--camera-move-chase","-60"})&&e2.empty()&&t.overrides["video.cam
  Platform_Shutdown();CHECK(read(user/"Configuration/Controller.rcf")=="sentinel saved controls");
  SDL_SetEnvironmentVariable(SDL_GetEnvironment(),"SDL_VIDEODRIVER","dummy",true);CHECK(Platform_Init(5,bv));CGameInfo::m_fixedMenuKeys=0;memset(keys,0,sizeof keys);keys[0x2c]=0x80;Input_Update();CInput::ReadKeyboardDevice(&device);CHECK(device.held==1);Platform_SetTestKeyboard(nullptr);Platform_Shutdown();
  CHECK(read(user/"controls.ini")==saved&&read(user/"opencmr2.ini")==ini);
+ { // Pack preparation progress must reach stdout while the helper runs: the launcher
+   // streams the child's output as it arrives. SDL_ReadProcess held everything until
+   // the helper exited, so the game still looked hung through the verify/convert
+   // phases even though the helper flushed every line (Devin finding on PR #386).
+  char msg[]="Reading originals 1/2: grehit.bfl\nConverted 1/3: tre_wb1 (source-fitted-interpolated)\n";
+  SDL_IOStream *io=SDL_IOFromMem(msg,sizeof msg -1);CHECK(io!=nullptr);
+  std::string collected=StreamProcessOutput(io);
+  CHECK(collected==msg);
+  SDL_CloseIO(io);
+ }
  fs::remove_all(root);puts("CLI parsing, transient settings, profile/save preservation: pass");return 0;
 }
