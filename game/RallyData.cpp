@@ -6696,7 +6696,7 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
         BYTE colour[4] = {240, 246, 255, 255};
         unsigned long long tick=0;unsigned frame=0,changes=0;
         bool spectator=SceneryPack_GetAnimationStatus(&tick,&frame,&changes);
-        auto layout=DebugOverlayLayout::For(g_pGraphics->resX,g_pGraphics->resY,(spectator?7:6)+34);   // header rows + one entry per line() row below
+        auto layout=DebugOverlayLayout::For(g_pGraphics->resX,g_pGraphics->resY,(spectator?8:7)+34);   // header rows + one entry per line() row below
         // (the launch-summary for-loop is 3 rows from one call site; FOV preview and cockpit eye shift are conditional).
         // Keep the count in sync when adding a row - debug_panel_budget_wiring checks it. The earlier
         // (spectator?6:5)+11+5+2+5+2+2 undercounted by 7, so rows after the fog block had no panel behind them.
@@ -6711,12 +6711,16 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             snprintf(text,sizeof(text),"Crowd tick %llu | frame %u | changes %u",tick,frame,changes);
             Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+2*layout.line,layout.font,layout.width-2*layout.pad,colour);
         }
+        {   // Live texture retention (unified memory: CPU levels + decoded GPU copy both count).
+            unsigned long long texCpu=0,texGpu=0;int texCount=0;Gfx_GetTextureMemoryStats(&texCpu,&texGpu,&texCount);
+            snprintf(text,sizeof(text),"Textures %d | cpu %lluM | gpu ~%lluM",texCount,texCpu>>20,texGpu>>20);
+            Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?4:3)*layout.line,layout.font,layout.width-2*layout.pad,colour);        }
         {   // Per-frame scenery counts (differences of running totals; counts, not timing).
             static unsigned long long pcd=0,pct=0,ptt=0,ptu=0;unsigned long long cd=0,ct=0,tt=0,tu=0;
             SceneryPack_GetFrameTotals(&cd,&ct,&tt,&tu);
             snprintf(text,sizeof(text),"This frame: crowd %llu cards %llu tris | trees %llu tris, %llu rustled verts",cd-pcd,ct-pct,tt-ptt,tu-ptu);
             pcd=cd;pct=ct;ptt=tt;ptu=tu;
-            Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?4:3)*layout.line,layout.font,layout.width-2*layout.pad,colour);        }
+            Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?5:4)*layout.line,layout.font,layout.width-2*layout.pad,colour);        }
         {   // Wall-clock ms spent in the scenery sidecar draws last frame (diagnostic build), next to the frame time.
             static unsigned long long prn=0,ptn=0,pcl=0;unsigned long long rn=0,tn=0,cl=0;
             SceneryPack_GetTimeTotals(&rn,&tn,&cl);
@@ -6724,7 +6728,7 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             snprintf(text,sizeof(text),"Scenery CPU ms: all %.2f | whole trees %.2f (wind math %.2f, record draws %.2f) %llu calls",(tn-ptn)/1e6,(rn-prn)/1e6,(wm-pwm)/1e6,(sb-psb)/1e6,cl-pcl);
             pwm=wm;psb=sb;
             prn=rn;ptn=tn;pcl=cl;
-            Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?5:4)*layout.line,layout.font,layout.width-2*layout.pad,colour);
+            Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?6:5)*layout.line,layout.font,layout.width-2*layout.pad,colour);
         }
         static char hitchText[200]="";
         {   // Same-interval split (diagnostic): everything below is a difference between two consecutive pane draws, so all numbers cover the same frame.
@@ -6748,13 +6752,13 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
                 if(lastFrames)snprintf(hitchText,sizeof(hitchText),"Last full 5 s block: worst frame %.1f ms (executor %.1f, scenery %.1f) | over 25 ms: %u of %u",lastWorst,lWEx,lWSc,lastOver,lastFrames);
             }
             pt=now;pe=ex;pw=wt;ptn2=tn;
-            Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?6:5)*layout.line,layout.font,layout.width-2*layout.pad,colour);
+            Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?7:6)*layout.line,layout.font,layout.width-2*layout.pad,colour);
         }
         unsigned treeDraws=0,windDraws=0,originalTrees=0,farCards=0;
         SceneryPack_GetTreeStatus(&treeDraws,&windDraws,&originalTrees,&farCards);
         snprintf(text,sizeof(text),"Tree draws %u | wind %u | original %u | far cards %u",treeDraws,windDraws,originalTrees,farCards);
         Font_DrawTextScaled(1,text,layout.x+layout.pad,layout.y+layout.pad+(spectator?3:2)*layout.line,layout.font,layout.width-2*layout.pad,colour);
-        int row=spectator?7:6;
+        int row=spectator?8:7;
         auto line=[&](const char*s,const BYTE*c=nullptr){Font_DrawTextScaled(1,(char*)s,layout.x+layout.pad,layout.y+layout.pad+row++*layout.line,layout.font,layout.width-2*layout.pad,(BYTE*)(c?c:colour));};
         {
             // (Placed first: the panel has a fixed height and rows after the atmosphere block were clipped.)

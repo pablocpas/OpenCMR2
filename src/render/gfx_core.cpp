@@ -721,6 +721,41 @@ extern "C" void Gfx_PresentStretched(BOOL vsync) { Present(vsync, true); }
 
 // OpenCMR2: statistics of the frame last presented, for the debug overlay.
 extern "C" uint32_t Gfx_GetFrameDrawCalls(void) { return s_lastDrawCalls; }
+
+// Diagnostics for the memory overlay: every live texture is in s_textures, so
+// the CPU total is the retained level copies and the GPU figure is the decoded
+// 4 bytes/pixel the upload path writes (UploadSize: everything but native-BC
+// expands to RGBA8; Metal decodes BC, so 4/px is exact there and an upper
+// bound elsewhere). This is a logical color+depth size estimate for registered
+// textures, including textures not uploaded yet, not measured GPU residency.
+// Driver alignment, postprocess resources and transfer buffers are outside it.
+// Threading: the gfx API is main-thread (Direct3D 7 model); tree wind workers
+// only compute vertex data (SceneryPack.cpp ComputeAll), so s_textures cannot
+// change while the overlay reads these counters.
+extern "C" void Gfx_GetTextureMemoryStats(unsigned long long *cpuBytes, unsigned long long *gpuEstimateBytes,
+                                          int *textureCount)
+{
+    unsigned long long cpu = 0, gpu = 0;
+    for (GfxTexture *t : s_textures) {
+        int faces = (t->flags & GFX_TEXTURE_CUBE) ? 6 : 1;
+        for (int f = 0; f < faces; f++)
+            for (int m = 0; m < t->mipLevels && m < 16; m++) {
+                cpu += t->levels[f][m].size();
+                int w = std::max(1, t->width >> m), h = std::max(1, t->height >> m);
+                gpu += (unsigned long long)w * h * 4;
+            }
+        // GPU: D24S8 or D32F; GL: D24S8. Both allocate one 32-bit depth
+        // attachment per render target, not per cube face (Ensure in each backend).
+        if (t->flags & GFX_TEXTURE_RENDER_TARGET)
+            gpu += (unsigned long long)t->width * t->height * 4;
+    }
+    if (cpuBytes)
+        *cpuBytes = cpu;
+    if (gpuEstimateBytes)
+        *gpuEstimateBytes = gpu;
+    if (textureCount)
+        *textureCount = (int)s_textures.size();
+}
 extern "C" uint32_t Gfx_GetFrameVertices(void) { return s_lastVertices; }
 extern "C" uint32_t Gfx_GetFrameIndices(void) { return s_lastIndices; }
 extern "C" uint32_t Gfx_GetFrameTriangles(void) { return s_lastTriangles; }

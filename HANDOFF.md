@@ -1,3 +1,14 @@
+# Texture memory stats in the F10 panel (18 November 2026)
+
+The 10 GB process-memory report needs texture retention separated from other
+growth. Gfx_GetTextureMemoryStats walks the live texture registry: CPU bytes
+are the retained level copies, the GPU figure is the decoded 4 bytes/pixel the
+upload path writes (exact on Metal, upper bound where BC stays native). The
+panel gains a "Textures N | cpu XM | gpu ~YM" header row. Native
+texture_memory_stats test was red (undeclared) before and green after; budget
+wiring generalised from the hardcoded 7:6 header count. On-device reading and
+the vmmap attribution are the user's.
+
 # Touch driving action routing (11 November 2026)
 
 Driving pads injected raw keyboard state, but action bindings polled physical

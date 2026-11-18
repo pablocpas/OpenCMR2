@@ -391,6 +391,8 @@ void Gfx_GetBlendDepthState(int *out);
 void Gfx_SetRaysStatus(int reason);
 int Gfx_GetRaysStatus(void);
 DWORD Gfx_GetFrameDrawCalls(void);
+/* OpenCMR2 diagnostics: live texture count, retained CPU level bytes, and logical GPU color+depth size estimate (not residency). */
+void Gfx_GetTextureMemoryStats(unsigned long long *cpuBytes, unsigned long long *gpuEstimateBytes, int *textureCount);
 /* OpenCMR2 diagnostics: ms inside the frame executor and, of that, the swapchain wait, summed since launch. */
 void Gfx_NoteSwapchainWait(double ms);
 void Gfx_GetPresentTimeTotals(double *execMs, double *waitMs);
