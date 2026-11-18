@@ -115,6 +115,12 @@ enum GfxCommandType {
 struct GfxCommand {
     GfxCommandType type;
     bool raceWorld = false; // meaningful only at the world-end marker
+    // World-end marker: color grade (temp,tint,saturation,contrast) snapshotted
+    // when the boundary was recorded. The executors run the effects chain when
+    // the recorded frame executes, by which time later SetColorGrading calls
+    // (e.g. the menu-recipe restore after a race viewport) would otherwise
+    // have overwritten the race frame's grade.
+    int grade[4] = {0,0,100,100};
     unsigned playerObject = 0; // world-end marker: objectId (car slot + 1) of the view's car, 0 = none (debug object mask)
     bool interiorView = false; // world-end marker: the view's camera is the interior one (type 3)
     float clouds[8] = {}; // coverage, layer base, sun direction xyz, time, reserved

@@ -251,7 +251,8 @@ struct Executor : GfxExecutor {
     SDL_GPUTexture *motionBlurPrevious = nullptr;  // motion blur history slot 0: a previous blended frame
     SDL_GPUTexture *motionBlurPreviousB = nullptr; // history slot 1 (ping-pong, render/motion_blur_history.h)
     SDL_GPUTexture *motionBlurTemp = nullptr;      // the bloom composite output; the blend itself writes a history slot
-    SDL_GPUTexture *bloomBuf1 = nullptr, *bloomBuf2 = nullptr;  // bloom ping-pong buffers
+    SDL_GPUTexture *bloomBuf1 = nullptr, *bloomBuf2 = nullptr;  // bloom ping-pong buffers (half resolution)
+    SDL_GPUTexture *lensGrimeTarget = nullptr;  // lens grime scratch when motionBlurTemp is the input
     SDL_GPUGraphicsPipeline *motionBlurPipeline = nullptr;  // the full-screen blend pass
     SDL_GPUGraphicsPipeline *bloomBrightPassPipeline = nullptr;  // bright-pass extract
     SDL_GPUGraphicsPipeline *bloomBlurPipeline = nullptr;  // directional blur pass
@@ -459,6 +460,7 @@ struct Executor : GfxExecutor {
         SDL_ReleaseGPUTexture(device, motionBlurTemp);
         SDL_ReleaseGPUTexture(device, bloomBuf1);
         SDL_ReleaseGPUTexture(device, bloomBuf2);
+        SDL_ReleaseGPUTexture(device, lensGrimeTarget);
         SDL_ReleaseGPUTexture(device, gradingTarget);
         SDL_ReleaseGPUTexture(device, dofBuf1);
         SDL_ReleaseGPUTexture(device, godRaysBuf1);
@@ -699,6 +701,7 @@ struct Executor : GfxExecutor {
             motionBlurHistory = MotionBlurHistory_Reset();   // the recreated slots hold no previous frame
             SDL_ReleaseGPUTexture(device, bloomBuf1);
             SDL_ReleaseGPUTexture(device, bloomBuf2);
+            SDL_ReleaseGPUTexture(device, lensGrimeTarget);
             SDL_ReleaseGPUTexture(device, dofBuf1);
             SDL_ReleaseGPUTexture(device, godRaysBuf1);
             SDL_ReleaseGPUTexture(device, fogBuf1);
@@ -725,11 +728,15 @@ struct Executor : GfxExecutor {
                                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
             motionBlurTemp = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
                                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
-            bloomBuf1 = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
+            // Bloom bright/blur run at half resolution: the four blur passes drop to a
+            // quarter of the pixels, and the composite upsamples with a linear filter.
+            bloomBuf1 = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, (width + 1) / 2, (height + 1) / 2, 1, 1,
                                       SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
-            bloomBuf2 = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
+            bloomBuf2 = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, (width + 1) / 2, (height + 1) / 2, 1, 1,
                                       SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
             gradingTarget = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
+                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
+            lensGrimeTarget = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
                 SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
             dofBuf1 = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
                                     SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
@@ -744,7 +751,7 @@ struct Executor : GfxExecutor {
             backHeight = height;
             if (backColor == NULL || backDepth == NULL || backdrop == NULL ||
                 motionBlurPrevious == NULL || motionBlurPreviousB == NULL || motionBlurTemp == NULL ||
-                bloomBuf1 == NULL || bloomBuf2 == NULL ||
+                bloomBuf1 == NULL || bloomBuf2 == NULL || lensGrimeTarget == NULL ||
                 dofBuf1 == NULL || godRaysBuf1 == NULL || fogBuf1 == NULL || gradingTarget == NULL)
                 return false;
         }
@@ -2548,6 +2555,7 @@ struct Executor : GfxExecutor {
         memset(projVotes, 0, sizeof(projVotes)); projVoteTotal = 0; projVoteRejected = 0; // votes are per rendered frame, never carried over
         size_t worldEnd=frame.commands.size();unsigned boundaries=0;bool raceWorld=false;
         for(size_t i=0;i<frame.commands.size();++i)if(frame.commands[i].type==GFX_CMD_WORLD_END){worldEnd=i;raceWorld=frame.commands[i].raceWorld;++boundaries;}
+        if(boundaries==1)SetColorGrading(frame.commands[worldEnd].grade[0],frame.commands[worldEnd].grade[1],frame.commands[worldEnd].grade[2],frame.commands[worldEnd].grade[3]);   // record-time snapshot: later Set calls (menu restore) must not retrograde this frame
         // Per-view history is not implemented. Multi-view/UI-only frames skip
         // optional full-screen FX rather than smearing another view's HUD.
         bool worldEffects=present && boundaries==1;
@@ -2844,6 +2852,7 @@ struct Executor : GfxExecutor {
             bloomBuf2 != NULL) {
             // Chain only complete passes. Failed resources retain sceneSource.
             bool bloomOK = true;
+            const int bloomW = (backWidth + 1) / 2, bloomH = (backHeight + 1) / 2;   // half-res bloom buffers
             // Bright pass: extract pixels brighter than a threshold -> bloomBuf1.
             {
                 float uniforms[2] = { 0.75f, 0.3f };   // threshold, softness
@@ -2852,33 +2861,40 @@ struct Executor : GfxExecutor {
                     { white2D, Sampler(GfxStageState()) },
                 };
                 bloomOK = PostProcessPass(cmd, BloomBrightPassPipeline(), bloomBuf1, bindings, 2,
-                                uniforms, sizeof(uniforms));
+                                uniforms, sizeof(uniforms), bloomW, bloomH);
             }
             // Separable blur: horizontal then vertical, two ping-pong iterations.
             for (int iteration = 0; bloomOK && iteration < 2; iteration++) {
                 struct BlurUniform {float x,y,scale;int samples;float pad[4];};
-                BlurUniform hUniforms = {1,0,1,3,{}};   // direction (1,0), offsetScale, samples
+                // offsetScale 0.5: one half-res texel is two full-res ones, so half offsets
+                // keep the blur radius the same in full-res pixels.
+                BlurUniform hUniforms = {1,0,0.5f,3,{}};   // direction (1,0), offsetScale, samples
                 SDL_GPUTextureSamplerBinding hBindings[2] = {
                     { bloomBuf1, Sampler(GfxStageState()) },
                     { white2D, Sampler(GfxStageState()) },
                 };
                 bloomOK = PostProcessPass(cmd, BloomBlurPipeline(), bloomBuf2, hBindings, 2,
-                                &hUniforms, sizeof(hUniforms));
+                                &hUniforms, sizeof(hUniforms), bloomW, bloomH);
 
-                BlurUniform vUniforms = {0,1,1,3,{}};   // direction (0,1)
+                BlurUniform vUniforms = {0,1,0.5f,3,{}};   // direction (0,1)
                 SDL_GPUTextureSamplerBinding vBindings[2] = {
                     { bloomBuf2, Sampler(GfxStageState()) },
                     { white2D, Sampler(GfxStageState()) },
                 };
                 bloomOK = bloomOK && PostProcessPass(cmd, BloomBlurPipeline(), bloomBuf1, vBindings, 2,
-                                &vUniforms, sizeof(vUniforms));
+                                &vUniforms, sizeof(vUniforms), bloomW, bloomH);
             }
             // Composite: scene + blurred bright pixels -> motionBlurTemp.
             {
                 float intensity = bloomIntensity / 255.0f;
+                // The bloom buffer is half resolution: upsample it with a linear filter
+                // (the default stage state is POINT, which would upscale blocky).
+                GfxStageState bloomUp;
+                bloomUp.minFilter = bloomUp.magFilter = GFX_FILTER_LINEAR;
+                bloomUp.address = GFX_ADDRESS_CLAMP;
                 SDL_GPUTextureSamplerBinding bindings[2] = {
                     { sceneSource, Sampler(GfxStageState()) },
-                    { bloomBuf1, Sampler(GfxStageState()) },
+                    { bloomBuf1, Sampler(bloomUp) },
                 };
                 if (bloomOK && PostProcessPass(cmd, BloomCompositePipeline(), motionBlurTemp, bindings, 2,
                                     &intensity, sizeof(intensity)))
@@ -2962,7 +2978,9 @@ struct Executor : GfxExecutor {
                 { presentSource, Sampler(GfxStageState()) },
                 { white2D, Sampler(GfxStageState()) },
             };
-            SDL_GPUTexture *lensTarget = presentSource == motionBlurTemp ? bloomBuf2 : motionBlurTemp;
+            // Dedicated scratch: gradingTarget only looks free here - the later speed streak skips while
+            // presentSource == gradingTarget and color grading renders into it (Devin review #373).
+            SDL_GPUTexture *lensTarget = presentSource == motionBlurTemp ? lensGrimeTarget : motionBlurTemp;
             if (PostProcessPass(cmd, LensGrimePipeline(), lensTarget, bindings, 2,
                                 uniforms, sizeof(uniforms)))
                 presentSource = lensTarget;

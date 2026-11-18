@@ -6,6 +6,11 @@ namespace EffectSettings {
 inline int Clamp(int v,int lo,int hi){return v<lo?lo:v>hi?hi:v;}
 inline int Percent(const char* key,int fallback){return Clamp(Sys_GetOption(key,fallback),0,100);}
 inline int Byte(const char* key,int fallback){return Percent(key,fallback)*255/100;}
+// Strength rule shared by the menu recipe and the per-condition race grade.
+inline int GradeStrength(){return Sys_GetOption("video.color_grading",0)?Percent("video.grade_amount",100):0;}
+// Restrained filmic grade. At zero this is mathematically neutral. Also the
+// restore target after race frames override the grade per condition.
+inline void ApplyGrade(){int s=GradeStrength();Gfx_SetColorGrading(8*s/100,-2*s/100,100+6*s/100,100+5*s/100);}
 // Shared by both executors at startup and menu Apply. No writes.
 inline void Apply(){
  Gfx_SetMotionBlur(Sys_GetOption("video.motion_blur",1),Byte("video.motion_blur_amount",16));
@@ -17,9 +22,7 @@ inline void Apply(){
  Gfx_SetGodRays(Sys_GetOption("video.god_rays",0),Byte("video.god_rays_amount",39));
  Gfx_SetPostFog(Sys_GetOption("video.fog",0),Clamp(Sys_GetOption("video.fog_amount",65),0,200),Percent("video.fog_glow",60));
  Gfx_SetPostFogClearDistance(Clamp(Sys_GetOption("video.fog_clear",0),0,200));
- int strength=Sys_GetOption("video.color_grading",0)?Percent("video.grade_amount",100):0;
- // Restrained filmic grade. At zero this is mathematically neutral.
- Gfx_SetColorGrading(8*strength/100,-2*strength/100,100+6*strength/100,100+5*strength/100);
+ ApplyGrade();
 }
 }
 #endif

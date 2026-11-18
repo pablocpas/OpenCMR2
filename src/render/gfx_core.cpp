@@ -450,9 +450,10 @@ extern "C" void Gfx_SetCloudEnvironment(float coverage,float base,float x,float 
  s_clouds[0]=coverage;s_clouds[1]=base;s_clouds[2]=x;s_clouds[3]=y;s_clouds[4]=z;
 }
 extern "C" void Gfx_SetRaceWorld(BOOL enabled) { s_raceWorld=enabled!=0; }
+static int s_gradeArgs[4]={0,0,100,100};   // last Gfx_SetColorGrading args; world-end markers snapshot them
 extern "C" void Gfx_EndWorldEffects(void)
 {
-    if (!s_target) { GfxCommand c={}; c.type=GFX_CMD_WORLD_END; c.raceWorld=s_raceWorld; c.playerObject=s_playerObject; c.interiorView=s_playerInterior!=0; c.state=RecordState(); memcpy(c.clouds,s_clouds,sizeof(c.clouds)); c.clouds[5]=Sys_GetTicksPrecise()/1000.f;
+    if (!s_target) { GfxCommand c={}; c.type=GFX_CMD_WORLD_END; c.raceWorld=s_raceWorld; c.playerObject=s_playerObject; c.interiorView=s_playerInterior!=0; c.state=RecordState(); memcpy(c.clouds,s_clouds,sizeof(c.clouds)); memcpy(c.grade,s_gradeArgs,sizeof(c.grade)); c.clouds[5]=Sys_GetTicksPrecise()/1000.f;
         if(s_raceWorld && s_executor){
             // Direction has no translation. Project against the actual race
             // view/projection, independent of the legacy flare/icon texture.
@@ -621,6 +622,7 @@ extern "C" void Gfx_SetPostFogClearDistance(int worldUnits)
 
 extern "C" void Gfx_SetColorGrading(int temperature, int tint, int saturation, int contrast)
 {
+    s_gradeArgs[0]=temperature;s_gradeArgs[1]=tint;s_gradeArgs[2]=saturation;s_gradeArgs[3]=contrast;
     if (s_executor != NULL)
         s_executor->SetColorGrading(temperature, tint, saturation, contrast);
 }

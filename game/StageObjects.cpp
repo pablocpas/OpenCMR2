@@ -25,6 +25,8 @@ short Car_GetOrderCount(void);
 #include "Texture.h"
 #include "StageTiming.h"
 #include "StageWeather.h"
+#include "GradeConditions.h"
+#include "render/effect_settings.h"
 #include "AIHelper.h"
 #include "RegKey.h"
 #include <stdio.h>
@@ -8715,12 +8717,13 @@ void StageObject_BuildCarMountWorldMatrix(CameraRecord *object, void *unused)
         // Positive = forward axis, negative = the other way; which sign hides the model edges is to be tuned natively.
         int shiftPct = Sys_GetOption("video.cockpit_eye_shift", 0);
         {   // diagnostics: what this view's eye actually did on its latest build, for the F10 overlay
-            int widening0 = View_CurrentWidening(object->index);
-            g_lastCockpitWidening[object->index & 7] = widening0;
-            g_lastCockpitStep[object->index & 7] = CockpitEyeShift_Amount(widening0, shiftPct);
+            // The record's VIEW keys the per-view widening (the dolly note in FixedPoint.cpp): the record index is not the view.
+            int widening0 = View_CurrentWidening(object->view);
+            g_lastCockpitWidening[object->view & 7] = widening0;
+            g_lastCockpitStep[object->view & 7] = CockpitEyeShift_Amount(widening0, shiftPct);
         }
         if (shiftPct != 0) {
-            int widening = View_CurrentWidening(object->index);
+            int widening = View_CurrentWidening(object->view);
             int step = CockpitEyeShift_Amount(widening, shiftPct);
             object->matrix.position.x += FixMul(object->matrix.forward.x, step);
             object->matrix.position.y += FixMul(object->matrix.forward.y, step);
@@ -8728,7 +8731,7 @@ void StageObject_BuildCarMountWorldMatrix(CameraRecord *object, void *unused)
         }
     }
     {   // OpenCMR2 debug camera move (video.camera_move_cockpit), signed along the camera forward axis, + forward, - back, 0.05 model units per step, scaled by speed (0 standing still).
-        int step = View_CameraMoveStep(3, object->index);
+        int step = View_CameraMoveStep(3, object->view);
         if (step != 0) {
             object->matrix.position.x += FixMul(object->matrix.forward.x, step);
             object->matrix.position.y += FixMul(object->matrix.forward.y, step);
@@ -10419,6 +10422,66 @@ done:
     }
 }
 
+// FUNCTION: OpenCMR2
+// video.color_grading: per-condition race grade, updated once per frame from
+// view 0. The executors run the effects chain when the recorded frame
+// executes, so one grade serves the whole frame; view 0 owns it, the same
+// scope as the fog lights and sun position set beside it. Wet amount is
+// smoothed on wall-clock dt (weather kind flips are discrete at route
+// intervals); sun elevation and light warmth key the golden-hour blend. With
+// the effect off this does nothing and the executor keeps its neutral grade.
+static void StageObject_UpdateConditionGrade(void)
+{
+    static float s_wet = 0.0f;
+    static double s_lastMs = 0.0;
+    static int s_debugFrames = 0;
+    FixVector vR;
+    int kind;
+    int strength;
+    int len;
+    int lightR;
+    int lightB;
+    double now;
+    float dt;
+    float elevation;
+    float warmth;
+    float target;
+    GradeConditions::Grade grade;
+
+    strength = EffectSettings::GradeStrength();
+    if (strength == 0)
+        return;
+    kind = StageObject_GetViewWeatherStateByte(0);
+    // Rain and snow both grade wet: an overcast whiteout wants the same
+    // cool, muted treatment as rain.
+    target = (kind == 1 || kind == 2) ? 1.0f : 0.0f;
+    now = Sys_GetTicksPrecise();
+    dt = s_lastMs > 0.0 ? (float)((now - s_lastMs) / 1000.0) : 1.0f / 60.0f;
+    if (dt > 0.1f) dt = 0.1f;   // a stall or pause advances the fade, never snaps it
+    if (dt < 0.0f) dt = 0.0f;
+    s_lastMs = now;
+    s_wet = GradeConditions::Step(s_wet, target, dt);
+    StageObject_GetRotatedStageLightVector(&vR);
+    len = FixVec_Length(&vR);
+    elevation = len > 0 ? (float)vR.y / (float)len : 1.0f;
+    lightR = g_stageLighting.primary.lightColour.x +
+        (int)(((long long)(g_stageLighting.secondary.lightColour.x - g_stageLighting.primary.lightColour.x) * g_stageLighting.blend) >> 16);
+    lightB = g_stageLighting.primary.lightColour.z +
+        (int)(((long long)(g_stageLighting.secondary.lightColour.z - g_stageLighting.primary.lightColour.z) * g_stageLighting.blend) >> 16);
+    warmth = (lightR + lightB) > 0 ? (float)(lightR - lightB) / (float)(lightR + lightB) : 0.0f;
+    grade = GradeConditions::Compute(s_wet, elevation, warmth, strength);
+    Gfx_SetColorGrading(grade.temp, grade.tint, grade.saturation, grade.contrast);
+    // Calibration aid for native tuning of the elevation/warmth thresholds:
+    // video.grade_debug prints the live signals once per second.
+    if (++s_debugFrames >= 60) {
+        s_debugFrames = 0;
+        if (Sys_GetOption("video.grade_debug", 0))
+            printf("grade: kind=%d wet=%.2f elev=%.3f warmth=%.3f -> temp=%d tint=%d sat=%d contrast=%d\n",
+                kind, (double)s_wet, (double)elevation, (double)warmth,
+                grade.temp, grade.tint, grade.saturation, grade.contrast);
+    }
+}
+
 // Draws the stage icon of one view node: projects its world position to the
 // screen, blends the object ramp into the stage colour and queues the sprite.
 // FUNCTION: CMR2 0x00462d80
@@ -10444,8 +10507,10 @@ void StageObject_DrawProjectedViewIcon(int *pViewRect, int param_2)
     icon.y = 0;
     Gfx_SetSunScreenPosition(0,0,FALSE);
     Gfx_SetFogLights(NULL, 0);
-    if (param_2 == 0)
+    if (param_2 == 0) {
         SnowMaterial_UpdateFrame();   // video.snow_material: once per frame, view 0
+        StageObject_UpdateConditionGrade();   // video.color_grading: per-condition grade, view 0 owns the frame
+    }
     if (g_sunGlowTexture == 0)
         return;
     uv.x = g_sunGlowTexture->field_0x11c;
