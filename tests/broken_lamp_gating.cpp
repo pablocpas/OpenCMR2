@@ -19,6 +19,7 @@ extern CarPartSet *g_carPartSets;
 extern CarLightProfile *g_carLightProfiles[8];
 extern CarLightTextureState g_carLightTextureStates[8];
 extern int g_stageObjectTimeStep;
+extern void StageObject_AnimateCarLightLevels(int car);
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d %s\n", __LINE__, #x); return 1; } } while (0)
 
@@ -86,6 +87,44 @@ int main() {
     CarLight_UpdateFlagsAndGlows(&car);
     CHECK(g_carLightTextureStates[0].channelMasks[0] & 8);
     CHECK(!(g_carLightTextureStates[0].channelMasks[1] & 8));
+
+    // Tail-light bleed: with the combine flag on and headlights lit, the
+    // rear channel picks up two-thirds of the headlight level. Broken rear
+    // lamps must suppress that bleed; intact ones must keep it. The headlight
+    // channel must not carry the suppression implicitly (it did before, via
+    // the wrong slot pair).
+    int i;
+    memset(&parts, 0, sizeof parts);
+    memset(g_carLightTextureStates, 0, sizeof g_carLightTextureStates);
+    car.braking = 0;
+    car.reversing = 0;
+    car.field_0xb58 = 1;
+    parts.partBroken[4] = parts.partBroken[5] = 1;
+    CarLight_UpdateFlagsAndGlows(&car);
+    g_carLightTextureStates[0].combineFirstTwoChannels = 1;
+    for (i = 0; i < 40; i++) StageObject_AnimateCarLightLevels(0);
+    CHECK(g_carLightTextureStates[0].levels[0][0] > 0);
+    CHECK(g_carLightTextureStates[0].levels[0][1] == 0);
+    CHECK(g_carLightTextureStates[0].levels[1][1] == 0);
+
+    // One rear lamp broken: the bleed dies on its side only.
+    memset(&parts, 0, sizeof parts);
+    memset(g_carLightTextureStates, 0, sizeof g_carLightTextureStates);
+    parts.partBroken[4] = 1;
+    CarLight_UpdateFlagsAndGlows(&car);
+    g_carLightTextureStates[0].combineFirstTwoChannels = 1;
+    for (i = 0; i < 40; i++) StageObject_AnimateCarLightLevels(0);
+    CHECK(g_carLightTextureStates[0].levels[0][1] == 0);
+    CHECK(g_carLightTextureStates[0].levels[1][1] > 0);
+
+    // Rear pair intact: the original tail glow with headlights survives.
+    memset(&parts, 0, sizeof parts);
+    memset(g_carLightTextureStates, 0, sizeof g_carLightTextureStates);
+    CarLight_UpdateFlagsAndGlows(&car);
+    g_carLightTextureStates[0].combineFirstTwoChannels = 1;
+    for (i = 0; i < 40; i++) StageObject_AnimateCarLightLevels(0);
+    CHECK(g_carLightTextureStates[0].levels[0][1] > 0);
+    CHECK(g_carLightTextureStates[0].levels[1][1] > 0);
 
     puts("broken lamp glass gates the light channels of its own end");
     return 0;

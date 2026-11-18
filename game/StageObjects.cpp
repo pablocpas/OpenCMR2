@@ -4131,14 +4131,24 @@ void StageObject_AnimateCarLightLevels(int car)
         pRecord->levels[1][i] = (BYTE)value;
     }
     if (pRecord->combineFirstTwoChannels != 0) {
-        value = pRecord->levels[0][1] + (pRecord->levels[0][0] / 3) * 2;
-        if (value > 0xff)
-            value = 0xff;
-        pRecord->levels[0][1] = (BYTE)value;
-        value = pRecord->levels[1][1] + (pRecord->levels[1][0] / 3) * 2;
-        if (value > 0xff)
-            value = 0xff;
-        pRecord->levels[1][1] = (BYTE)value;
+        // OpenCMR2: this headlight-to-tail bleed used to die with the rear
+        // lamp pair because channel 0 was masked off when break slots 4/5
+        // broke. Channel 0 now follows the front pair (slots 6/7), so gate
+        // the bleed on the rear pair explicitly, one side each (slot 4
+        // shares side 0, slot 5 side 1).
+        CarPartSet *pParts = CarPart_GetSet(car);
+        if (pParts->partBroken[4] == 0) {
+            value = pRecord->levels[0][1] + (pRecord->levels[0][0] / 3) * 2;
+            if (value > 0xff)
+                value = 0xff;
+            pRecord->levels[0][1] = (BYTE)value;
+        }
+        if (pParts->partBroken[5] == 0) {
+            value = pRecord->levels[1][1] + (pRecord->levels[1][0] / 3) * 2;
+            if (value > 0xff)
+                value = 0xff;
+            pRecord->levels[1][1] = (BYTE)value;
+        }
     } else {
         pRecord->levels[0][0] = (short)((pRecord->levels[0][0] / 3) * 2);
         pRecord->levels[1][0] = (short)((pRecord->levels[1][0] / 3) * 2);
