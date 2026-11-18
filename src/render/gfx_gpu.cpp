@@ -6,6 +6,7 @@
 #include "render/dof_focus.h"
 #include "render/car_region.h"
 #include "render/motion_blur_uniforms.h"
+#include "render/motion_blur_history.h"
 #include "render/vapor_trail.h"
 #include "render/speed_streak.h"
 #include "render/weather_glint.h"
@@ -247,8 +248,9 @@ struct Executor : GfxExecutor {
     MetalFXBlit metalFXBlit = nullptr;
     SDL_GPUTexture *backColor = nullptr, *backDepth = nullptr;
     SDL_GPUTexture *backdrop = nullptr;    // the copy of backColor the distance fade reads
-    SDL_GPUTexture *motionBlurPrevious = nullptr;  // the previous frame, for motion blur
-    SDL_GPUTexture *motionBlurTemp = nullptr;      // the blended frame, before the swapchain blit
+    SDL_GPUTexture *motionBlurPrevious = nullptr;  // motion blur history slot 0: a previous blended frame
+    SDL_GPUTexture *motionBlurPreviousB = nullptr; // history slot 1 (ping-pong, render/motion_blur_history.h)
+    SDL_GPUTexture *motionBlurTemp = nullptr;      // the bloom composite output; the blend itself writes a history slot
     SDL_GPUTexture *bloomBuf1 = nullptr, *bloomBuf2 = nullptr;  // bloom ping-pong buffers (half resolution)
     SDL_GPUTexture *lensGrimeTarget = nullptr;  // lens grime scratch when motionBlurTemp is the input
     SDL_GPUGraphicsPipeline *motionBlurPipeline = nullptr;  // the full-screen blend pass
@@ -278,7 +280,7 @@ struct Executor : GfxExecutor {
     // the current one at present time; 0 turns it off.
     bool motionBlurEnabled = false;
     int motionBlurMix = 0;
-    bool motionBlurHasPrevious = false;
+    MotionBlurHistory motionBlurHistory = {};      // ping-pong state; seeded == the old motionBlurHasPrevious
     // OpenCMR2: video.bloom — enabled and intensity (0..255).
     bool bloomEnabled = false;
     int bloomIntensity = 0;
@@ -454,6 +456,7 @@ struct Executor : GfxExecutor {
         SDL_ReleaseGPUTexture(device, backDepth);
         SDL_ReleaseGPUTexture(device, backdrop);
         SDL_ReleaseGPUTexture(device, motionBlurPrevious);
+        SDL_ReleaseGPUTexture(device, motionBlurPreviousB);
         SDL_ReleaseGPUTexture(device, motionBlurTemp);
         SDL_ReleaseGPUTexture(device, bloomBuf1);
         SDL_ReleaseGPUTexture(device, bloomBuf2);
@@ -693,7 +696,9 @@ struct Executor : GfxExecutor {
             SDL_ReleaseGPUTexture(device, backDepth);
             SDL_ReleaseGPUTexture(device, backdrop);
             SDL_ReleaseGPUTexture(device, motionBlurPrevious);
+            SDL_ReleaseGPUTexture(device, motionBlurPreviousB);
             SDL_ReleaseGPUTexture(device, motionBlurTemp);
+            motionBlurHistory = MotionBlurHistory_Reset();   // the recreated slots hold no previous frame
             SDL_ReleaseGPUTexture(device, bloomBuf1);
             SDL_ReleaseGPUTexture(device, bloomBuf2);
             SDL_ReleaseGPUTexture(device, lensGrimeTarget);
@@ -719,6 +724,8 @@ struct Executor : GfxExecutor {
                                      SDL_GPU_TEXTUREUSAGE_SAMPLER);
             motionBlurPrevious = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
                                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
+            motionBlurPreviousB = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
+                                               SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
             motionBlurTemp = CreateTexture(SDL_GPU_TEXTURETYPE_2D, colorFormat, width, height, 1, 1,
                                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
             // Bloom bright/blur run at half resolution: the four blur passes drop to a
@@ -743,7 +750,7 @@ struct Executor : GfxExecutor {
             backWidth = width;
             backHeight = height;
             if (backColor == NULL || backDepth == NULL || backdrop == NULL ||
-                motionBlurPrevious == NULL || motionBlurTemp == NULL ||
+                motionBlurPrevious == NULL || motionBlurPreviousB == NULL || motionBlurTemp == NULL ||
                 bloomBuf1 == NULL || bloomBuf2 == NULL || lensGrimeTarget == NULL ||
                 dofBuf1 == NULL || godRaysBuf1 == NULL || fogBuf1 == NULL || gradingTarget == NULL)
                 return false;
@@ -815,7 +822,7 @@ struct Executor : GfxExecutor {
     // (0..255). Takes effect at the next present.
     void SetMotionBlur(BOOL enabled, int mix) override
     {
-        if(motionBlurEnabled!=(enabled!=0))motionBlurHasPrevious=false;
+        if(motionBlurEnabled!=(enabled!=0))motionBlurHistory=MotionBlurHistory_Reset();
         motionBlurEnabled = enabled != 0;
         motionBlurMix = mix < 0 ? 0 : mix > 255 ? 255 : mix;
     }
@@ -1279,8 +1286,12 @@ struct Executor : GfxExecutor {
         info.depth_stencil_state.enable_depth_test = false;
         info.depth_stencil_state.enable_depth_write = false;
         info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
-        info.target_info.color_target_descriptions = &color;
-        info.target_info.num_color_targets = 1;
+        // Two color targets: the blend writes the history slot (attachment 0) and mirrors the
+        // same pixels into the back buffer or a scratch stand-in (attachment 1) - one pass, no
+        // per-frame history copy (the old code) and no HUD-handoff blit when the stack is terminal.
+        SDL_GPUColorTargetDescription colors[2] = { color, color };
+        info.target_info.color_target_descriptions = colors;
+        info.target_info.num_color_targets = 2;
         info.target_info.depth_stencil_format = depthFormat;
         info.target_info.has_depth_stencil_target = false;
         motionBlurPipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
@@ -1357,6 +1368,27 @@ struct Executor : GfxExecutor {
                          int numBindings, const void *uniformData, uint32_t uniformSize,int width=0,int height=0)
     {
         SDL_GPURenderPass *pass = Gfx_BeginPostProcessPass(cmd,pipeline,target,bindings,numBindings);
+        if (pass == NULL)
+            return false;
+        SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        if(width<=0)width=backWidth;if(height<=0)height=backHeight;
+        SDL_GPUViewport vp = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
+        SDL_Rect scissor = { 0, 0, width, height };
+        SDL_SetGPUViewport(pass, &vp);
+        SDL_SetGPUScissor(pass, &scissor);
+        if (uniformData != NULL)
+            SDL_PushGPUFragmentUniformData(cmd, 0, uniformData, uniformSize);
+        SDL_BindGPUFragmentSamplers(pass, 0, bindings, numBindings);
+        SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(pass);
+        return true;
+    }
+
+    bool PostProcessPass2(SDL_GPUCommandBuffer *cmd, SDL_GPUGraphicsPipeline *pipeline,
+                          SDL_GPUTexture *targetA, SDL_GPUTexture *targetB, const SDL_GPUTextureSamplerBinding *bindings,
+                          int numBindings, const void *uniformData, uint32_t uniformSize,int width=0,int height=0)
+    {
+        SDL_GPURenderPass *pass = Gfx_BeginPostProcessPass2(cmd,pipeline,targetA,targetB,bindings,numBindings);
         if (pass == NULL)
             return false;
         SDL_BindGPUGraphicsPipeline(pass, pipeline);
@@ -2740,7 +2772,7 @@ struct Executor : GfxExecutor {
             precipitationEncoded=RenderParticles(cmd);
         }
 
-        if(!raceWorld){particleCount=0;particleLastTicks=0;motionBlurHasPrevious=false;}
+        if(!raceWorld){particleCount=0;particleLastTicks=0;motionBlurHistory=MotionBlurHistory_Reset();}
 
         // OpenCMR2: bloom (bright-pass extract, separable blur, additive
         // composite) followed by motion blur (previous-frame blend).
@@ -2926,11 +2958,13 @@ struct Executor : GfxExecutor {
         }
 
         // Motion blur: blend the current frame (plain or bloomed) with the
-        // previous one, then remember it for the next frame. The car-keep gate
-        // scales the mix to 0 inside the car's screen rectangle.
-        if (motionBlurEnabled && motionBlurMix > 0 && motionBlurPrevious != NULL) {
-            SDL_GPUTexture *output =
-                (presentSource == motionBlurTemp && backColor != NULL) ? backColor : motionBlurTemp;
+        // previous blended one. Two history textures ping-pong
+        // (render/motion_blur_history.h): the blend writes the slot it did not
+        // read, so the steady state has no full-screen copy per frame. The
+        // car-keep gate scales the mix to 0 inside the car's screen rectangle.
+        if (motionBlurEnabled && motionBlurMix > 0 && motionBlurPrevious != NULL && motionBlurPreviousB != NULL) {
+            SDL_GPUTexture *historyRead = motionBlurHistory.read ? motionBlurPreviousB : motionBlurPrevious;
+            SDL_GPUTexture *historyWrite = motionBlurHistory.read ? motionBlurPrevious : motionBlurPreviousB;
             MotionBlurUniformParams mbp;
             mbp.mix = motionBlurMix / 255.0f;
             mbp.keepCar = Sys_GetOption("video.motion_blur_car", 1);
@@ -2942,27 +2976,28 @@ struct Executor : GfxExecutor {
             MotionBlurUniforms_Pack(mix, mbp);
             SDL_GPUTextureSamplerBinding bindings[2] = {
                 { presentSource != NULL ? presentSource : white2D, Sampler(GfxStageState()) },
-                { motionBlurPrevious, Sampler(GfxStageState()) },
+                { historyRead, Sampler(GfxStageState()) },
             };
-            if (!motionBlurHasPrevious) {
+            if (!motionBlurHistory.seeded) {
+                // First frame after any reset: seed the read slot once, no blend of uninitialized pixels.
                 SDL_GPUCopyPass *copy=SDL_BeginGPUCopyPass(cmd);
-                if(copy){SDL_GPUTextureLocation src={},dst={};src.texture=presentSource;dst.texture=motionBlurPrevious;
-                    SDL_CopyGPUTextureToTexture(copy,&src,&dst,backWidth,backHeight,1,false);SDL_EndGPUCopyPass(copy);motionBlurHasPrevious=true;}
-            } else if (PostProcessPass(cmd, MotionBlurPipeline(), output, bindings, 2, &mix, sizeof(mix))) {
-                encoded|=4;
-                SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
-                if (copy != nullptr) {
-                    SDL_GPUTextureLocation src = {}, dst = {};
-                    src.texture = output;
-                    dst.texture = motionBlurPrevious;
-                    SDL_CopyGPUTextureToTexture(copy, &src, &dst, backWidth, backHeight, 1, false);
-                    SDL_EndGPUCopyPass(copy);
-                    motionBlurHasPrevious = true;
+                if(copy){SDL_GPUTextureLocation src={},dst={};src.texture=presentSource;dst.texture=historyRead;
+                    SDL_CopyGPUTextureToTexture(copy,&src,&dst,backWidth,backHeight,1,false);SDL_EndGPUCopyPass(copy);MotionBlurHistory_Seed(motionBlurHistory);}
+            } else if (historyWrite != presentSource && motionBlurTemp != NULL) {
+                // MRT mirror (motionblur.frag writes both outputs): the blend lands in the history
+                // slot and, when its input is not the back buffer, in the back buffer itself, so a
+                // terminal stack presents with no copy and no HUD-handoff blit. When the input IS
+                // the back buffer (no bloom/AA before the blend) the pass cannot read and write it
+                // at once: motionBlurTemp is a harmless stand-in and the handoff blit stays.
+                SDL_GPUTexture *presentTarget = presentSource != backColor && backColor != NULL ? backColor : motionBlurTemp;
+                if (PostProcessPass2(cmd, MotionBlurPipeline(), historyWrite, presentTarget, bindings, 2, &mix, sizeof(mix))) {
+                    encoded|=4;
+                    MotionBlurHistory_Commit(motionBlurHistory);
+                    presentSource = presentTarget == backColor ? backColor : historyWrite;
                 }
-                presentSource = output;
             }
         } else {
-            motionBlurHasPrevious = false;
+            motionBlurHistory = MotionBlurHistory_Reset();
         }
 
         // OpenCMR2: lens grime — chromatic aberration, vignette, film grain —
@@ -3232,8 +3267,8 @@ struct Executor : GfxExecutor {
             }
         }
 
-        } else motionBlurHasPrevious=false;
-        if(!raceWorld)motionBlurHasPrevious=false;
+        } else motionBlurHistory=MotionBlurHistory_Reset();
+        if(!raceWorld)motionBlurHistory=MotionBlurHistory_Reset();
         if(worldEffects) {
             if(presentSource!=backColor){
                 SDL_GPUBlitInfo blit={};blit.source.texture=presentSource;blit.source.w=backWidth;blit.source.h=backHeight;

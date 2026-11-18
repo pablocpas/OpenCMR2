@@ -155,6 +155,32 @@ n90, _ = frames_to_reach(m, 230)
 print('clamp mix', mix_max, '/255; frames for a hard cut to reach 230/255 (90%%): %s; fraction of old frame left after 20 frames: %.2f' % (n90, m ** 20))
 assert n90 is not None
 
+# MRT mirror: the blend pass writes the same blended pixel to BOTH color outputs - location 0 is the
+# history slot, location 1 is the back buffer, so a terminal stack needs no HUD-handoff blit.
+def blur_step_dual(cur, prev, mix):
+    program = mb
+    program['MotionBlurUniforms'].binding = 0
+    ubo = ctx.buffer(np.array([mix, 0.0, 0.02, 0.0, 0.0, 0.0, 0.0, 0.0], dtype='f4').tobytes()); ubo.bind_to_uniform_block(0)
+    held = [ubo]
+    for unit, (uniform, array) in enumerate((('current', cur), ('previous', prev))):
+        t = ctx.texture((W, H), 4, np.ascontiguousarray(array).tobytes(), dtype='f1')
+        t.filter = (moderngl.NEAREST, moderngl.NEAREST); t.repeat_x = t.repeat_y = False
+        t.use(unit); program[uniform].value = unit; held.append(t)
+    ta = ctx.texture((W, H), 4); tb = ctx.texture((W, H), 4)
+    fbo = ctx.framebuffer([ta, tb]); fbo.use()
+    vao = ctx.vertex_array(program, []); vao.render(vertices=3)
+    out_a = np.frombuffer(fbo.read(attachment=0, components=4), dtype='u1').reshape(H, W, 4).copy()
+    out_b = np.frombuffer(fbo.read(attachment=1, components=4), dtype='u1').reshape(H, W, 4).copy()
+    for o in held + [vao, fbo, ta, tb]: o.release()
+    return out_a, out_b
+
+
+for m in (0.25, 0.9):
+    a, b = blur_step_dual(solid(200), solid(40), m)
+    expected = round(200 * (1 - m) + 40 * m)
+    assert abs(int(a[10, 10, 0]) - expected) <= 1, ('location 0 is the blend', m, int(a[10, 10, 0]))
+    assert np.array_equal(a, b), 'location 1 must mirror location 0 exactly (one pass, two targets)'
+
 # car keep (video.motion_blur_car): inside the followed car's screen rectangle the mix is gated to 0 -
 # the car stays sharp while the world around it blends. rect = u0 v0 u1 v1 (uv, v downwards).
 cur, prev = solid(200), solid(40)

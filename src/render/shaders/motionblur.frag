@@ -1,7 +1,8 @@
 #version 450
 
 layout(location = 0) in vec2 inTex;
-layout(location = 0) out vec4 outColor;
+layout(location = 0) out vec4 outColor;    // history slot: next frame's previous
+layout(location = 1) out vec4 outPresent;  // mirror into the back buffer: a terminal stack needs no copy/blit
 
 layout(set = 2, binding = 0) uniform sampler2D current;   // back buffer: this frame
 layout(set = 2, binding = 1) uniform sampler2D previous;  // previous frame
@@ -28,4 +29,5 @@ void main()
         m *= 1.0 - inU * inV;
     }
     outColor = mix(c, p, m);
+    outPresent = outColor;
 }
