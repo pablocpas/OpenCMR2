@@ -1340,6 +1340,7 @@ struct Executor : GfxExecutor {
                     if(c.raceWorld)RenderWeather();
                     else {weather.clear();weatherTicks=0;weatherCarry=0;historyValid=false;}
                     effectsRaceFrame=c.raceWorld;
+                    SetColorGrading(c.grade[0],c.grade[1],c.grade[2],c.grade[3]);   // snapshot from record time: later Set calls (menu restore) must not retrograde this frame
                     glCarFocusRaw=-1.0f;glCarDepth=0.0f;
                     glFogNearZ=0.0f;glFogFarZ=0.0f;
                     if(c.raceWorld){   // same ambiguity rule as SDL_GPU's ResolveProjection: one distinct

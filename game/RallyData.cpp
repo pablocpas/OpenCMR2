@@ -8713,6 +8713,9 @@ void RallyData_DrawViewEndFrameOverlay(CallbackStateMachine *pKey, int view)
     Gfx_SetRaceWorld(CGameInfo::IsInRaceMenuOpen()==0 || (TuningPanel_PreviewActive() && InRaceMenu_IsPlayerEditingCarSetup(view)==0));
     Game_DrawSceneViewport(RallyData_GetChallengeRenderState(), g_viewNodes[view], g_viewScreenRect, view, 1);
     Gfx_SetRaceWorld(FALSE);
+    // The race viewport's per-frame hook sets the grade per condition; put the
+    // restrained menu recipe back so the race grade never leaks into menus.
+    EffectSettings::ApplyGrade();
     RallyData_NotifyAdjacentMenuKeyValue(pKey, view);
 }
 

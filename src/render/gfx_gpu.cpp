@@ -2548,6 +2548,7 @@ struct Executor : GfxExecutor {
         memset(projVotes, 0, sizeof(projVotes)); projVoteTotal = 0; projVoteRejected = 0; // votes are per rendered frame, never carried over
         size_t worldEnd=frame.commands.size();unsigned boundaries=0;bool raceWorld=false;
         for(size_t i=0;i<frame.commands.size();++i)if(frame.commands[i].type==GFX_CMD_WORLD_END){worldEnd=i;raceWorld=frame.commands[i].raceWorld;++boundaries;}
+        if(boundaries==1)SetColorGrading(frame.commands[worldEnd].grade[0],frame.commands[worldEnd].grade[1],frame.commands[worldEnd].grade[2],frame.commands[worldEnd].grade[3]);   // record-time snapshot: later Set calls (menu restore) must not retrograde this frame
         // Per-view history is not implemented. Multi-view/UI-only frames skip
         // optional full-screen FX rather than smearing another view's HUD.
         bool worldEffects=present && boundaries==1;
