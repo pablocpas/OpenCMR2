@@ -301,8 +301,6 @@ class GreeceIndexTests(unittest.TestCase):
         # No Greece mapping joins the reviewed default/crossed sets: Greece trees are --all-trees only.
         self.assertFalse([1 for a,_ in list(patcher.TREE_CANDIDATES)+list(patcher.CROSSED_CANDIDATES) if a.startswith('gre')])
 
-if __name__ == '__main__':
-    unittest.main()
 
 class SolidCrownTests(unittest.TestCase):
     """Hollow-crown fix: the adaptive shell must be a closed outer volume with a
@@ -368,3 +366,6 @@ class SolidCrownTests(unittest.TestCase):
         outer_open = [e for e, (ex, ez) in boundary if (ex*ex + ez*ez) ** .5 > 0.8 * rmax]
         self.assertEqual(outer_open, [],
                          'outer crown shell is open (hollow): %d boundary edges at the outer radius' % len(outer_open))
+
+if __name__ == '__main__':
+    unittest.main()
