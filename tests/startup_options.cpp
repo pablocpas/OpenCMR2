@@ -12,7 +12,7 @@ extern "C" const char *__wrap_Sys_GetOptionText(const char*,const char *value){r
 extern "C" SysFile *__wrap_Sys_OpenFile(const char*,int){opens++;return nullptr;}
 int main(int argc,char **argv){
  mode=argc>1?argv[1]:"missing";LogStartupOptions();
- const char *required[]={"configured requests, NOT proof", "requested video.metalfx_spatial=0","requested video.dust_volume=1","temporal reconstruction is not implemented",
+ const char *required[]={"configured requests, NOT proof", "requested video.metalfx_spatial=0","requested video.dust_volume=1","requested video.motion_blur=0","temporal reconstruction is not implemented",
   mode=="disabled"?"driver names=original (disabled)":"driver names=original (sidecar missing)",
   mode=="disabled"?"scenery=original (overrides disabled)":"scenery=original (manifest missing/unreadable)"};
  for(auto text:required)if(logs.find(text)==std::string::npos){fprintf(stderr,"missing: %s\n%s",text,logs.c_str());return 1;}
