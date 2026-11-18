@@ -95,19 +95,21 @@ def tree(a,rel,adaptive=False,stem=True):
   for idx in f:
    x,y,z,sy,lo,hi=verts[idx];theta=(idx%RING)/(RING-1)
    out.append(((x,y,z),(theta,min(.999,max(.001,1-sy/cut))),nm))
- # Caps close the outer tube's open top and bottom rings; the silhouette no longer sees through the crown.
- # Cap normals come from the winding's cross product, like every other face, so a wrong winding flips
- # the normal instead of hiding it; the fan samples the ring's single texture row (flat band, small area).
+ # Close the tube with planar caps. Sampling one cylindrical atlas row on a radial fan
+ # collapses UV area to zero and stretches it into spokes from below. A separate source
+ # canopy crop maps x/z linearly: every shared point has one UV, with no polar seam.
  for ring,up in ((0,1),(len(rows)-1,-1)):
-  sy,lo,hi=rows[ring];cx=((lo+hi)/2-w/2)/h;v=min(.999,max(.001,1-sy/cut))
+  sy,lo,hi=rows[ring];cx=((lo+hi)/2-w/2)/h;r=(hi-lo)/extent*(w/h)/2
   for k in range(RING-1):
    order=(ring*RING+k+1,ring*RING+k) if up>0 else (ring*RING+k,ring*RING+k+1)
    corners=[(cx,1-sy/h,0)]+[verts[idx][:3] for idx in order]
    q=np.array(corners);nm=np.cross(q[1]-q[0],q[2]-q[0]);nm/=max(np.linalg.norm(nm),1e-12)
-   faces.append(('crown',len(out)+1))
-   out.append((corners[0],(0,v),nm))
-   for idx in order:
-    out.append((verts[idx][:3],((idx%RING)/(RING-1),v),nm))
+   faces.append(('cap',len(out)+1))
+   for x,y,z in corners:
+    out.append(((x,y,z),(.5+(x-cx)/(2*r),.5+z/(2*r*.8)),nm))
+ # Original canopy detail only, no generated foliage. The planar cap spans the central
+ # half of the source crown, avoiding the transparent silhouette border and bare stem.
+ Image.fromarray(a[:cut]).crop((w//4,cut//4,3*w//4,3*cut//4)).resize((256,256),Image.Resampling.LANCZOS).save(p/'cap.tga')
  # Bake a continuous cross-projection atlas, not repeated image stripes.
  # Adjacent shell faces share exactly the same texture coordinates at seams.
  color=np.array(src.convert('RGBa').resize((w*4,h*4),Image.Resampling.LANCZOS).convert('RGBA')).astype(float)/255
@@ -140,7 +142,7 @@ def tree(a,rel,adaptive=False,stem=True):
   lines.append('f '+' '.join(f'{k}/{k}/{k}' for k in range(i,i+3)))
  (p/'source-vertices.json').write_text(json.dumps({'schema':'source-uv-per-obj-v-1','source_canvas_wh':[w,h],'vertices':[{'obj_v':i+1,'source_uv':[.5+float(q[0][0])*h/w,1-float(q[0][1])]} for i,q in enumerate(out)]},indent=2))
  (p/'recipe.json').write_text(json.dumps({'schema':'source-canvas-tree-1','source_canvas_wh':[w,h],'source_mapping':str(rel),'method':'4x premultiplied interpolation, no new detail; continuous cross-projection atlas','triangles':len(faces),'crown_pixels':[aw,ah],'stem_radius':float(radius)},indent=2)+'\n')
- (p/'tree.obj').write_text('\n'.join(lines)+'\n');(p/'tree.mtl').write_text('newmtl crown\nKd 1 1 1\nd 1\nmap_Kd crown.tga\nnewmtl core\nKd 1 1 1\nd 1\nmap_Kd core.tga\nnewmtl trunk\nKd 1 1 1\nd 1\nmap_Kd trunk.tga\n')
+ (p/'tree.obj').write_text('\n'.join(lines)+'\n');(p/'tree.mtl').write_text('newmtl crown\nKd 1 1 1\nd 1\nmap_Kd crown.tga\nnewmtl cap\nKd 1 1 1\nd 1\nmap_Kd cap.tga\nnewmtl core\nKd 1 1 1\nd 1\nmap_Kd core.tga\nnewmtl trunk\nKd 1 1 1\nd 1\nmap_Kd trunk.tga\n')
  return str(rel/'tree.obj')
 
 def crossed_tree(a,rel,with_stem=True):
@@ -182,8 +184,10 @@ def crossed_tree(a,rel,with_stem=True):
  (p/'tree.mtl').write_text('newmtl crown\nKd 1 1 1\nd 1\nmap_Kd crossed.tga\nnewmtl trunk\nKd 1 1 1\nd 1\nmap_Kd trunk.tga\n')
  (p/'source-vertices.json').write_text(json.dumps({'schema':'source-uv-per-obj-v-1','source_canvas_wh':[w,h],'vertices':[{'source_uv':[.5+v[0]*h/w,1-v[1]]}for v in points]},indent=2))
  metadata=json.loads((p/'recipe.json').read_text());metadata.update(method='4x premultiplied interpolation, no new detail; fixed source-projection cutouts',crown_pixels=[w*4,h*4],geometry='four fixed intersecting cutout planes, not full3D',triangles=len(faces)+(len(stem) if broad else 0),alpha_changes='broadleaf lower central stem and bottom6% removed from canopy; separate original stem' if broad else 'original source alpha interpolated')
- (p/'recipe.json').write_text(json.dumps(metadata,indent=2)+'\n');(p/'crown.tga').unlink();return asset
-
+ (p/'recipe.json').write_text(json.dumps(metadata,indent=2)+'\n')
+ for shell_only in ('crown.tga','cap.tga','core.tga'): # crossed planes replace the shell; drop its textures
+  (p/shell_only).unlink(missing_ok=True)
+ return asset
 def articulated_spectator(src):
  # Exact manually authored demo recipe, only for hash-verified spc_mn9a.
  # This is four forearm poses on a 2D atlas, not a general skeleton.

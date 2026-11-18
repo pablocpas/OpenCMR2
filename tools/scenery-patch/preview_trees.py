@@ -124,7 +124,7 @@ def build_and_render(archive, member, raw, work):
             return None, 'rejected: %s' % str(e2)[:60]
     obj = cv.root / rel / 'tree.obj'
     textures = {}
-    for mat, fname in (('crown', 'crossed.tga'), ('crown', 'crown.tga'), ('core', 'core.tga'), ('trunk', 'trunk.tga')):
+    for mat, fname in (('crown', 'crossed.tga'), ('crown', 'crown.tga'), ('core', 'core.tga'), ('cap', 'cap.tga'), ('trunk', 'trunk.tga')):
         p = cv.root / rel / fname
         if mat not in textures and p.exists():
             t = np.array(Image.open(p).convert('RGBA'))

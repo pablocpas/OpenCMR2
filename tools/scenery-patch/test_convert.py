@@ -160,6 +160,9 @@ class Tests(unittest.TestCase):
         self.assertIn('not full3D',metadata['geometry'])
         self.assertIn('bottom6%',metadata['alpha_changes'])
         self.assertFalse(list(self.output.glob('trees/*/*/crown.tga')))
+        # Devin #385: crossed trees must not carry the shell-only textures tree() wrote first.
+        self.assertFalse(list(self.output.glob('trees/*/*/cap.tga')))
+        self.assertFalse(list(self.output.glob('trees/*/*/core.tga')))
         before={str(p.relative_to(self.output)):p.read_bytes() for p in self.output.rglob('*') if p.is_file()}
         shutil.rmtree(self.output);self.run_patch('--tree-geometry','crossed')
         self.assertEqual(before,{str(p.relative_to(self.output)):p.read_bytes() for p in self.output.rglob('*') if p.is_file()})
@@ -341,7 +344,7 @@ class SolidCrownTests(unittest.TestCase):
             if not f: continue
             if f[0] == 'v': verts.append(tuple(round(float(x), 6) for x in f[1:4]))
             elif f[0] == 'usemtl': material = f[1]
-            elif f[0] == 'f' and material in ('crown', 'core'):
+            elif f[0] == 'f' and material in ('crown', 'core', 'cap'):
                 faces.append(tuple(int(x.split('/')[0]) - 1 for x in f[1:4]))
         import numpy as np
         from collections import Counter
@@ -384,6 +387,55 @@ class SolidCrownTests(unittest.TestCase):
         self.assertTrue((core[:, :, 3] == crown[:, :, 3]).all(), 'core alpha must match the crown atlas')
         self.assertLess(core[:, :, :3][opaque].mean(), crown[:, :, :3][opaque].mean() * 0.75,
                         'core texels must be visibly darker than the crown')
+
+
+class CrownCapUV(unittest.TestCase):
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.base)
+
+    def test_cap_uvs_have_area_and_share_planar_coordinates(self):
+        # Olli 2026-11-18: "these trees look like a swirl from below". The cap fan gave every
+        # vertex the same texture row (center (0,v), ring (theta,v)): the underside sampled one
+        # atlas line swept radially. Cap triangles must have 2D UV area and agree at shared points.
+        oldroot = getattr(patcher, 'root', None)
+        try:
+            patcher.root = self.base / 'out'; patcher.root.mkdir()
+            src = self.base / 'tre_cap.dds'
+            im = Image.new('RGBA', (128, 128), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+            d.ellipse((8, 4, 120, 100), fill=(40, 160, 60, 255))
+            d.rectangle((58, 80, 70, 127), fill=(90, 60, 30, 255))
+            im.save(src)
+            rel = patcher.tree({'path': str(src), 'archive': 'finhit.bfl', 'texture': 'tre_cap.dds'}, Path('trees/tre_cap'), adaptive=True)
+            self.assertIn('map_Kd cap.tga',(patcher.root/rel).with_name('tree.mtl').read_text())
+            cut=round(im.height*patcher.crown_profile(__import__('numpy').array(im)[:,:,3])[0])
+            expected=im.crop((im.width//4,cut//4,3*im.width//4,3*cut//4)).resize((256,256),Image.Resampling.LANCZOS)
+            self.assertEqual(Image.open((patcher.root/rel).with_name('cap.tga')).tobytes(),expected.tobytes())
+            vs, vts, mat, caps, bad = [], [], None, 0, 0
+            shared={}
+            for line in (patcher.root / rel).read_text().splitlines():
+                t = line.split()
+                if not t: continue
+                if t[0] == 'v': vs.append(tuple(float(x) for x in t[1:4]))
+                elif t[0] == 'vt': vts.append(tuple(float(x) for x in t[1:3]))
+                elif t[0] == 'usemtl': mat = t[1]
+                elif t[0] == 'f' and mat in ('crown','cap'):
+                    idx = [int(k.split('/')[0]) - 1 for k in t[1:4]]
+                    if len({round(vs[i][1], 6) for i in idx}) == 1:  # flat crown face = cap fan
+                        caps += 1
+                        uv=[vts[i] for i in idx]
+                        area=abs((uv[1][0]-uv[0][0])*(uv[2][1]-uv[0][1])-(uv[1][1]-uv[0][1])*(uv[2][0]-uv[0][0]))
+                        if area < 0.001: bad += 1
+                        for i in idx:
+                            key=tuple(round(x,6) for x in vs[i]); value=vts[i]
+                            if key in shared: self.assertEqual(shared[key],value,'cap UVs disagree at a shared point')
+                            shared[key]=value
+            self.assertGreater(caps, 0)
+            self.assertEqual(bad, 0, f"{bad}/{caps} cap triangles sample a single atlas row (swirl from below)")
+        finally:
+            patcher.root = oldroot
 
 if __name__ == '__main__':
     unittest.main()

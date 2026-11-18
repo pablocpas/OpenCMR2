@@ -529,6 +529,7 @@ target_include_directories(scenery_pack_runtime_test PRIVATE ${PROJECT_SOURCE_DI
 target_compile_options(scenery_pack_runtime_test PRIVATE "SHELL:-include ${PROJECT_SOURCE_DIR}/src/port/types.h" -fms-extensions)
 target_link_libraries(scenery_pack_runtime_test PRIVATE SDL3::SDL3)
 add_test(NAME scenery_pack_runtime COMMAND scenery_pack_runtime_test ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/scenery-pack)
+add_test(NAME cap_loader_integration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cap_loader_integration.py $<TARGET_FILE:scenery_pack_format_test> WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 add_executable(driver_names_test driver_names.cpp)
 target_link_libraries(driver_names_test PRIVATE opencmr2_platform)
 add_test(NAME driver_names COMMAND driver_names_test)

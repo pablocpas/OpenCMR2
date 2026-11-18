@@ -20,6 +20,8 @@ int main(int argc,char **argv){
     assert(ParseOBJ(obj,groups));assert(groups[0].vertices.size()==3);assert(groups[0].vertices[0].v==1);
     assert(!ParseOBJ(obj+"f 100/1/1 2/2/1 3/3/1\n",groups));
     assert(!ParseOBJ(obj+"f 1/1/1 2/2/1 3/3/1 1/1/1\n",groups));
-    if(argc>1){std::ifstream in(argv[1]);std::string text((std::istreambuf_iterator<char>(in)),{});assert(ParseOBJ(text,groups));
-        size_t count=0;for(auto &g:groups)count+=g.vertices.size();std::cout<<groups.size()<<" groups, "<<count/3<<" triangles\n";}
+    // Not assert(): CI builds RelWithDebInfo (NDEBUG), which would skip the call itself.
+    if(argc>1){std::ifstream in(argv[1]);std::string text((std::istreambuf_iterator<char>(in)),{});
+        if(!ParseOBJ(text,groups)){std::cerr<<"ParseOBJ rejected "<<argv[1]<<"\n";return 1;}
+        size_t count=0;for(auto &g:groups){count+=g.vertices.size();std::cout<<"material "<<g.material<<"\n";}std::cout<<groups.size()<<" groups, "<<count/3<<" triangles\n";}
 }
