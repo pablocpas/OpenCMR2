@@ -11836,13 +11836,18 @@ void CarLight_UpdateFlagsAndGlows(Car *pCar)
     else
         CarLight_SetChannelMasks(LIGHT_CAR, 0, 0, 8);
     if (pCar->field_0xb58 != 0) {
-        CarLight_SetChannelMasks(LIGHT_CAR, broken0 == 0, broken1 == 0, 1);
-        // OpenCMR2: the shared type-8 channel was never damage-gated, so its
-        // lamps kept shining with every lamp glass broken. Darken it only
-        // when BOTH sides' lamp glass is broken: the channel carries a
-        // single shared level, so single-side gating could extinguish an
-        // intact lamp. Per-side behaviour stays exactly as the original.
-        CarLight_SetChannelMasks(LIGHT_CAR, broken0 == 0 || broken1 == 0, broken0 == 0 || broken1 == 0, 0x10);
+        // OpenCMR2: the original gates the front channels on break slots 4/5,
+        // but those hold the REAR lamp pair while the front pair lives in
+        // slots 6/7 (damage grid column 0 is the front axle, see
+        // frontBrakeScale; slots 0/1 are the windscreen/rear window, 2/3 the
+        // side windows). Slots 6/7 went unread, so broken headlights kept
+        // shining. Gate the front channels on the front pair; slot 6 sits on
+        // the same side as slot 4, slot 7 on slot 5's side.
+        CarLight_SetChannelMasks(LIGHT_CAR, pParts->partBroken[6] == 0, pParts->partBroken[7] == 0, 1);
+        // The shared channel carries one level for both sides, so darken it
+        // only when BOTH front lamps are broken: single-side gating could
+        // extinguish an intact lamp (no per-side data exists).
+        CarLight_SetChannelMasks(LIGHT_CAR, pParts->partBroken[6] == 0 || pParts->partBroken[7] == 0, pParts->partBroken[6] == 0 || pParts->partBroken[7] == 0, 0x10);
     } else {
         CarLight_SetChannelMasks(LIGHT_CAR, 0, 0, 1);
         CarLight_SetChannelMasks(LIGHT_CAR, 0, 0, 0x10);
