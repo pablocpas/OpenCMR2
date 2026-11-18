@@ -31,8 +31,13 @@ need('{"Motion blur keeps the car sharp (0/1)", "video.motion_blur_car", 0, 1, 1
 need("video.motion_blur_car" in rd("docs/POST-EFFECTS.md"), "documented option")
 # history ping-pong: the steady-state blend writes the slot it did not read - no full-screen copy per frame
 need("render/motion_blur_history.h" in g and "MotionBlurHistory_Commit" in g, "ping-pong state machine in use")
-blend = g.index("PostProcessPass(cmd, MotionBlurPipeline()")
-need("SDL_CopyGPUTextureToTexture" not in g[blend:g.index("presentSource = historyWrite;", blend)], "no copy pass in the steady-state blend")
+blend = g.index("PostProcessPass2(cmd, MotionBlurPipeline()")
+need("SDL_CopyGPUTextureToTexture" not in g[blend:g.index("MotionBlurHistory_Commit", blend)], "no copy pass in the steady-state blend")
+# MRT mirror: the blend also lands in the back buffer when its input is elsewhere, so a terminal
+# stack presents with no HUD-handoff blit (the old code paid a full-screen history copy instead).
+need("layout(location = 1) out vec4 outPresent;" in s and "outPresent = outColor;" in s, "shader mirrors the blend to a second output")
+need("presentTarget = presentSource != backColor" in g, "second target is the back buffer only when the blend input is not")
+need("num_color_targets = 2" in g, "blend pipeline declares two color targets")
 need("MotionBlurHistory_Seed" in g, "first frame after a reset still seeds once")
 need(g.count("MotionBlurHistory_Reset()") >= 5, "toggle, resize, disabled, bypass and non-race paths all reset")
 print("motion blur car-keep wiring ok" if ok else "FAILED"); sys.exit(0 if ok else 1)

@@ -1286,8 +1286,12 @@ struct Executor : GfxExecutor {
         info.depth_stencil_state.enable_depth_test = false;
         info.depth_stencil_state.enable_depth_write = false;
         info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
-        info.target_info.color_target_descriptions = &color;
-        info.target_info.num_color_targets = 1;
+        // Two color targets: the blend writes the history slot (attachment 0) and mirrors the
+        // same pixels into the back buffer or a scratch stand-in (attachment 1) - one pass, no
+        // per-frame history copy (the old code) and no HUD-handoff blit when the stack is terminal.
+        SDL_GPUColorTargetDescription colors[2] = { color, color };
+        info.target_info.color_target_descriptions = colors;
+        info.target_info.num_color_targets = 2;
         info.target_info.depth_stencil_format = depthFormat;
         info.target_info.has_depth_stencil_target = false;
         motionBlurPipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
@@ -1364,6 +1368,27 @@ struct Executor : GfxExecutor {
                          int numBindings, const void *uniformData, uint32_t uniformSize,int width=0,int height=0)
     {
         SDL_GPURenderPass *pass = Gfx_BeginPostProcessPass(cmd,pipeline,target,bindings,numBindings);
+        if (pass == NULL)
+            return false;
+        SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        if(width<=0)width=backWidth;if(height<=0)height=backHeight;
+        SDL_GPUViewport vp = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
+        SDL_Rect scissor = { 0, 0, width, height };
+        SDL_SetGPUViewport(pass, &vp);
+        SDL_SetGPUScissor(pass, &scissor);
+        if (uniformData != NULL)
+            SDL_PushGPUFragmentUniformData(cmd, 0, uniformData, uniformSize);
+        SDL_BindGPUFragmentSamplers(pass, 0, bindings, numBindings);
+        SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(pass);
+        return true;
+    }
+
+    bool PostProcessPass2(SDL_GPUCommandBuffer *cmd, SDL_GPUGraphicsPipeline *pipeline,
+                          SDL_GPUTexture *targetA, SDL_GPUTexture *targetB, const SDL_GPUTextureSamplerBinding *bindings,
+                          int numBindings, const void *uniformData, uint32_t uniformSize,int width=0,int height=0)
+    {
+        SDL_GPURenderPass *pass = Gfx_BeginPostProcessPass2(cmd,pipeline,targetA,targetB,bindings,numBindings);
         if (pass == NULL)
             return false;
         SDL_BindGPUGraphicsPipeline(pass, pipeline);
@@ -2958,10 +2983,18 @@ struct Executor : GfxExecutor {
                 SDL_GPUCopyPass *copy=SDL_BeginGPUCopyPass(cmd);
                 if(copy){SDL_GPUTextureLocation src={},dst={};src.texture=presentSource;dst.texture=historyRead;
                     SDL_CopyGPUTextureToTexture(copy,&src,&dst,backWidth,backHeight,1,false);SDL_EndGPUCopyPass(copy);MotionBlurHistory_Seed(motionBlurHistory);}
-            } else if (historyWrite != presentSource && PostProcessPass(cmd, MotionBlurPipeline(), historyWrite, bindings, 2, &mix, sizeof(mix))) {
-                encoded|=4;
-                MotionBlurHistory_Commit(motionBlurHistory);
-                presentSource = historyWrite;
+            } else if (historyWrite != presentSource && motionBlurTemp != NULL) {
+                // MRT mirror (motionblur.frag writes both outputs): the blend lands in the history
+                // slot and, when its input is not the back buffer, in the back buffer itself, so a
+                // terminal stack presents with no copy and no HUD-handoff blit. When the input IS
+                // the back buffer (no bloom/AA before the blend) the pass cannot read and write it
+                // at once: motionBlurTemp is a harmless stand-in and the handoff blit stays.
+                SDL_GPUTexture *presentTarget = presentSource != backColor && backColor != NULL ? backColor : motionBlurTemp;
+                if (PostProcessPass2(cmd, MotionBlurPipeline(), historyWrite, presentTarget, bindings, 2, &mix, sizeof(mix))) {
+                    encoded|=4;
+                    MotionBlurHistory_Commit(motionBlurHistory);
+                    presentSource = presentTarget == backColor ? backColor : historyWrite;
+                }
             }
         } else {
             motionBlurHistory = MotionBlurHistory_Reset();

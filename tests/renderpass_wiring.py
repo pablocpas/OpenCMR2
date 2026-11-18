@@ -43,6 +43,9 @@ pass_source = (root/'src/render/postprocess_pass.h').read_text()
 assert 'SDL_BeginGPURenderPass(cmd,&colour,1,nullptr)' in pass_source
 helper = s[s.index('bool PostProcessPass('):s.index('bool PrepareDustResources(')]
 assert 'Gfx_BeginPostProcessPass(' in helper
-for name in fullscreen - {"PostProcess"}:
+assert 'Gfx_BeginPostProcessPass2(' in helper
+for name in fullscreen - {"PostProcess", "MotionBlur"}:
     assert re.search(r'PostProcessPass\(cmd,\s*'+name+r'Pipeline\(\)', s), name + " pass route changed"
+# MotionBlur is the two-target route: the blend mirrors into the back buffer (MRT).
+assert re.search(r'PostProcessPass2\(cmd,\s*MotionBlurPipeline\(\)', s), "MotionBlur MRT pass route changed"
 print('all fullscreen pipeline declarations match color-only passes')
