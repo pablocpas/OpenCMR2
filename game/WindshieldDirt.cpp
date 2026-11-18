@@ -15,6 +15,7 @@
 #include "WindshieldDirt.h"
 #include "WindshieldGlassFrame.h"
 #include "GraphicsOptions.h"
+#include "GameInfo.h"
 #include "port/sys.h"
 
 WindshieldMap g_windshieldMaps[WINDSHIELD_MAX_VIEWS];
@@ -54,6 +55,7 @@ void Windshield_GetDiag(int view, unsigned *calls, unsigned *drawn, int *reason,
 
 int StageObject_GetViewWeatherField54(int index);
 CarPartSet *StageTiming_GetCarReplayRecord(int index);
+int StageTiming_GetClockTime(void);
 
 // Blade geometry in glass-local uv (u across the glass, v down it, v > 1 is
 // below the glass): a symmetric pair pivoting just under the bottom edge. The
@@ -125,9 +127,10 @@ void Windshield_UpdateView(int view, int slot)
         // from selection and accumulation problems in native run logs.
         static const char *const kStateNames[4] = { "intact", "damaged", "broken", "off/unresolved" };
         int prev = g_windshieldGlassState[mview];
-        Sys_Log("windshield glass: view %d slot %d state %s (was %s); wslot %d damaged %d broken %d; dirt total %d; video.windscreen_dirt %d",
+        Sys_Log("windshield glass: view %d slot %d state %s (was %s); clock %d mode %d; wslot %d damaged %d broken %d; dirt total %d; video.windscreen_dirt %d",
                 view, slot, kStateNames[glassState < 0 ? 3 : glassState],
-                kStateNames[prev < 0 ? 3 : prev], diagWslot, diagDamaged, diagBroken,
+                kStateNames[prev < 0 ? 3 : prev], StageTiming_GetClockTime(), (int)CGameInfo::GetConfiguredGameMode(),
+                diagWslot, diagDamaged, diagBroken,
                 Windshield_TotalDirt(m), Sys_GetOption("video.windscreen_dirt", 40));
         g_windshieldGlassState[mview] = glassState;
     }
