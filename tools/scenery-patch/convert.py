@@ -62,43 +62,49 @@ def tree(a,rel,adaptive=False,stem=True):
   lo_s=np.convolve(np.pad([r[1] for r in rows],2,mode='edge'),np.ones(5)/5,mode='valid');hi_s=np.convolve(np.pad([r[2] for r in rows],2,mode='edge'),np.ones(5)/5,mode='valid')
   rows=[(r[0],int(round(l)),int(round(hh))) for r,l,hh in zip(rows,lo_s,hi_s)]
  extent=w
+ RING=17 # vertices per row: 16 segments + 1 seam duplicate; the theta lookup below divides by this
  verts=[]
  for y,lo,hi in rows:
   cx=((lo+hi)/2-w/2)/h;r=(hi-lo)/extent*(w/h)/2
-  for k in range(17):
-   t=k*math.tau/16;verts.append((cx+r*math.cos(t),1-y/h,r*.8*math.sin(t),y,lo,hi))
+  for k in range(RING):
+   t=k*math.tau/(RING-1);verts.append((cx+r*math.cos(t),1-y/h,r*.8*math.sin(t),y,lo,hi))
  triangles=[]
  for j in range(len(rows)-1):
-  for k in range(16):
-   aa=j*17+k;bb=aa+17;triangles.extend([(aa,aa+1,bb),(aa+1,bb+1,bb)])
+  for k in range(RING-1):
+   aa=j*RING+k;bb=aa+RING;triangles.extend([(aa,aa+1,bb),(aa+1,bb+1,bb)])
  # Inner core: a 0.55-scale copy of the tube with reversed winding (inward normals). The bare tube is
  # one open wall - through an alpha hole you saw sky out the far side, so the crown read hollow. The
  # core puts shaded foliage behind every hole; its open rings stay hidden inside the capped outer shell.
+ # inner0 sits on a row boundary (outer block = len(rows)*RING), so the theta lookup idx%RING stays
+ # correct for inner vertices too.
  inner0=len(verts)
  for y,lo,hi in rows:
   cx=((lo+hi)/2-w/2)/h;r=(hi-lo)/extent*(w/h)/2*.55
-  for k in range(17):
-   t=k*math.tau/16;verts.append((cx+r*math.cos(t),1-y/h,r*.8*math.sin(t),y,lo,hi))
+  for k in range(RING):
+   t=k*math.tau/(RING-1);verts.append((cx+r*math.cos(t),1-y/h,r*.8*math.sin(t),y,lo,hi))
  for j in range(len(rows)-1):
-  for k in range(16):
-   aa=inner0+j*17+k;bb=aa+17;triangles.extend([(aa,bb,aa+1),(aa+1,bb,bb+1)])
+  for k in range(RING-1):
+   aa=inner0+j*RING+k;bb=aa+RING;triangles.extend([(aa,bb,aa+1),(aa+1,bb,bb+1)])
  out=[];faces=[]
  for f in triangles:
   q=np.array([verts[i][:3] for i in f]);nm=np.cross(q[1]-q[0],q[2]-q[0]);nm/=max(np.linalg.norm(nm),1e-12)
   faces.append(('crown',len(out)+1))
   for idx in f:
-   x,y,z,sy,lo,hi=verts[idx];theta=(idx%17)/16
+   x,y,z,sy,lo,hi=verts[idx];theta=(idx%RING)/(RING-1)
    out.append(((x,y,z),(theta,min(.999,max(.001,1-sy/cut))),nm))
  # Caps close the outer tube's open top and bottom rings; the silhouette no longer sees through the crown.
+ # Cap normals come from the winding's cross product, like every other face, so a wrong winding flips
+ # the normal instead of hiding it; the fan samples the ring's single texture row (flat band, small area).
  for ring,up in ((0,1),(len(rows)-1,-1)):
-  sy,lo,hi=rows[ring];cx=((lo+hi)/2-w/2)/h;v=min(.999,max(.001,1-sy/cut));nm=(0.0,float(up),0.0)
-  for k in range(16):
-   order=(ring*17+k+1,ring*17+k) if up>0 else (ring*17+k,ring*17+k+1)
+  sy,lo,hi=rows[ring];cx=((lo+hi)/2-w/2)/h;v=min(.999,max(.001,1-sy/cut))
+  for k in range(RING-1):
+   order=(ring*RING+k+1,ring*RING+k) if up>0 else (ring*RING+k,ring*RING+k+1)
+   corners=[(cx,1-sy/h,0)]+[verts[idx][:3] for idx in order]
+   q=np.array(corners);nm=np.cross(q[1]-q[0],q[2]-q[0]);nm/=max(np.linalg.norm(nm),1e-12)
    faces.append(('crown',len(out)+1))
-   out.append(((cx,1-sy/h,0),(0,v),nm))
+   out.append((corners[0],(0,v),nm))
    for idx in order:
-    x,y,z,syy,lo2,hi2=verts[idx]
-    out.append(((x,y,z),((idx%17)/16,v),nm))
+    out.append((verts[idx][:3],((idx%RING)/(RING-1),v),nm))
  # Bake a continuous cross-projection atlas, not repeated image stripes.
  # Adjacent shell faces share exactly the same texture coordinates at seams.
  color=np.array(src.convert('RGBa').resize((w*4,h*4),Image.Resampling.LANCZOS).convert('RGBA')).astype(float)/255
