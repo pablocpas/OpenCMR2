@@ -21,6 +21,7 @@
 #include "StageTiming.h"
 #include "StageBlock.h"
 #include "GraphicsOptions.h"
+#include "GameInfo.h"
 #include "port/sys.h"
 #include "port/gfx.h"
 #include "Graphics.h"
@@ -772,6 +773,20 @@ struct WgCockpitExt {
 };
 static WgCockpitExt g_wgCockpitExt[WG_MAX_CARS];
 
+// Probe arming (video.cockpit_extend_probe): the probe is one-shot per cockpit-view entry, not per
+// launch - the option's rising edge and every fresh registration (race start, race->replay transition)
+// re-arm it. It fires only after the draw has run WG_PROBE_SETTLE calls, so the first cockpit frame's
+// unsettled world transforms cannot produce a bogus verdict.
+#define WG_PROBE_SETTLE 25
+static int s_probeArmed = 0, s_probeSettle = 0;
+static void WindshieldGlass_ArmCockpitExtensionProbe(void)
+{
+    if (Sys_GetOption("video.cockpit_extend_probe", 0) != 0) {
+        s_probeArmed = 1;
+        s_probeSettle = WG_PROBE_SETTLE;
+    }
+}
+
 void WindshieldGlass_SetCockpitExtension(int car, SceneNode *node, int texture, float u, float v,
                                          float x, float yTop, float yBot, float z, float slope, float floorZ0)
 {
@@ -779,6 +794,7 @@ void WindshieldGlass_SetCockpitExtension(int car, SceneNode *node, int texture, 
         return;
     WgCockpitExt *e = &g_wgCockpitExt[car];
     e->active = node != NULL && texture >= 0;
+    WindshieldGlass_ArmCockpitExtensionProbe();
     e->bothSides = false;
     e->node = node; e->texture = texture; e->u = u; e->v = v;
     e->x = x; e->yTop = yTop; e->yBot = yBot; e->z = z; e->slope = slope; e->floorZ0 = floorZ0;
@@ -808,14 +824,18 @@ void WindshieldGlass_ClearCockpitExtensions(void)
 void FixMatrix_ProjectWorldPointToView(int *pOut, FixVector *pPoint, SceneNode *pView);
 static void WindshieldGlass_ProbeCockpitExtension(int car)
 {
-    static int prevOpt = 0, armed = 0;
+    static int prevOpt = 0;
     int opt = Sys_GetOption("video.cockpit_extend_probe", 0);
-    if (opt != 0 && prevOpt == 0) armed = 1;
+    if (opt != 0 && prevOpt == 0) WindshieldGlass_ArmCockpitExtensionProbe();
     prevOpt = opt;
-    if (opt == 0) armed = 0;
-    if (!armed || car < 0 || car >= WG_MAX_CARS || !g_wgCockpitExt[car].active)
+    if (opt == 0) s_probeArmed = 0;
+    if (!s_probeArmed || car < 0 || car >= WG_MAX_CARS || !g_wgCockpitExt[car].active)
         return;
-    armed = 0;
+    if (s_probeSettle > 0) {
+        s_probeSettle--;
+        return;
+    }
+    s_probeArmed = 0;
     WgCockpitExt *e = &g_wgCockpitExt[car];
     SceneNode *view = g_viewNodes[car];
     if (view == NULL) {
@@ -833,8 +853,8 @@ static void WindshieldGlass_ProbeCockpitExtension(int car)
     FixVector eyeMesh;
     FixMatrix_Invert(&invWorld, &e->node->world);
     FixMatrix_TransformPoint(&eyeMesh, (FixVector *)&view->world.position, &invWorld);
-    Sys_Log("cockpit extension probe: view %d eye in interior mesh (x %.3f, y %.3f, z %.3f; -x is rearward); card rear cut at x %.3f (door-extend %d/100 moves it to x %.3f), strips run to x %.3f (extend-rear %d/100)",
-            car, eyeMesh.x / 65536.0, eyeMesh.y / 65536.0, eyeMesh.z / 65536.0,
+    Sys_Log("cockpit extension probe: view %d mode %d eye in interior mesh (x %.3f, y %.3f, z %.3f; -x is rearward); card rear cut at x %.3f (door-extend %d/100 moves it to x %.3f), strips run to x %.3f (extend-rear %d/100)",
+            car, (int)CGameInfo::GetConfiguredGameMode(), eyeMesh.x / 65536.0, eyeMesh.y / 65536.0, eyeMesh.z / 65536.0,
             e->x, door, e->x - door / 100.0f, xr, len);
     // Corners: card rear edge, then (when strips exist) the strip far edge and floor far corners.
     float corner[8][3] = {
@@ -882,24 +902,50 @@ static void WindshieldGlass_ProbeCockpitExtension(int car)
                 door, e->x - door / 100.0f, door / 100.0f);
 }
 
+// Diagnostics (transitions only, no behaviour change): why the extension is not on screen in this
+// session. Separates "not drawn" (gating, with the reason) from "drawn but invisible" (coverage/FOV),
+// and the game mode (4 = replay) tells race and replay sessions apart.
+static int g_wgExtDrawState[WG_MAX_CARS];   // 0 unknown/skipped-quiet, 1 drawn, 2 skipped-logged
+static const char *g_wgExtSkipReason[WG_MAX_CARS];
+static int WgExtSkip(int car, const char *reason)
+{
+    if (car >= 0 && car < WG_MAX_CARS &&
+        (g_wgExtDrawState[car] != 2 || g_wgExtSkipReason[car] != reason)) {
+        Sys_Log("cockpit extension: car %d mode %d not drawn (%s)", car, (int)CGameInfo::GetConfiguredGameMode(), reason);
+        g_wgExtDrawState[car] = 2;
+        g_wgExtSkipReason[car] = reason;
+    }
+    return 0;
+}
+static int WgExtDrew(int car)
+{
+    if (g_wgExtDrawState[car] != 1) {
+        Sys_Log("cockpit extension: car %d mode %d drawing", car, (int)CGameInfo::GetConfiguredGameMode());
+        g_wgExtDrawState[car] = 1;
+    }
+    return 1;
+}
+
 int WindshieldGlass_DrawCockpitExtension(int car)
 {
     WindshieldGlass_ProbeCockpitExtension(car);
     int len = Sys_GetOption("video.cockpit_extend_rear", 0);
-    if (len <= 0 || car < 0 || car >= WG_MAX_CARS || !g_wgCockpitExt[car].active)
+    if (car < 0 || car >= WG_MAX_CARS)
         return 0;
+    if (len <= 0 || !g_wgCockpitExt[car].active)
+        return WgExtSkip(car, "inactive or extend-rear 0");
     WgCockpitExt *e = &g_wgCockpitExt[car];
     Texture *tx = (e->texture < 2048) ? CGraphics::GetTextureBuffer()[e->texture] : NULL;
     if (tx == NULL || tx->pSurface == NULL)
-        return 0;
+        return WgExtSkip(car, "texture missing");
     if (len > 150) len = 150;
     float L = len / 100.0f;
     float xr = e->x - L;
-    if (!e->bothSides) return 0; // no guessed coverage on unmatched models
+    if (!e->bothSides) return WgExtSkip(car, "passenger profile unmatched"); // no guessed coverage on unmatched models
     std::vector<GfxVertex> gv;
     CockpitExtension_Append(gv,e->profiles[0],xr);
     CockpitExtension_Append(gv,e->profiles[1],xr);
-    if (gv.empty()) return 0;
+    if (gv.empty()) return WgExtSkip(car, "no strip geometry");
     GfxMatrix wm;
     float *wf = (float *)&wm;
     WgWorldFromFixed((const int *)&e->node->world, wf);
@@ -925,7 +971,7 @@ int WindshieldGlass_DrawCockpitExtension(int car)
     Gfx_DrawPrimitive(GFX_TRIANGLELIST, gv.data(), (int)gv.size());
     Gfx_SetTexture(0, NULL);
     Gfx_PopState();
-    return 1;
+    return WgExtDrew(car);
 }
 
 // ---- cockpit add-on mesh + interior dump (video.cockpit_mesh / video.dump_interior) -------------------
