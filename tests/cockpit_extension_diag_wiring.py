@@ -20,4 +20,7 @@ need("passenger profile unmatched" in wg and "texture missing" in wg and "no str
      "each skip reason named")
 need("clock %d mode %d" in wd, "glass state transition log carries stage clock and game mode")
 need("StageTiming_GetClockTime" in wd, "transition log reads the stage clock")
+clear = wg.split("void WindshieldGlass_ClearCockpitExtensions(void)", 1)[1].split("}", 1)[0]
+need("g_wgExtDrawState[i] = 0" in clear and "g_wgExtSkipReason[i] = NULL" in clear,
+     "ClearCockpitExtensions must reset the draw-transition state so the next session logs its own verdict")
 print("cockpit extension diag wiring ok")

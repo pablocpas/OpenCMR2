@@ -772,6 +772,9 @@ struct WgCockpitExt {
     bool bothSides;
 };
 static WgCockpitExt g_wgCockpitExt[WG_MAX_CARS];
+// Draw-transition diagnostics state (see WgExtSkip/WgExtDrew below); reset with the registrations.
+static int g_wgExtDrawState[WG_MAX_CARS];   // 0 unknown/skipped-quiet, 1 drawn, 2 skipped-logged
+static const char *g_wgExtSkipReason[WG_MAX_CARS];
 
 // Probe arming (video.cockpit_extend_probe): the probe is one-shot per cockpit-view entry, not per
 // launch - the option's rising edge and every fresh registration (race start, race->replay transition)
@@ -809,8 +812,11 @@ void WindshieldGlass_SetCockpitExtensionProfiles(int car, const CockpitExtension
 
 void WindshieldGlass_ClearCockpitExtensions(void)
 {
-    for (int i = 0; i < WG_MAX_CARS; i++)
+    for (int i = 0; i < WG_MAX_CARS; i++) {
         g_wgCockpitExt[i].active = 0;
+        g_wgExtDrawState[i] = 0;    // next session logs its own drawn/not-drawn verdict
+        g_wgExtSkipReason[i] = NULL;
+    }
 }
 
 // ---- cockpit extension visibility probe (video.cockpit_extend_probe, default 0 = off) ----
@@ -905,8 +911,6 @@ static void WindshieldGlass_ProbeCockpitExtension(int car)
 // Diagnostics (transitions only, no behaviour change): why the extension is not on screen in this
 // session. Separates "not drawn" (gating, with the reason) from "drawn but invisible" (coverage/FOV),
 // and the game mode (4 = replay) tells race and replay sessions apart.
-static int g_wgExtDrawState[WG_MAX_CARS];   // 0 unknown/skipped-quiet, 1 drawn, 2 skipped-logged
-static const char *g_wgExtSkipReason[WG_MAX_CARS];
 static int WgExtSkip(int car, const char *reason)
 {
     if (car >= 0 && car < WG_MAX_CARS &&
