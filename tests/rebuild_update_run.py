@@ -28,14 +28,16 @@ fi
  # Default unchanged: builds, no preparation or game, no fetch/switch.
  p=run(repo,env=env);assert p.returncode==0,p.stderr;assert not log.exists()
  p=run(repo,'--all-mods','--run',env=env);assert p.returncode==0,p.stderr;calls=[json.loads(x) for x in log.read_text().splitlines()];assert len(calls)==2;assert calls[0][-1]=='--prepare-only';assert calls[0][:-1]==calls[1];assert calls[1][:2]==['--data',str(data)];assert calls[1][calls[1].index('--mods-dir')+1]==str(mods);assert '--textures=uprez' in calls[1] and calls[1].index('--textures=uprez')>calls[1].index('--tunnel-lines')
- # Ignore build output, as real checkout does; untracked/modified input must block update.
- (repo/'.git/info/exclude').write_text('build/\n');(repo/'dirty').write_text('do not lose');before=git(repo,'rev-parse','HEAD');p=run(repo,'--update','--dry-run',env=env);assert p.returncode==2 and 'clean' in p.stderr;assert git(repo,'rev-parse','HEAD')==before;(repo/'dirty').unlink()
+ # Ignore build output, as real checkout does. Untracked local content (his mods/, Licenses/, shaders/
+ # folders) must NOT block update: the ff-only merge itself refuses only if a pull would overwrite an
+ # untracked file, so nothing is lost silently. Tracked modifications must still block.
+ (repo/'.git/info/exclude').write_text('build/\n');(repo/'dirty').write_text('do not lose');before=git(repo,'rev-parse','HEAD');p=run(repo,'--update','--dry-run',env=env);assert p.returncode==0,p.stderr;assert (repo/'dirty').read_text()=='do not lose';assert git(repo,'rev-parse','HEAD')==before
  with (repo/'rebuild.sh').open('a') as f:f.write('\n# local edit\n')
  p=run(repo,'--update',env=env);assert p.returncode==2;git(repo,'checkout','--','rebuild.sh')
  # Incoming script marker proves update reexecutes the newly fetched version.
  s=(seed/'rebuild.sh').read_text().replace('set -euo pipefail','set -euo pipefail\necho updated-script-marker',1);(seed/'rebuild.sh').write_text(s);git(seed,'add','.');git(seed,'commit','-qm','incoming');git(seed,'push',str(remote),'main');incoming=git(seed,'rev-parse','HEAD')
  p=run(repo,'--update','--all-mods','--run','--dry-run',env=env);assert p.returncode==0,p.stderr;assert git(repo,'rev-parse','HEAD')==before and 'updated-script-marker' not in p.stdout
- p=run(repo,'--update','--all-mods','--run',env=env);assert p.returncode==0,(p.stdout,p.stderr);assert git(repo,'rev-parse','HEAD')==incoming and 'updated-script-marker' in p.stdout
+ p=run(repo,'--update','--all-mods','--run',env=env);assert p.returncode==0,(p.stdout,p.stderr);assert git(repo,'rev-parse','HEAD')==incoming and 'updated-script-marker' in p.stdout;assert (repo/'dirty').read_text()=='do not lose';(repo/'dirty').unlink()
  # Diverged local main is refused without changing current branch or losing commits.
  git(repo,'checkout','-b','feature');git(repo,'checkout','main');(repo/'local').write_text('preserve');git(repo,'add','.');git(repo,'commit','-qm','local');local=git(repo,'rev-parse','HEAD');git(repo,'checkout','feature');p=run(repo,'--update',env=env);assert p.returncode==2 and 'ahead/diverged' in p.stderr;assert git(repo,'branch','--show-current')=='feature' and git(repo,'rev-parse','main')==local
  # A failed build must never launch.
