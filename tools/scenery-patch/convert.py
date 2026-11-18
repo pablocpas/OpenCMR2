@@ -71,6 +71,17 @@ def tree(a,rel,adaptive=False,stem=True):
  for j in range(len(rows)-1):
   for k in range(16):
    aa=j*17+k;bb=aa+17;triangles.extend([(aa,aa+1,bb),(aa+1,bb+1,bb)])
+ # Inner core: a 0.55-scale copy of the tube with reversed winding (inward normals). The bare tube is
+ # one open wall - through an alpha hole you saw sky out the far side, so the crown read hollow. The
+ # core puts shaded foliage behind every hole; its open rings stay hidden inside the capped outer shell.
+ inner0=len(verts)
+ for y,lo,hi in rows:
+  cx=((lo+hi)/2-w/2)/h;r=(hi-lo)/extent*(w/h)/2*.55
+  for k in range(17):
+   t=k*math.tau/16;verts.append((cx+r*math.cos(t),1-y/h,r*.8*math.sin(t),y,lo,hi))
+ for j in range(len(rows)-1):
+  for k in range(16):
+   aa=inner0+j*17+k;bb=aa+17;triangles.extend([(aa,bb,aa+1),(aa+1,bb,bb+1)])
  out=[];faces=[]
  for f in triangles:
   q=np.array([verts[i][:3] for i in f]);nm=np.cross(q[1]-q[0],q[2]-q[0]);nm/=max(np.linalg.norm(nm),1e-12)
@@ -78,6 +89,16 @@ def tree(a,rel,adaptive=False,stem=True):
   for idx in f:
    x,y,z,sy,lo,hi=verts[idx];theta=(idx%17)/16
    out.append(((x,y,z),(theta,min(.999,max(.001,1-sy/cut))),nm))
+ # Caps close the outer tube's open top and bottom rings; the silhouette no longer sees through the crown.
+ for ring,up in ((0,1),(len(rows)-1,-1)):
+  sy,lo,hi=rows[ring];cx=((lo+hi)/2-w/2)/h;v=min(.999,max(.001,1-sy/cut));nm=(0.0,float(up),0.0)
+  for k in range(16):
+   order=(ring*17+k+1,ring*17+k) if up>0 else (ring*17+k,ring*17+k+1)
+   faces.append(('crown',len(out)+1))
+   out.append(((cx,1-sy/h,0),(0,v),nm))
+   for idx in order:
+    x,y,z,syy,lo2,hi2=verts[idx]
+    out.append(((x,y,z),((idx%17)/16,v),nm))
  # Bake a continuous cross-projection atlas, not repeated image stripes.
  # Adjacent shell faces share exactly the same texture coordinates at seams.
  color=np.array(src.convert('RGBa').resize((w*4,h*4),Image.Resampling.LANCZOS).convert('RGBA')).astype(float)/255
