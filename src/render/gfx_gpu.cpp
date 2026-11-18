@@ -3150,6 +3150,8 @@ struct Executor : GfxExecutor {
         float vaporUniforms[60 * 4 + 4] = {};   // 4 trail boxes + 28 points + 28 depths + depth info, see speedstreak.frag
         float vaporNear = 0.0f, vaporFar = 0.0f;
         bool vaporDraw = false;
+        float carProtectZMin = 0.0f, carProtectZMax = 0.0f, carProtectFade = 0.0f;   // player car's view-depth band the radial streak keeps clear
+        bool carProtectOn = false;
         {
             Uint64 vTicks = SDL_GetTicksNS();
             float rawDt = vaporTicks ? (float)(vTicks - vaporTicks) * 1e-9f : 0.0f;
@@ -3157,8 +3159,10 @@ struct Executor : GfxExecutor {
             vaporSmooth += (vaporTarget - vaporSmooth) * (1.0f - std::exp(-std::min(rawDt, 0.25f) / 0.4f));
             if (!raceWorld || vaporTarget <= 0.0f) { if (vaporSmooth < 0.01f || !raceWorld) vaporSmooth = 0.0f; }
             float trailStrength = SpeedStreak_Smoothstep(0.30f, 0.90f, vaporSmooth);
-            if (vaporSmooth <= 0.01f || !raceWorld || worldEnd >= frame.commands.size() || frame.commands[worldEnd].playerObject == 0) { vaporHistory.Reset(); vaporHavePrev = vaporHaveDir = false; }
-            else if (trailStrength > 0.0f && sampledDepth && backDepth != nullptr) {   // trails are hidden by nearer geometry, which needs the scene depth: no depth = no trails
+            const bool carInfoOk = raceWorld && worldEnd < frame.commands.size() && frame.commands[worldEnd].playerObject != 0;
+            if (vaporSmooth <= 0.01f || !carInfoOk) { vaporHistory.Reset(); vaporHavePrev = vaporHaveDir = false; }
+            // Car protection needs the car bounds even with vapor trails off (speed streak alone): collect whenever either effect is live.
+            if (carInfoOk && (trailStrength > 0.0f || speedStreakSmooth > 0.01f) && sampledDepth && backDepth != nullptr) {   // trails are hidden by nearer geometry and the streak's car protection reads the car's depth band: no depth = neither
                 const unsigned player = frame.commands[worldEnd].playerObject;
                 const GfxDrawState *ref = NULL;   // any of the car's draws: they share the view, projection and viewport
                 auto carVertices = [&](auto &&fn) {
@@ -3185,6 +3189,7 @@ struct Executor : GfxExecutor {
                 carVertices([&](const float *wp) { vb.Add(wp); });
                 ResolveProjection(&vaporNear, &vaporFar);
                 if (vb.Valid() && ref != NULL && vaporNear > 0.0f && vaporFar > vaporNear) {
+                  if (trailStrength > 0.0f) {
                     float centre[3]; vb.Centre(centre);
                     float carHeight = vb.hi[1] - vb.lo[1];
                     float jump = 0.0f;
@@ -3216,6 +3221,32 @@ struct Executor : GfxExecutor {
                             if (x1 > x0) { float *bx = &vaporUniforms[k * 4]; bx[0] = x0; bx[1] = y0; bx[2] = x1; bx[3] = y1; }
                         }
                     }
+                  }
+                    // Player-car protection for the radial streak (video.speed_streak): the shader's
+                    // clear zone is a circle around the focus, not a car mask, so the chase/drone
+                    // car's rear smeared into a translucent double. Hand the shader the car's
+                    // view-depth band; it fades the streak and the lines out over it.
+                    if (speedStreakSmooth > 0.01f) {
+                        GfxViewport cvp = ToTarget(ref->viewport, ref->screenW, ref->screenH, true, backWidth, backHeight);
+                        float zLo = 1e30f, zHi = -1e30f;
+                        int projected = 0;
+                        for (int corner = 0; corner < 8; corner++) {
+                            float wp[3] = { (corner & 1) ? vb.hi[0] : vb.lo[0], (corner & 2) ? vb.hi[1] : vb.lo[1], (corner & 4) ? vb.hi[2] : vb.lo[2] };
+                            float u, v, z, sv;
+                            if (Vapor_Project(&ref->view._11, &ref->projection._11, wp, (float)cvp.x, (float)cvp.y, (float)cvp.width, (float)cvp.height, (float)backWidth, (float)backHeight, &u, &v, &z, &sv)) {
+                                if (z < zLo) zLo = z;
+                                if (z > zHi) zHi = z;
+                                projected++;
+                            }
+                        }
+                        float carH = vb.hi[1] - vb.lo[1];
+                        if (projected > 0 && zHi >= zLo && carH > 0.0f) {
+                            carProtectZMin = zLo - 0.25f * carH;
+                            carProtectZMax = zHi + 0.25f * carH;
+                            carProtectFade = 0.5f * carH;
+                            carProtectOn = true;
+                        }
+                    }
                 }
             }
         }
@@ -3223,7 +3254,7 @@ struct Executor : GfxExecutor {
         bool tunnelLinesOn = Sys_GetOption("video.tunnel_lines", 1) != 0 && speedFocusSmooth > 0.01f;   // radial lines inside the tunnel vision zone
         if ((speedStreakSmooth > 0.01f || vaporDraw || tunnelLinesOn) && raceWorld && gradingTarget != nullptr && presentSource != nullptr &&
             presentSource != gradingTarget && SpeedStreakPipeline() != nullptr) {
-            float uniforms[4 + 60 * 4 + 4 + 4 + 4 + 4] = {};   // cockpitDepth, tunnelLines and tunnelFocus, after depthInfo
+            float uniforms[4 + 60 * 4 + 4 + 4 + 4 + 4 + 4] = {};   // cockpitDepth, tunnelLines, tunnelFocus and carProtect, after depthInfo
             uniforms[0] = speedStreakSmooth; uniforms[1] = backHeight ? (float)backWidth / (float)backHeight : 1.0f; uniforms[2] = speedStreakClock;
             uniforms[3] = Sys_GetOption("video.speed_lines", 1) != 0 ? speedStreakSmooth : 0.0f;   // radial lines have their own toggle
             memcpy(uniforms + 4, vaporUniforms, sizeof(vaporUniforms));
@@ -3237,7 +3268,9 @@ struct Executor : GfxExecutor {
             uniforms[4 + 60 * 4 + 6] = cockpitFar;
             uniforms[4 + 60 * 4 + 8] = speedFocusSmooth; uniforms[4 + 60 * 4 + 9] = tunnelLinesOn ? 1.0f : 0.0f;
             uniforms[4 + 60 * 4 + 12] = tunnelFocusU; uniforms[4 + 60 * 4 + 13] = tunnelFocusV; uniforms[4 + 60 * 4 + 14] = 1.0f; uniforms[4 + 60 * 4 + 15] = 0.0f;   // tunnelFocus: same eased focus as dof.frag
-            SDL_GPUTextureSamplerBinding binding[2] = { { presentSource, linearSampler }, (vaporDraw || cockpitDepth) ? SDL_GPUTextureSamplerBinding{ backDepth, depthSampler } : SDL_GPUTextureSamplerBinding{ presentSource, linearSampler } };   // No trails or cockpit depth mask: the second sampler just needs some texture
+            if (carProtectOn && !vaporDraw) { uniforms[4 + 60 * 4] = vaporNear; uniforms[4 + 60 * 4 + 1] = vaporFar; }   // the shader recovers view depth through depthInfo even with no trails
+            uniforms[4 + 60 * 4 + 16] = carProtectZMin; uniforms[4 + 60 * 4 + 17] = carProtectZMax; uniforms[4 + 60 * 4 + 18] = carProtectFade; uniforms[4 + 60 * 4 + 19] = carProtectOn ? 1.0f : 0.0f;
+            SDL_GPUTextureSamplerBinding binding[2] = { { presentSource, linearSampler }, (vaporDraw || cockpitDepth || carProtectOn) ? SDL_GPUTextureSamplerBinding{ backDepth, depthSampler } : SDL_GPUTextureSamplerBinding{ presentSource, linearSampler } };   // No trails, cockpit depth mask or car protection: the second sampler just needs some texture
             if (PostProcessPass(cmd, SpeedStreakPipeline(), gradingTarget, binding, 2, uniforms, sizeof(uniforms)))
                 {presentSource = gradingTarget;encoded|=256;streakApplied = true;}
         }

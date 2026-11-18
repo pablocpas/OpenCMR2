@@ -107,8 +107,8 @@ bool EffectPass(int effect, int target, GLuint source, GLuint second, const void
     }
     // std140 blocks are padded, including shaders whose public argument is one float.
     if(effect==6||effect==11){gl.ActiveTexture(GL_TEXTURE0+2);gl.BindTexture(GL_TEXTURE_2D,cloudMask?cloudMask:white2D);gl.BindSampler(2,Sampler(linear));}
-    // SpeedStreakUniforms is 1040 bytes (trail data the GL path never fills): keep the zeroed buffer at least that large so the block is never read out of range. Zero depth info = trails off.
-    unsigned char block[sizeof(CloudUniforms) > 1040 ? sizeof(CloudUniforms) : 1040] = {};
+    // SpeedStreakUniforms is 1056 bytes (trail/depth/car-protect data the GL path never fills): keep the zeroed buffer at least that large so the block is never read out of range. Zero depth info = trails and car protection off.
+    unsigned char block[sizeof(CloudUniforms) > 1056 ? sizeof(CloudUniforms) : 1056] = {};
     if (bytes > sizeof(block)) { ForgetEffectState(); return false; }
     memcpy(block, data, bytes);
     gl.BindBuffer(GL_UNIFORM_BUFFER, effectUbo);
@@ -272,8 +272,8 @@ GLuint ApplyEffects()
     if (streakOn) {
         // SpeedStreakUniforms: settings + zeroed trail/depth fields + tunnelFocus at [256..259]
         // (same eased focus as the DoF pass, v pre-flipped for GL's bottom-up gl_FragCoord).
-        float u[260] = {speedStreakSmooth, backHeight ? (float)backWidth / (float)backHeight : 1.0f, speedStreakClock, speedStreakSmooth};
-        u[256] = tunnelFocusU; u[257] = 1.0f - tunnelFocusV; u[258] = 1.0f; u[259] = 0.0f;
+        float u[264] = {speedStreakSmooth, backHeight ? (float)backWidth / (float)backHeight : 1.0f, speedStreakClock, speedStreakSmooth};
+        u[256] = tunnelFocusU; u[257] = 1.0f - tunnelFocusV; u[258] = 1.0f; u[259] = 0.0f;   // [260..263] carProtect stays zeroed: off on the GL backend
         run(10, 0, u, sizeof(u));
     }
     if (grade[0] || grade[1] || grade[2] != 1 || grade[3] != 1) run(7, 0, grade, sizeof(grade));

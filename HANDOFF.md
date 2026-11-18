@@ -1,3 +1,21 @@
+# Speed streak: keep the player car sharp (18 November 2026)
+
+Olli's chase-view "double shape around the car": the radial speed streak's clear
+zone is a circle around the focus ("not a car mask", the shader's own comment),
+so the car's rear at r>0.30 smeared into a translucent offset copy. The pass now
+uploads the player car's view-depth band (the vapor-trail block already collects
+the car bounds and view/projection; the collection condition widened from
+trail-only to trail-or-streak) as a carProtect vec4, and the shader fades the
+streak and speed lines out over that band (SpeedStreak_CarProtect in
+speed_streak.h, mirrored in speedstreak.frag). depthInfo near/far is filled for
+protection-only frames so the shader can recover view depth with no trails.
+GL backend: uniform block grew to 1056 bytes, carProtect stays zeroed = off
+(same precedent as the trail data it never fills). tests/speed_streak.cpp was
+red before the mirror existed and pins the band/fade behaviour; the three
+layout-pinning wiring tests moved to the 264-float block. Visual only, no
+physics. UNVERIFIED: native look (Metal), band tightness at extreme drone
+zooms; 219/219 ctest on linux.
+
 # Texture memory stats in the F10 panel (18 November 2026)
 
 The 10 GB process-memory report needs texture retention separated from other

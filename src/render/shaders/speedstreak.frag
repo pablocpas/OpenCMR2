@@ -11,6 +11,7 @@ layout(std140, set = 3, binding = 0) uniform SpeedStreakUniforms {
     vec4 cockpitDepth; // x clear distance (0 disabled), y near, z far, w reserved
     vec4 tunnelLines;  // x tunnel vision strength 0..2 (eased, same as dof.frag), y 1 = radial lines inside the tunnel vision zone
     vec4 tunnelFocus;  // x focus u, y focus v in gl_FragCoord space (the upload pre-flips per runtime), z 1.0 = valid (0/unset = screen centre, the old look), w reserved
+    vec4 carProtect;   // x band near z, y band far z (view depth of the player car, world units), z fade width, w 1.0 = enabled: the streak and lines stay off the car, and radial taps whose source depth is in the band are dropped (SpeedStreak_CarProtect)
 };
 // Mirrors src/render/speed_streak.h. Directional radial streak: samples run from the pixel toward the screen centre, so the
 // scenery smears outward. The clear inner zone is a radial exclusion, not a car mask.
@@ -95,6 +96,17 @@ void main()
         cockpitEffect = smoothstep(cockpitDepth.x, cockpitDepth.x * 1.4, z);
     }
     w *= cockpitEffect;
+    // Player-car protection: the clear inner zone is a radial exclusion, not a car mask,
+    // so without this the chase/drone car's rear smears into a translucent double. Keep
+    // the streak and the lines off the car's view-depth band (SpeedStreak_CarProtect).
+    float carEffect = 1.0;
+    if (carProtect.w > 0.5 && depthInfo.y > depthInfo.x) {
+        float cd = textureLod(depthTex, uv, 0.0).r;
+        float cz = depthInfo.x * depthInfo.y / max(depthInfo.y - cd * (depthInfo.y - depthInfo.x), 1e-6);
+        float cdist = cz < carProtect.x ? carProtect.x - cz : cz > carProtect.y ? cz - carProtect.y : 0.0;
+        carEffect = smoothstep(0.0, carProtect.z, cdist);
+    }
+    w *= carEffect;
     float linesAmount = smoothstep(LINES_ONSET, LINES_FULL, clamp(settings.w, 0.0, 1.0));
     float lines = linesAmount > 0.0 ? speedLines(c * vec2(settings.y, 1.0), settings.z, 0.0, 1.0) * linesAmount * LINES_OPACITY : 0.0;
     // Lines inside the tunnel vision zone (video.tunnel_lines): the same rays, shown only where dof.frag blurs (same clear circle), so the centre and
@@ -111,6 +123,7 @@ void main()
         lines = max(lines, lt);
     }
     lines *= cockpitEffect;
+    lines *= carEffect;
     lines = max(lines, vaporTrails(uv, settings.y, settings.z));
     if (w <= 0.0) { outColor = vec4(mix(base.rgb, vec3(0.93, 0.95, 1.0), lines), base.a); return; }
     vec2 toCenter = -c * (w * MAXLEN);
@@ -119,7 +132,17 @@ void main()
     for (int i = 1; i <= TAPS; ++i) {
         float t = float(i) / float(TAPS);
         float k = 1.0 - 0.6 * t;
-        sum += texture(scene, uv + toCenter * t).rgb * k;
+        vec2 suv = uv + toCenter * t;
+        // A background pixel just outside the car otherwise taps inward across the
+        // car and pulls its colour outward (the double shape): drop samples whose
+        // own depth sits in the car's protection band.
+        if (carProtect.w > 0.5 && depthInfo.y > depthInfo.x) {
+            float sd = textureLod(depthTex, suv, 0.0).r;
+            float sz = depthInfo.x * depthInfo.y / max(depthInfo.y - sd * (depthInfo.y - depthInfo.x), 1e-6);
+            float sdist = sz < carProtect.x ? carProtect.x - sz : sz > carProtect.y ? sz - carProtect.y : 0.0;
+            k *= smoothstep(0.0, carProtect.z, sdist);
+        }
+        sum += texture(scene, suv).rgb * k;
         total += k;
     }
     outColor = vec4(mix(sum / total, vec3(0.93, 0.95, 1.0), lines), base.a);

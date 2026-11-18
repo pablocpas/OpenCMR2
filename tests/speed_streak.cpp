@@ -17,6 +17,19 @@ int main(){
     CHECK(SpeedStreak_Strength(0.0f,0,100)==0.0f&&SpeedStreak_Strength(2.0f,0,100)==1.0f&&SpeedStreak_Strength(0.5f,0,50)==0.25f);
     CHECK(SpeedStreak_Strength(0.0f,1,100)==1.0f&&SpeedStreak_Strength(0.0f,1,0)==0.0f&&SpeedStreak_Strength(0.5f,0,0)==0.0f&&SpeedStreak_Strength(-1.0f,0,100)==0.0f);
     CHECK(SpeedStreak_Strength(1.0f,0,500)==1.0f&&SpeedStreak_Strength(1.0f,0,-5)==0.0f);
+    // Car protection: the streak weight is multiplied out over the car's view-depth band
+    // and ramps back across the fade, so the chase/drone car stays sharp while the
+    // scenery behind it keeps smearing.
+    CHECK(SpeedStreak_CarProtect(7.0f, 6.0f, 8.0f, 1.0f)==0.0f);        // inside the band: fully protected
+    CHECK(SpeedStreak_CarProtect(6.0f, 6.0f, 8.0f, 1.0f)==0.0f&&SpeedStreak_CarProtect(8.0f, 6.0f, 8.0f, 1.0f)==0.0f);   // band edges protected
+    CHECK(SpeedStreak_CarProtect(9.0f, 6.0f, 8.0f, 1.0f)==1.0f);          // one fade past the band: full streak
+    CHECK(SpeedStreak_CarProtect(5.0f, 6.0f, 8.0f, 1.0f)==1.0f);          // one fade in front: full streak
+    CHECK(SpeedStreak_CarProtect(8.5f, 6.0f, 8.0f, 1.0f)==0.5f);          // mid-fade behind
+    CHECK(SpeedStreak_CarProtect(5.5f, 6.0f, 8.0f, 1.0f)==0.5f);          // mid-fade in front
+    {   // monotonic away from the band on both sides
+        float p=0.0f; for(int i=0;i<=20;++i){float m=SpeedStreak_CarProtect(8.0f+i*0.1f,6.0f,8.0f,2.0f);CHECK(m>=p);p=m;}
+        p=0.0f; for(int i=0;i<=20;++i){float m=SpeedStreak_CarProtect(6.0f-i*0.1f,6.0f,8.0f,2.0f);CHECK(m>=p);p=m;}
+    }
     if(!fails)std::printf("speed_streak ok\n");
     return fails;
 }
