@@ -7351,7 +7351,7 @@ void AirMote_Spawn(FixVector *world)
         if (g_particles[i].pType == &g_particleTypes[AIR_MOTE_TYPE]) ++motes;
     }
     // Never evict original particles: Particle_Spawn reuses the oldest slot when the pool is full.
-    if (!AirMote_HasBudget(active, motes, g_particleCount, Sys_GetOption("video.air_motes_amount", 200))) { ++g_airMotesBudgetSkipped; return; }
+    if (!AirMote_HasBudget(active, motes, g_particleCount, Sys_GetOption("video.air_motes_amount", 500))) { ++g_airMotesBudgetSkipped; return; }
     FixVector still = {0,0,0};
     Particle_Spawn(AIR_MOTE_TYPE, world, &still, world->y, NULL, NULL, 0, NULL, 1);
     ++g_airMotesSpawned;

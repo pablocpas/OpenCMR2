@@ -3044,7 +3044,7 @@ struct Executor : GfxExecutor {
             fogP.sunVisible = sunVisible ? 1.0f : 0.0f;
             fogP.aspect = backHeight ? (float)backWidth / (float)backHeight : 1.0f;
             fogP.clearDistance = (float)fogClearDistance;
-            fogP.lightStrength = std::max(0, std::min(200, Sys_GetOption("video.fog_lights", 100))) / 100.0f;
+            fogP.lightStrength = std::max(0, std::min(200, Sys_GetOption("video.fog_lights", 200))) / 100.0f;
             fogP.depthHalfRange = 0.0f;   // SDL_GPU depth is full-range
             float fogUniforms[kFogUniformFloats];
             FogUniforms_Pack(fogUniforms, fogP, fogLights, fogLightCount);

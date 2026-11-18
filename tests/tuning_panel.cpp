@@ -2,6 +2,7 @@
 #include "CameraMove.h"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 static int fails;
 #define CHECK(c) do{ if(!(c)){ std::printf("FAIL %d: %s\n", __LINE__, #c); ++fails; } }while(0)
 int main(){
@@ -10,8 +11,12 @@ int main(){
     CHECK(n <= kTuningMaxRows);   // RallyData.cpp snapshot/preset arrays are sized kTuningMaxRows - outgrowing 32 crashed the drone lock toggle
     { int bi = -1; for (int i = 0; i < n; ++i) if (!std::strcmp(r[i].key, "video.blur_mode")) bi = i; CHECK(bi >= 0 && r[bi].lo == 0 && r[bi].hi == 1 && r[bi].fallback == 0); }
     { int si = -1, di = -1; for (int i = 0; i < n; ++i) { if (!std::strcmp(r[i].key, "video.drone_spring")) si = i; if (!std::strcmp(r[i].key, "video.drone_speed_drop")) di = i; }
-      CHECK(si >= 0 && r[si].lo == 1 && r[si].hi == 400 && r[si].fallback == 100);   // widened rails: spring 1-400 (0 would remove the spring outright), defaults unchanged
-      CHECK(di >= 0 && r[di].lo == 0 && r[di].hi == 500 && r[di].fallback == 100); } // widened rails: drop 0-500, defaults unchanged
+      CHECK(si >= 0 && r[si].lo == 1 && r[si].hi == 400 && r[si].fallback == 150);   // widened rails: spring 1-400 (0 would remove the spring outright); default is Olli's tuned 150
+      CHECK(di >= 0 && r[di].lo == 0 && r[di].hi == 500 && r[di].fallback == 150); } // widened rails: drop 0-500; default is Olli's tuned 150
+    { // Olli's tuned panel set (2026-11-18, confirmed from his second screenshot) becomes the defaults.
+      const char *want[][2] = {{"video.drone_distance","150"},{"video.drone_height","60"},{"video.drone_lateral","70"},{"video.drone_spring","150"},{"video.drone_speed_drop","150"},{"video.camera_roll","100"},{"video.fog_lights","200"},{"video.air_motes_amount","500"},{"video.snow_glint","100"},{"video.brush_relief","100"},{"video.motion_blur_car","1"}};
+      for (auto &w : want) { int fi = -1; for (int i = 0; i < n; ++i) if (!std::strcmp(r[i].key, w[0])) fi = i;
+        CHECK(fi >= 0 && r[fi].fallback == std::atoi(w[1])); } }
     for (int i = 0; i < n; ++i) { CHECK(r[i].lo < r[i].hi); CHECK(r[i].step > 0); CHECK(r[i].fallback >= r[i].lo && r[i].fallback <= r[i].hi); CHECK(!std::strncmp(r[i].key, "video.", 6)); }
     CHECK(CameraMove_Effective(kCamMoveUnset, 30) == 30 && CameraMove_Effective(0, 30) == 0 && CameraMove_Effective(-5, 30) == -5);   // an explicit 0 is an override, absent is not
     CHECK(!std::strcmp(CameraMove_FamilyKey(5), "video.camera_move_chase") && !std::strcmp(CameraMove_FamilyKey(3), "video.camera_move_cockpit") && !std::strcmp(CameraMove_FamilyKey(2), "video.camera_move_car"));

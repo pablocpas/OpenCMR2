@@ -1934,10 +1934,10 @@ void FogDynamics_Step(int step16_16)
 // render-only.
 void SnowGlint_Step(int step16_16)
 {
-    if (step16_16 <= 0 || Sys_GetOption("video.snow_glint", 200) == 0) return;
+    if (step16_16 <= 0 || Sys_GetOption("video.snow_glint", 100) == 0) return;
     Car *car = Car_Get(0);
     if (!car) return;
-    int amount = Sys_GetOption("video.snow_glint", 200);
+    int amount = Sys_GetOption("video.snow_glint", 100);
     FixVector sunV;
     StageObject_GetRotatedStageLightVector(&sunV);
     float sunLen = std::sqrt((float)sunV.x * sunV.x + (float)sunV.y * sunV.y + (float)sunV.z * sunV.z);
@@ -2007,7 +2007,7 @@ void AirMotes_Step(int step16_16)
     if (step16_16 <= 0 || Sys_GetOption("video.air_motes", 0) == 0) return;
     Car *car = Car_Get(0);
     if (!car) return;
-    int amount = Sys_GetOption("video.air_motes_amount", 200);
+    int amount = Sys_GetOption("video.air_motes_amount", 500);
     // Sun forward scatter for the mote light response: strongest looking toward
     // the sun in clear air, gone under overcast (stage weather light intensity).
     {   FixVector sunV;

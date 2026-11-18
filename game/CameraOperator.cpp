@@ -31,11 +31,11 @@ void CameraOperator_Update(CameraRecord*record,const FixMatrix*reference,const F
  state.shakeAmount=0.f; // Speed shake belongs to the regular camera, not the drone (user request). video.drone_shake is kept as an accepted but unused key.
  // OpenCMR2: widened rails (user request, defaults unchanged): distance
  // 10..300, height 25..400, lateral 10..400, spring 1..400, drop 0..500.
- {int pct=Sys_GetOption("video.drone_distance",60);if(pct<10)pct=10;if(pct>300)pct=300;state.distanceScale=pct/100.f;}
- state.heightScale=CameraOperator::Clamp(Sys_GetOption("video.drone_height",100)/100.f,.25f,4.f);
- state.lateralGain=CameraOperator::Clamp(Sys_GetOption("video.drone_lateral",100)/100.f,.1f,4.f);
- state.springGain=CameraOperator::Clamp(Sys_GetOption("video.drone_spring",100)/100.f,.01f,4.f);
- state.speedDropAmount=CameraOperator::Clamp(Sys_GetOption("video.drone_speed_drop",100)/100.f,0.f,5.f);
+ {int pct=Sys_GetOption("video.drone_distance",150);if(pct<10)pct=10;if(pct>300)pct=300;state.distanceScale=pct/100.f;}
+ state.heightScale=CameraOperator::Clamp(Sys_GetOption("video.drone_height",60)/100.f,.25f,4.f);
+ state.lateralGain=CameraOperator::Clamp(Sys_GetOption("video.drone_lateral",70)/100.f,.1f,4.f);
+ state.springGain=CameraOperator::Clamp(Sys_GetOption("video.drone_spring",150)/100.f,.01f,4.f);
+ state.speedDropAmount=CameraOperator::Clamp(Sys_GetOption("video.drone_speed_drop",150)/100.f,0.f,5.f);
  state.Step({p.x/65536.f,p.y/65536.f,p.z/65536.f},std::atan2(x,z),car->steeringInput/65536.f,car->speed/65536.f,
   offset?std::abs(offset->z/65536.f):6.5f,offset?offset->y/65536.f:1.5f,g_physicsTimeStep/(65536.f*25.f),&road);
  state.ConstrainTerrain({p.x/65536.f,p.y/65536.f,p.z/65536.f},g_physicsTimeStep/(65536.f*25.f),[](CameraOperator::V3 point,float&y){

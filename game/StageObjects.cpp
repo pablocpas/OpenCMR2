@@ -14913,7 +14913,7 @@ void StageWeather_DrawViewPrecipitation(int index, int view)
         // Snow glints (video.snow_glint): flakes twinkle in the sun (strongest
         // looking toward it - forward scatter) and brighten inside car light
         // beams. Per-flake phase from its own sway cycle, deterministic.
-        int glintAmount = Sys_GetOption("video.snow_glint", 200);
+        int glintAmount = Sys_GetOption("video.snow_glint", 100);
         float fwdScatter = 0.f, sunLevelF = 0.f, sunDirX = 0.f, sunDirY = 0.f, sunDirZ = 0.f;
         if (glintAmount > 0) {
             FixVector sunV;

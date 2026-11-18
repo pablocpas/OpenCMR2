@@ -29,8 +29,8 @@ int main(){
  g_chaseCameraOffsets[2]={0,65536,0};g_chaseCameraViewOffsets[2]={65536,0,0};
  ChaseCamera_Update(&record,&body,0);
  CHECK(g_chaseCameraViewOffsets[2].x!=0); // original basis spring no longer bypassed
- // Drone at60 now stands farther from the car than the unchanged chase.
- CHECK(record.matrix.position.z < -11*65536 && record.matrix.position.z > -13*65536);
+ // Tuned default distance 150 stands the drone farther back than the old 50 (measured -17.55).
+ CHECK(record.matrix.position.z < -16.5*65536 && record.matrix.position.z > -18.5*65536);
  CHECK(std::abs(record.matrix.position.x)<65536/4);
  CHECK(record.matrix.position.y>4*65536 && record.matrix.position.y<7*65536);
  CHECK(record.matrix.forward.z>59000); // forward road, not overhead
@@ -61,7 +61,7 @@ int main(){
   for(int i=0;i<300;i++)ChaseCamera_Update(&record,&body,0);
   auto&m=record.matrix;
   printf("perspective %d %g %g %g %g %g %g %g\n",variant,m.position.x/65536.f,m.position.y/65536.f,m.position.z/65536.f,m.forward.x/65536.f,m.forward.y/65536.f,m.forward.z/65536.f,record.zoom/40960.f);
-  if(variant==1){CHECK(m.position.z<-8.9f*65536);CHECK(m.position.y>2.2f*65536&&m.position.y<2.5f*65536);}
+  if(variant==1){CHECK(m.position.z<-8.9f*65536);CHECK(m.position.y>2.1f*65536&&m.position.y<2.5f*65536);}   // tuned default height 60 lowers the hover: measured 2.20 (window was 2.2..2.5 at height 100)
  }
  // Actual updater under acceleration/cruise/braking: visibly independent,
  // but keeps the car and road in frame. Hold the exact same heading.

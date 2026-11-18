@@ -1,5 +1,5 @@
 #pragma once
-// Defaults the owner tuned in the F10 panels (user screenshots, 3 Nov 2026), used when a setting is
+// Defaults the owner tuned in the F10 panels (user screenshots, 3 Nov 2026; drone/corner/fog-light set confirmed 18 Nov 2026), used when a setting is
 // neither in the ini nor on the command line. Explicit flags and saved settings always win.
 // Only keys whose tuned value differs from the old built-in default are listed.
 #include <cstring>
@@ -12,8 +12,9 @@ static const TunedDefault kTunedDefaults[] = {
     {"video.splash_amount", 300}, {"video.backfire_amount", 300}, {"video.sun_glare", 60},
     {"video.fog", 1}, {"video.fog_amount", 60}, {"video.fog_glow", 100}, {"video.fog_clear", 60}, {"video.fog_cull", 1},
     {"video.fog_spatial", 1}, {"video.fog_evolve", 60}, {"video.air_motes", 1},
-    {"video.air_motes_amount", 500}, {"video.fog_lights", 40}, {"video.snow_glint", 100},
-    {"video.camera_roll", 30}, {"video.drone_distance", 50},
+    {"video.air_motes_amount", 500}, {"video.fog_lights", 200}, {"video.snow_glint", 100},
+    {"video.camera_roll", 100}, {"video.drone_distance", 150}, {"video.drone_height", 60},
+    {"video.drone_lateral", 70}, {"video.drone_spring", 150}, {"video.drone_speed_drop", 150},
 };
 inline int TunedDefault_Or(const char *key, int fallback)
 {

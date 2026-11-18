@@ -6879,7 +6879,7 @@ void RallyData_UpdateViewFrameAndDebugOverlay(CallbackStateMachine *param1, int 
             int viewType=0,drone=0,zoomRaw=0,fovYRaw=0,fovSet=70;
             AttractCapture_ViewSignature((int)param2,&viewType,&drone);
             View_GetEffectiveProjection(param2,&zoomRaw,&fovYRaw,&fovSet);
-            if(drone&&viewType==5)snprintf(text,sizeof text,"Camera: type %d drone (live, view %d), video.drone_distance %d%% in effect",viewType,(int)param2,Sys_GetOption("video.drone_distance",50));
+            if(drone&&viewType==5)snprintf(text,sizeof text,"Camera: type %d drone (live, view %d), video.drone_distance %d%% in effect",viewType,(int)param2,Sys_GetOption("video.drone_distance",150));
             else snprintf(text,sizeof text,"Camera: type %d%s (live, view %d)",viewType,(drone&&viewType==5)?" drone":"",(int)param2);
             line(text);
             snprintf(text,sizeof text,"video.fov number %d (legacy scale, 70 original, higher = wider; not an angle); zoom x%.2f (camera base x%.2f), proj scale %.2f",fovSet,zoomRaw/65536.0,g_viewZooms[param2&1]/65536.0,fovYRaw/65536.0);

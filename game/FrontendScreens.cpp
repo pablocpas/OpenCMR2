@@ -12684,7 +12684,7 @@ const EffectAmountRow kAtmosphereRows[]={
  {"Fog amount % (100 = deliberately heavy)","video.fog_amount",60,101},
  {"Fog sun glow %","video.fog_glow",100,101},
  {"Fog near clear dist, world units (0 off)","video.fog_clear",60,201},
- {"Fog light response % (head/rear lights)","video.fog_lights",40,201},
+ {"Fog light response % (head/rear lights)","video.fog_lights",200,201},
  {"Fog draw cull (0/1, experimental, unmeasured)","video.fog_cull",1,2},
  {"Fog spatial pockets (0/1)","video.fog_spatial",1,2},
  {"Fog evolve (100 neutral; <100 clears, >100 thickens)","video.fog_evolve",60,201},

@@ -29,14 +29,14 @@ int main(){
   CHECK(fz>.90f);CHECK(std::abs(fx)<.035f);CHECK(m.position.z<=-3.9f*65536);CHECK(fy>-.43f);
   // Perspective point50m ahead stays in front of camera, above the player's center.
   auto screenY=[&](float y,float z) -> float{float dy=y-m.position.y/65536.f,dz=z-m.position.z/65536.f;float depth=dy*fy+dz*fz;if(depth<=0){fprintf(stderr,"point behind camera\n");std::exit(1);}return .5f-.5f*(2.08f*record.zoom/65536.f)*(dy*m.up.y/65536.f+dz*m.up.z/65536.f)/depth;};
-  float player=screenY(1,0),road=screenY(0,50);CHECK(player>.60f&&player<.72f);CHECK(road<player-.10f&&road>0);
+  float player=screenY(1,0),road=screenY(0,50);CHECK(player>.60f&&player<.72f);CHECK(road<player-.06f&&road>0);   // margin .10 -> .06: the tuned default drone height (60%) sits the camera lower, so the point 50 m ahead lands relatively higher (measured player .635/.666, road .261-.267 banked, .538-.567 flat)
   if(hz==25)printf("%d %d %g %g %g %g %g %g %g\n",pct,int(b),m.position.x/65536.f,m.position.y/65536.f,m.position.z/65536.f,fx,fy,fz,record.zoom/40960.f);
  }
  // Actual runtime speed-height binding and disable control, not SpeedLook.
  bank=false;scale=50;g_physicsTimeStep=65536;g_routeNodes=nullptr;g_routeNodeCount=0;
  float heights[3];
  for(int amount:{0,100,200}){drop=amount;CameraOperator_Reset(0);for(int i=0;i<300;i++)CameraOperator_Update(&record,&body,&offset,0x2d);CameraOperator_Apply(&record);heights[amount/100]=record.matrix.position.y/65536.f;}
- CHECK(heights[0]-heights[1]>1.7f);CHECK(heights[1]>2.19f);
+ CHECK(heights[0]-heights[1]>0.15f);CHECK(heights[1]>2.19f);   // tuned default height 60 compresses the range: drop0 2.43, drop100/200 floor at 2.2 (measured); the 2.2 floor literal is unchanged, so the binding still bites and still floors
  CHECK(heights[2]>2.19f&&heights[2]<=heights[1]+1e-4f);   // 200% drops at least as far, never through the 2.2 floor
  puts("actual camera update/apply road-facing pitch and perspective at25/60/120Hz pass");
 }
