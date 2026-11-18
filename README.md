@@ -386,7 +386,7 @@ the game.
 | `[video] window_scale` | `1` | Size of the window in multiples of the game's resolution, applied when leaving fullscreen |
 | `[video] smooth_scaling` | `1` | Smooth the picture when it is scaled to the window or screen (`1`), or keep sharp pixels (`0`) |
 | `[video] anisotropy` | `1` | Anisotropic texture filtering, `2` to `16`; `1` is off, as in the original |
-| `[video] motion_blur` | `1` | Blend each frame into the previous one for motion ghosting: `0` off, `1` on (SDL_GPU renderer only) |
+| `[video] motion_blur` | `0` | Blend each frame into the previous one for motion ghosting: `0` off, `1` on (SDL_GPU renderer only). Retired to off by default 2026-11-18; only an explicit setting enables it |
 | `[video] bloom` | `1` | Make bright pixels bleed into their neighbours with a soft glow: `0` off, `1` on (SDL_GPU renderer only) |
 | `[video] particles` | `1` | Rain or snow falling through the scene: `0` off, `1` rain, `2` snow |
 | `[video] shadows` | `1` | Directional light shadow map darkening occluded surfaces: `0` off, `1` on (SDL_GPU renderer only) |

@@ -4117,7 +4117,7 @@ void FrontendMenu_EnterAdvancedGraphicsOptions(Menu *pMenu, int param)
     // OpenCMR2: animated scenery on by default — idle crowds and trees cycle.
     Menu_GetItem(pMenu, 0x11)->max = Sys_GetOption("video.animated_scenery", 1) != 0 ? 1 : 0;
     // Both renderers implement these options. Read without mutating saved choices.
-    Menu_GetItem(pMenu, 0x12)->max = Sys_GetOption("video.motion_blur", 1) != 0 ? 1 : 0;
+    Menu_GetItem(pMenu, 0x12)->max = Sys_GetOption("video.motion_blur", 0) != 0 ? 1 : 0;   // retired: off unless explicitly enabled (owner decision 2026-11-18)
     Menu_GetItem(pMenu, 0x13)->max = Sys_GetOption("video.bloom", 1) != 0 ? 1 : 0;
     Menu_GetItem(pMenu, 0x14)->max = Sys_GetOption("video.particles", 1);
     Menu_GetItem(pMenu, 0x15)->max = Sys_GetOption("video.shadows", 1) != 0 ? 1 : 0;

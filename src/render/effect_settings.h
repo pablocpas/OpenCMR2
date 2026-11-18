@@ -13,7 +13,9 @@ inline int GradeStrength(){return Sys_GetOption("video.color_grading",0)?Percent
 inline void ApplyGrade(){int s=GradeStrength();Gfx_SetColorGrading(8*s/100,-2*s/100,100+6*s/100,100+5*s/100);}
 // Shared by both executors at startup and menu Apply. No writes.
 inline void Apply(){
- Gfx_SetMotionBlur(Sys_GetOption("video.motion_blur",1),Byte("video.motion_blur_amount",16));
+ // Motion blur retired (owner decision 2026-11-18): default off here, in the menu and in every preset;
+ // only an explicit --effect motion_blur=on or a saved video.motion_blur=1 still enables it.
+ Gfx_SetMotionBlur(Sys_GetOption("video.motion_blur",0),Byte("video.motion_blur_amount",16));
  Gfx_SetBloom(Sys_GetOption("video.bloom",1),Byte("video.bloom_amount",24));
  Gfx_SetParticles(Clamp(Sys_GetOption("video.particles",1),0,2),Byte("video.precipitation_amount",47));
  Gfx_SetShadowQuality(Clamp(Sys_GetOption("video.shadow_quality",1),0,2)==0?512:Sys_GetOption("video.shadow_quality",1)==2?2048:1024,Percent("video.shadow_softness",25));
