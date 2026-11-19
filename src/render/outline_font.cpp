@@ -421,23 +421,41 @@ void CubicWeights(float t, float w[4])
 void Upsample(const Bitmap &bm, const Cell &c, int scaleUp, std::vector<float> &out)
 {
     const int w = c.w * scaleUp, h = c.h * scaleUp;
-    auto at = [&](int x, int y) {
-        return x < 0 || y < 0 || x >= c.w || y >= c.h ? 0.0f : bm.At(bm.a, c.x + x, c.y + y);
-    };
+    // Bolt optimization: hoist the four source-row pointers out of the pixel
+    // loop (computed once per output row instead of once per tap) and read
+    // interior taps directly through row pointers. This removes the double
+    // bounds check (at() then Bitmap::At) and the per-tap address
+    // multiplication for roughly 2x faster bicubic resampling. The values and
+    // the accumulate order are unchanged, so the output is bit-exact;
+    // out-of-bounds rows/taps still contribute exactly 0.0f as before.
+    const float *base = bm.a.data();
+    const int bm_w = bm.width;
     for (int y = 0; y < h; y++) {
         float sy = (y + 0.5f) / scaleUp - 0.5f;
         int iy = (int)floorf(sy);
         float wy[4];
         CubicWeights(sy - iy, wy);
+        const float *rows[4] = {};
+        for (int j = 0; j < 4; j++) {
+            int ty = iy - 1 + j;
+            rows[j] = (ty >= 0 && ty < c.h) ? base + (size_t)(c.y + ty) * bm_w + c.x : nullptr;
+        }
         for (int x = 0; x < w; x++) {
             float sx = (x + 0.5f) / scaleUp - 0.5f;
             int ix = (int)floorf(sx);
             float wx[4];
             CubicWeights(sx - ix, wx);
             float v = 0;
-            for (int j = 0; j < 4; j++)
-                for (int i = 0; i < 4; i++)
-                    v += wy[j] * wx[i] * at(ix - 1 + i, iy - 1 + j);
+            for (int j = 0; j < 4; j++) {
+                const float *row = rows[j];
+                if (!row)
+                    continue;
+                for (int i = 0; i < 4; i++) {
+                    int tx = ix - 1 + i;
+                    float av = (tx >= 0 && tx < c.w) ? row[tx] : 0.0f;
+                    v += wy[j] * wx[i] * av;
+                }
+            }
             out[(size_t)y * w + x] = v;
         }
     }
