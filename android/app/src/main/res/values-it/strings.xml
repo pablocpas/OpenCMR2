@@ -2,12 +2,14 @@
 <resources>
     <string name="setup_title">Benvenuto in OpenCMR2</string>
     <string name="setup_intro">OpenCMR2 usa la tua copia di Colin McRae Rally 2.0 per PC. Copia la sua cartella di installazione su questo dispositivo e selezionala qui. I file del gioco vengono copiati nell’app una sola volta, circa 700 MB.</string>
-    <string name="setup_where">La cartella deve contenere Game, FrontEnd e Sounds. Puoi anche scegliere una cartella che la contiene. I file di un CD o di una ISO devono essere prima installati o estratti.</string>
+    <string name="setup_where">Scegli la cartella in cui è installato il gioco per PC, o una cartella che la contiene. Copia sul dispositivo l’intera cartella di installazione, non solo alcuni file. I file di un CD o di una ISO devono essere prima installati o estratti.</string>
     <string name="setup_choose">Scegli la cartella del gioco</string>
     <string name="setup_choose_again">Scegli un’altra cartella</string>
     <string name="setup_searching">Ricerca dei file del gioco…</string>
     <string name="setup_copying">Copia dei file del gioco: %1$s di %2$s</string>
-    <string name="setup_not_found">In questa cartella non è stata trovata un’installazione completa del gioco. Deve contenere Game/Bigfiles/common.bfl, FrontEnd/common.bfl e Sounds/surface.bfl.</string>
+    <string name="setup_not_found">In questa cartella non è stata trovata un’installazione del gioco. Scegli la cartella in cui è installato il gioco per PC.</string>
+    <string name="setup_incomplete_folder">Questa cartella contiene solo una parte dell’installazione del gioco. Copia sul dispositivo l’intera cartella di installazione del gioco per PC, non solo alcuni file, e selezionala di nuovo.</string>
+    <string name="setup_incomplete_copy">I file del gioco nell’app sono incompleti, quindi il gioco non può avviarsi. Copia sul dispositivo l’intera cartella di installazione del gioco per PC e selezionala di nuovo.</string>
     <string name="setup_ambiguous">In questa cartella è stata trovata più di un’installazione del gioco:\n%1$s\nScegli quella che vuoi usare.</string>
     <string name="setup_no_space">Spazio libero insufficiente: il gioco richiede %1$s e sono liberi %2$s.</string>
     <string name="setup_failed">Impossibile copiare i file del gioco.\n%1$s</string>
@@ -21,6 +23,7 @@
     <string name="touch_gear_up">Marcia su</string>
     <string name="touch_gear_down">Marcia giù</string>
     <string name="launcher_start">Avvia gioco</string>
+    <string name="launcher_change_folder">Cambia cartella del gioco</string>
     <string name="controllers_title">Controlli</string>
     <string name="controllers_intro">I controller vengono rilevati automaticamente. Prova i comandi o tocca un controllo per modificarne la mappatura. Le modifiche vengono salvate per questo dispositivo; gli altri controlli mantengono la mappatura automatica.</string>
     <string name="controllers_touch">Mostra sempre i controlli touch</string>

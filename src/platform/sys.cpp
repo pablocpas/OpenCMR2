@@ -708,6 +708,16 @@ bool Platform_Init(int argc, char **argv)
             const std::string message = "Missing required game files in " + dataDir + ":" + missing;
             fprintf(stderr, "%s\n", message.c_str());
             Sys_Log("%s", message.c_str());
+#ifdef __ANDROID__
+            // The launcher checks the copy too, but the files can change
+            // after it; without this the game would just close. The paths
+            // stay in the log: listed here, they invite copying just those.
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OpenCMR2",
+                                     "The game files are incomplete.\n\n"
+                                     "Copy the whole installation folder of the PC game to the device "
+                                     "and choose it again with Change game folder in the OpenCMR2 launcher.",
+                                     NULL);
+#endif
             Platform_Shutdown();
             return false;
         }

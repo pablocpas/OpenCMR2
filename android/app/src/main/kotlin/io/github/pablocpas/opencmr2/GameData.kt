@@ -18,22 +18,58 @@ import kotlin.coroutines.coroutineContext
  * from there once (Storage Access Framework), as other ports of PC games do.
  */
 object GameData {
-    // Files every PC edition has; the check MissingGameData does in src/platform/sys.cpp.
-    private val REQUIRED = listOf("Game/Bigfiles/common.bfl", "FrontEnd/common.bfl", "Sounds/surface.bfl")
+    // The check MissingGameData does in src/platform/sys.cpp, which the game
+    // repeats on start: files every PC edition has, and the folders with the
+    // text, speech and loading screens, which some copies leave out.
+    private val REQUIRED_FILES = listOf("Game/Bigfiles/common.bfl", "FrontEnd/common.bfl", "Sounds/surface.bfl")
+    private val REQUIRED_FOLDERS = listOf("CountrySpecific", "SetupRep")
+    private val REQUIRED_COUNT = REQUIRED_FILES.size + REQUIRED_FOLDERS.size
+
+    /** A file or folder of a tree being checked; [id] finds its children. */
+    internal data class Node<T>(val name: String, val isDirectory: Boolean, val size: Long, val id: T)
+
+    /**
+     * What the folder [root] lacks of an installation: the required paths it
+     * does not have, folders with a trailing slash. Names match in any case,
+     * as on the PC.
+     */
+    internal fun <T> missingIn(root: T, children: (T) -> List<Node<T>>): List<String> {
+        fun find(path: String): Node<T>? {
+            var parent = root
+            var node: Node<T>? = null
+            for (name in path.split('/')) {
+                node = children(parent).firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return null
+                parent = node.id
+            }
+            return node
+        }
+        val files = REQUIRED_FILES.filter { path -> find(path).let { it == null || it.isDirectory || it.size <= 0 } }
+        val folders = REQUIRED_FOLDERS.filter { path ->
+            find(path).let { it == null || !it.isDirectory || children(it.id).isEmpty() }
+        }
+        return files + folders.map { "$it/" }
+    }
+
+    internal fun missingIn(dir: File): List<String> = missingIn(dir) { parent ->
+        parent.listFiles()?.map { Node(it.name, it.isDirectory, it.length(), it) } ?: emptyList()
+    }
 
     private fun storage(context: Context): File = context.getExternalFilesDir(null) ?: context.filesDir
 
     /** Where the game data lives; passed to the game with --data. */
     fun directory(context: Context): File = File(storage(context), "game")
 
-    fun isInstalled(context: Context): Boolean {
+    sealed interface Installation {
+        data object None : Installation
+        /** A copy without some required files: an import of an incomplete folder, or files deleted since. */
+        data object Incomplete : Installation
+        data object Complete : Installation
+    }
+
+    fun installation(context: Context): Installation {
         val dir = directory(context)
-        return REQUIRED.all { path ->
-            val file = path.split('/').fold<String, File?>(dir) { parent, name ->
-                parent?.listFiles()?.firstOrNull { it.name.equals(name, ignoreCase = true) }
-            }
-            file != null && file.isFile && file.length() > 0
-        }
+        if (!dir.isDirectory) return Installation.None
+        return if (missingIn(dir).isEmpty()) Installation.Complete else Installation.Incomplete
     }
 
     sealed interface Progress {
@@ -42,7 +78,15 @@ object GameData {
     }
 
     sealed class ImportException(message: String) : IOException(message) {
+        /** Nothing of an installation in or under the chosen folder. */
         class NotFound : ImportException("No installation found")
+        /**
+         * Part of an installation in or under the chosen folder. What it lacks
+         * stays out of the player's message: a list of paths invites copying
+         * just those, as the old message naming three files did (#65).
+         */
+        class Incomplete(val folder: String, val missing: List<String>) :
+            ImportException("Incomplete installation in ${folder.ifEmpty { "/" }}: ${missing.joinToString()}")
         class Ambiguous(val folders: List<String>) : ImportException("More than one installation found")
         class NoSpace(val needed: Long, val available: Long) : ImportException("Not enough space")
     }
@@ -50,16 +94,18 @@ object GameData {
     /**
      * Copies the installation in or under [tree] (a folder from
      * ACTION_OPEN_DOCUMENT_TREE) to [directory]. The copy goes to a temporary
-     * folder first, so an interrupted import leaves nothing half done.
+     * folder first, so an interrupted or incomplete import leaves the earlier
+     * copy, if any, in place.
      */
     suspend fun import(context: Context, tree: Uri, onProgress: (Progress) -> Unit) {
         onProgress(Progress.Searching)
         val source = DocumentTree(context.contentResolver, tree)
-        val found = source.findInstallations()
-        val root = when (found.size) {
-            0 -> throw ImportException.NotFound()
-            1 -> found.single()
-            else -> throw ImportException.Ambiguous(found.map { it.path })
+        val search = source.findInstallations()
+        val root = when (search.found.size) {
+            0 -> throw search.closest?.let { ImportException.Incomplete(it.first.path, it.second) }
+                ?: ImportException.NotFound()
+            1 -> search.found.single()
+            else -> throw ImportException.Ambiguous(search.found.map { it.path })
         }
         val files = source.listFiles(root.documentId)
         val total = files.sumOf { it.second.size }
@@ -98,6 +144,11 @@ object GameData {
                 }
             }
             onProgress(Progress.Copying(total, total))
+            // Some providers report sizes they do not deliver (a cloud file
+            // not downloaded): check the copy as the game will.
+            val missing = missingIn(temporary)
+            if (missing.isNotEmpty())
+                throw ImportException.Incomplete(root.path, missing)
             target.deleteRecursively()
             if (!temporary.renameTo(target))
                 throw IOException("Cannot move the copied files to $target")
@@ -109,6 +160,7 @@ object GameData {
     private class DocumentTree(private val resolver: ContentResolver, private val tree: Uri) {
         data class Entry(val documentId: String, val name: String, val isDirectory: Boolean, val size: Long)
         data class Folder(val documentId: String, val path: String)
+        class Search(val found: List<Folder>, val closest: Pair<Folder, List<String>>?)
 
         fun children(documentId: String): List<Entry> {
             val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId)
@@ -133,38 +185,37 @@ object GameData {
             resolver.openInputStream(DocumentsContract.buildDocumentUriUsingTree(tree, documentId))
                 ?: throw IOException("Cannot open $documentId")
 
-        private fun isInstallation(documentId: String): Boolean = REQUIRED.all { path ->
-            var entry: Entry? = null
-            var parent = documentId
-            for (name in path.split('/')) {
-                entry = children(parent).firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return@all false
-                parent = entry.documentId
-            }
-            entry != null && !entry.isDirectory && entry.size > 0
+        private fun missing(documentId: String): List<String> = missingIn(documentId) { id ->
+            children(id).map { Node(it.name, it.isDirectory, it.size, it.documentId) }
         }
 
         /**
          * The chosen folder when it is an installation, otherwise the ones
          * found up to three levels below it (a download folder around it, as
-         * on the desktop). Found installations are not searched further.
+         * on the desktop). Found installations are not searched further. With
+         * none, the folder with the most of one, to say what it lacks.
          */
-        fun findInstallations(): List<Folder> {
+        fun findInstallations(): Search {
             val pending = ArrayDeque(listOf(Folder(DocumentsContract.getTreeDocumentId(tree), "") to 0))
             val found = mutableListOf<Folder>()
+            var closest: Pair<Folder, List<String>>? = null
             var visited = 0
             while (pending.isNotEmpty() && visited++ < 512) {
                 val (folder, depth) = pending.removeFirst()
-                if (isInstallation(folder.documentId)) {
+                val missing = missing(folder.documentId)
+                if (missing.isEmpty()) {
                     found += folder
                     continue
                 }
+                if (missing.size < (closest?.second?.size ?: REQUIRED_COUNT))
+                    closest = folder to missing
                 if (depth == 3) continue
                 for (child in children(folder.documentId)) {
                     if (child.isDirectory && !child.name.startsWith('.'))
                         pending += Folder(child.documentId, folder.path + "/" + child.name) to depth + 1
                 }
             }
-            return found
+            return Search(found, closest)
         }
 
         /** Every file under the folder, with its path relative to it. */

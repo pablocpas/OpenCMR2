@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.text.format.Formatter
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -67,7 +68,10 @@ class SetupActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SetupTheme {
-                var installed by remember { mutableStateOf(GameData.isInstalled(this)) }
+                var installation by remember { mutableStateOf(GameData.installation(this)) }
+                // Choosing another folder from the launcher; the copy in use
+                // stays until an import replaces it.
+                var changing by remember { mutableStateOf(false) }
                 val model: SetupViewModel = viewModel()
                 val state by model.state.collectAsState()
                 // Keep the screen on while copying: the import stops if the app is closed.
@@ -76,12 +80,31 @@ class SetupActivity : ComponentActivity() {
                     else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
                 LaunchedEffect(state) {
-                    if (state is SetupState.Done) installed = true
+                    if (state is SetupState.Done) {
+                        installation = GameData.installation(this@SetupActivity)
+                        changing = false
+                    }
                 }
-                if (installed) LauncherScreen(
-                    onStart = ::startGame,
+                if (installation == GameData.Installation.Complete && !changing) LauncherScreen(
+                    onStart = {
+                        // The files can change while the launcher is open (a
+                        // file manager can delete them): check them as the game will.
+                        installation = GameData.installation(this)
+                        if (installation == GameData.Installation.Complete) startGame()
+                    },
                     onControls = { startActivity(Intent(this, ControllerActivity::class.java)) },
-                ) else SetupScreen(state, onFolderChosen = model::import, onCancel = model::cancel)
+                    onChangeFolder = { changing = true },
+                ) else {
+                    val back = if (changing) ({ changing = false }) else null
+                    BackHandler(enabled = back != null && state !is SetupState.Working) { back?.invoke() }
+                    SetupScreen(
+                        state,
+                        incomplete = installation == GameData.Installation.Incomplete,
+                        onFolderChosen = model::import,
+                        onCancel = model::cancel,
+                        onBack = back,
+                    )
+                }
             }
         }
     }
@@ -136,7 +159,13 @@ internal fun SetupTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SetupScreen(state: SetupState, onFolderChosen: (Uri) -> Unit, onCancel: () -> Unit) {
+private fun SetupScreen(
+    state: SetupState,
+    incomplete: Boolean,
+    onFolderChosen: (Uri) -> Unit,
+    onCancel: () -> Unit,
+    onBack: (() -> Unit)?,
+) {
     val chooser = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) onFolderChosen(uri)
     }
@@ -157,13 +186,19 @@ private fun SetupScreen(state: SetupState, onFolderChosen: (Uri) -> Unit, onCanc
             Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.headlineMedium)
             when (state) {
                 SetupState.Welcome, SetupState.Done -> {
-                    Text(stringResource(R.string.setup_intro), textAlign = TextAlign.Center)
+                    // The copy in the app lacks files: the game would not start.
+                    if (incomplete) Text(
+                        stringResource(R.string.setup_incomplete_copy),
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    ) else Text(stringResource(R.string.setup_intro), textAlign = TextAlign.Center)
                     Text(
                         stringResource(R.string.setup_where),
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center,
                     )
                     Button(onClick = { chooser.launch(null) }) { Text(stringResource(R.string.setup_choose)) }
+                    if (onBack != null) TextButton(onClick = onBack) { Text(stringResource(android.R.string.cancel)) }
                 }
                 is SetupState.Working -> Working(state.progress, onCancel)
                 is SetupState.Failed -> {
@@ -173,6 +208,7 @@ private fun SetupScreen(state: SetupState, onFolderChosen: (Uri) -> Unit, onCanc
                         textAlign = TextAlign.Center,
                     )
                     Button(onClick = { chooser.launch(null) }) { Text(stringResource(R.string.setup_choose_again)) }
+                    if (onBack != null) TextButton(onClick = onBack) { Text(stringResource(android.R.string.cancel)) }
                 }
             }
         }
@@ -209,6 +245,7 @@ private fun errorText(error: Throwable): String {
     val context = LocalContext.current
     return when (error) {
         is GameData.ImportException.NotFound -> stringResource(R.string.setup_not_found)
+        is GameData.ImportException.Incomplete -> stringResource(R.string.setup_incomplete_folder)
         is GameData.ImportException.Ambiguous ->
             stringResource(R.string.setup_ambiguous, error.folders.take(4).joinToString("\n") { "• " + it.ifEmpty { "/" } })
         is GameData.ImportException.NoSpace -> stringResource(
@@ -221,7 +258,7 @@ private fun errorText(error: Throwable): String {
 }
 
 @Composable
-private fun LauncherScreen(onStart: () -> Unit, onControls: () -> Unit) {
+private fun LauncherScreen(onStart: () -> Unit, onControls: () -> Unit, onChangeFolder: () -> Unit) {
     Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -229,6 +266,7 @@ private fun LauncherScreen(onStart: () -> Unit, onControls: () -> Unit) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
             Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.launcher_start)) }
             TextButton(onClick = onControls) { Text(stringResource(R.string.controllers_title)) }
+            TextButton(onClick = onChangeFolder) { Text(stringResource(R.string.launcher_change_folder)) }
         }
     }
 }

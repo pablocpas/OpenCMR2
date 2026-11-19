@@ -2,12 +2,14 @@
 <resources>
     <string name="setup_title">Bienvenue dans OpenCMR2</string>
     <string name="setup_intro">OpenCMR2 utilise votre exemplaire de Colin McRae Rally 2.0 pour PC. Copiez son dossier d’installation sur cet appareil, puis sélectionnez-le ici. Les fichiers du jeu sont copiés dans l’application une seule fois, environ 700 Mo.</string>
-    <string name="setup_where">Le dossier doit contenir Game, FrontEnd et Sounds. Vous pouvez aussi choisir un dossier qui le contient. Les fichiers d’un CD ou d’une ISO doivent d’abord être installés ou extraits.</string>
+    <string name="setup_where">Choisissez le dossier où le jeu PC est installé, ou un dossier qui le contient. Copiez tout le dossier d’installation sur l’appareil, pas seulement quelques fichiers. Les fichiers d’un CD ou d’une ISO doivent d’abord être installés ou extraits.</string>
     <string name="setup_choose">Choisir le dossier du jeu</string>
     <string name="setup_choose_again">Choisir un autre dossier</string>
     <string name="setup_searching">Recherche des fichiers du jeu…</string>
     <string name="setup_copying">Copie des fichiers du jeu : %1$s sur %2$s</string>
-    <string name="setup_not_found">Aucune installation complète du jeu n’a été trouvée dans ce dossier. Il doit contenir Game/Bigfiles/common.bfl, FrontEnd/common.bfl et Sounds/surface.bfl.</string>
+    <string name="setup_not_found">Aucune installation du jeu n’a été trouvée dans ce dossier. Choisissez le dossier où le jeu PC est installé.</string>
+    <string name="setup_incomplete_folder">Ce dossier ne contient qu’une partie de l’installation du jeu. Copiez tout le dossier d’installation du jeu PC sur l’appareil, pas seulement quelques fichiers, puis sélectionnez-le de nouveau.</string>
+    <string name="setup_incomplete_copy">Les fichiers du jeu dans l’application sont incomplets : le jeu ne peut pas démarrer. Copiez tout le dossier d’installation du jeu PC sur l’appareil, puis sélectionnez-le de nouveau.</string>
     <string name="setup_ambiguous">Plusieurs installations du jeu ont été trouvées dans ce dossier :\n%1$s\nChoisissez celle que vous voulez utiliser.</string>
     <string name="setup_no_space">Espace libre insuffisant : le jeu a besoin de %1$s et %2$s sont libres.</string>
     <string name="setup_failed">Les fichiers du jeu n’ont pas pu être copiés.\n%1$s</string>
@@ -21,6 +23,7 @@
     <string name="touch_gear_up">Rapport supérieur</string>
     <string name="touch_gear_down">Rapport inférieur</string>
     <string name="launcher_start">Jouer</string>
+    <string name="launcher_change_folder">Changer le dossier du jeu</string>
     <string name="controllers_title">Commandes</string>
     <string name="controllers_intro">Les manettes sont détectées automatiquement. Testez les commandes ou touchez une commande pour modifier son affectation. Les changements sont enregistrés pour cet appareil ; les autres commandes conservent leur affectation automatique.</string>
     <string name="controllers_touch">Toujours afficher les commandes tactiles</string>

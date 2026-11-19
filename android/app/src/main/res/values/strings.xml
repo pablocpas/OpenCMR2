@@ -3,12 +3,14 @@
     <string name="app_name" translatable="false">OpenCMR2</string>
     <string name="setup_title">Welcome to OpenCMR2</string>
     <string name="setup_intro">OpenCMR2 plays your copy of Colin McRae Rally 2.0 for PC. Copy its installation folder to this device, then choose it here. The game files are copied into the app, about 700 MB, only once.</string>
-    <string name="setup_where">The folder needs Game, FrontEnd and Sounds. You can also choose a folder that contains it. Files on a CD or ISO need to be installed or extracted first.</string>
+    <string name="setup_where">Choose the folder where the PC game is installed, or a folder that contains it. Copy the whole installation folder to the device, not only some files. Files on a CD or ISO need to be installed or extracted first.</string>
     <string name="setup_choose">Choose game folder</string>
     <string name="setup_choose_again">Choose another folder</string>
     <string name="setup_searching">Looking for the game files…</string>
     <string name="setup_copying">Copying the game files: %1$s of %2$s</string>
-    <string name="setup_not_found">No complete game installation was found in this folder. It needs Game/Bigfiles/common.bfl, FrontEnd/common.bfl and Sounds/surface.bfl.</string>
+    <string name="setup_not_found">No game installation was found in this folder. Choose the folder where the PC game is installed.</string>
+    <string name="setup_incomplete_folder">This folder has only part of the game installation. Copy the whole installation folder of the PC game to the device, not only some files, and choose it again.</string>
+    <string name="setup_incomplete_copy">The game files in the app are incomplete, so the game cannot start. Copy the whole installation folder of the PC game to the device and choose it again.</string>
     <string name="setup_ambiguous">More than one game installation was found in this folder:\n%1$s\nChoose the one you want to use.</string>
     <string name="setup_no_space">Not enough free space: the game needs %1$s and %2$s are free.</string>
     <string name="setup_failed">The game files could not be copied.\n%1$s</string>
@@ -22,6 +24,7 @@
     <string name="touch_gear_up">Gear up</string>
     <string name="touch_gear_down">Gear down</string>
     <string name="launcher_start">Start game</string>
+    <string name="launcher_change_folder">Change game folder</string>
     <string name="controllers_title">Controls</string>
     <string name="controllers_intro">Controllers are detected automatically. Test yours here, or tap a control to correct its mapping. Changes are saved for this device; other controls keep their automatic mapping.</string>
     <string name="controllers_touch">Always show touch controls</string>
