@@ -599,6 +599,10 @@ if(Python3_Interpreter_FOUND)
  add_test(NAME enhancement_overlay_io COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/enhancement_binary.py $<TARGET_FILE:enhancement_io_probe> overlay)
 endif()
 
+add_executable(args_parse_test args_parse_test.cpp)
+target_link_libraries(args_parse_test PRIVATE opencmr2_platform)
+add_test(NAME args_parse COMMAND args_parse_test)
+
 add_executable(key_remapping_test key_remapping.cpp)
 target_link_libraries(key_remapping_test PRIVATE opencmr2_platform)
 add_test(NAME key_remapping COMMAND key_remapping_test)
