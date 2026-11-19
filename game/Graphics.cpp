@@ -3557,7 +3557,17 @@ int Args_Parse(char *pCommandLine)
                 last = 1;
                 break;
             }
-            *pOut++ = *pCommandLine++;
+            // Bound the stack copy: an over-long command-line token must not
+            // overflow word[260]. Keep scanning so the token is fully consumed
+            // and the outer loop re-syncs at the next separator.
+            if (pOut < word + sizeof(word) - 1)
+                *pOut++ = *pCommandLine;
+            pCommandLine++;
+        }
+        if (g_unk0x00816974 >= 20) {
+            g_argsParsed = 1;
+            CGame::RegisterCallback(Args_Free, NULL);
+            return g_unk0x00816974;
         }
         g_unk0x00816820[g_unk0x00816974] = (char *)calloc(1, strlen(word) + 2);
         strcpy(g_unk0x00816820[g_unk0x00816974], word);

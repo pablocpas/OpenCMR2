@@ -178,6 +178,10 @@ add_executable(headlight_collision_test headlight_collision.cpp)
 target_link_libraries(headlight_collision_test PRIVATE opencmr2_platform)
 add_test(NAME headlight_collision COMMAND headlight_collision_test)
 
+add_executable(args_parse_test args_parse_test.cpp)
+target_link_libraries(args_parse_test PRIVATE opencmr2_platform)
+add_test(NAME args_parse COMMAND args_parse_test)
+
 add_library(high_address_fixture STATIC high_address.c)
 add_executable(net_frontend_test net_frontend.cpp)
 target_link_libraries(net_frontend_test PRIVATE opencmr2_platform high_address_fixture)
