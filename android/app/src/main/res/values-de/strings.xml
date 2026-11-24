@@ -27,6 +27,7 @@
     <string name="controllers_title">Steuerung</string>
     <string name="controllers_intro">Controller werden automatisch erkannt. Teste hier die Eingaben oder tippe auf eine Steuerung, um ihre Belegung zu ändern. Änderungen werden für dieses Gerät gespeichert. Andere Eingaben behalten ihre automatische Belegung.</string>
     <string name="controllers_touch">Touch-Steuerung immer anzeigen</string>
+    <string name="controllers_touch_vibration">Vibration der Touch-Steuerung</string>
     <string name="controllers_connect">Verbinde einen Controller zum Testen oder Einrichten. Die Touch-Steuerung bleibt im Spiel verfügbar.</string>
     <string name="controllers_test">Drücke Tasten oder bewege einen Stick, um die Eingaben zu testen.</string>
     <string name="controllers_automatic">Automatisch</string>

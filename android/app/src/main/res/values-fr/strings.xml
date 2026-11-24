@@ -27,6 +27,7 @@
     <string name="controllers_title">Commandes</string>
     <string name="controllers_intro">Les manettes sont détectées automatiquement. Testez les commandes ou touchez une commande pour modifier son affectation. Les changements sont enregistrés pour cet appareil ; les autres commandes conservent leur affectation automatique.</string>
     <string name="controllers_touch">Toujours afficher les commandes tactiles</string>
+    <string name="controllers_touch_vibration">Vibrer avec les commandes tactiles</string>
     <string name="controllers_connect">Connectez une manette pour la tester ou la configurer. Les commandes tactiles restent disponibles dans le jeu.</string>
     <string name="controllers_test">Appuyez sur les boutons ou déplacez un stick pour tester les commandes.</string>
     <string name="controllers_automatic">Automatique</string>

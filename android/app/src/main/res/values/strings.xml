@@ -28,6 +28,7 @@
     <string name="controllers_title">Controls</string>
     <string name="controllers_intro">Controllers are detected automatically. Test yours here, or tap a control to correct its mapping. Changes are saved for this device; other controls keep their automatic mapping.</string>
     <string name="controllers_touch">Always show touch controls</string>
+    <string name="controllers_touch_vibration">Vibrate on touch controls</string>
     <string name="controllers_connect">Connect a controller to test or configure it. You can always use touch controls in the game.</string>
     <string name="controllers_test">Press buttons or move a stick to test input.</string>
     <string name="controllers_automatic">Automatic</string>

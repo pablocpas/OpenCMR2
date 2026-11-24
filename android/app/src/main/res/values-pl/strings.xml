@@ -27,6 +27,7 @@
     <string name="controllers_title">Sterowanie</string>
     <string name="controllers_intro">Kontrolery są wykrywane automatycznie. Sprawdź przyciski lub dotknij elementu sterowania, aby zmienić przypisanie. Zmiany są zapisywane dla tego urządzenia; pozostałe elementy zachowują przypisanie automatyczne.</string>
     <string name="controllers_touch">Zawsze pokazuj sterowanie dotykowe</string>
+    <string name="controllers_touch_vibration">Wibracja sterowania dotykowego</string>
     <string name="controllers_connect">Podłącz kontroler, aby go sprawdzić lub skonfigurować. W grze możesz też używać sterowania dotykowego.</string>
     <string name="controllers_test">Naciskaj przyciski lub porusz drążkiem, aby sprawdzić sterowanie.</string>
     <string name="controllers_automatic">Automatycznie</string>

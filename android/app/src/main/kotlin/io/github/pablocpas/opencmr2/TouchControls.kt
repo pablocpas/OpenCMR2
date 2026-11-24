@@ -22,6 +22,7 @@ import com.swordfish.radialgamepad.library.config.RadialGamePadConfig
 import com.swordfish.radialgamepad.library.config.RadialGamePadTheme
 import com.swordfish.radialgamepad.library.config.SecondaryDialConfig
 import com.swordfish.radialgamepad.library.event.Event
+import com.swordfish.radialgamepad.library.haptics.HapticConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -54,6 +55,8 @@ class TouchControls(
     private var settings = TouchLayoutStore.load(activity)
     private var cutout = TouchInsets()
     private var systemInsets = TouchInsets()
+    // Set in the controllers screen, which runs before the game creates these.
+    private val haptic = if (ControllerProfiles.touchVibration(activity)) HapticConfig.PRESS else HapticConfig.OFF
 
     init {
         val theme = RadialGamePadTheme(
@@ -161,6 +164,7 @@ class TouchControls(
             button(index = 2, KeyEvent.KEYCODE_ESCAPE, R.drawable.ic_touch_back, R.string.touch_back, 0.8f),
             SecondaryDialConfig.Empty(index = 3, spread = 1, scale = 0.8f, distance = 0f),
         ),
+        haptic = haptic,
         theme = theme,
     )
 
@@ -186,6 +190,7 @@ class TouchControls(
             button(index = 4, KeyEvent.KEYCODE_LEFT_BRACKET, R.drawable.ic_touch_gear_down, R.string.touch_gear_down, 0.75f),
             button(index = 5, KeyEvent.KEYCODE_C, R.drawable.ic_touch_camera, R.string.touch_camera, 0.75f),
         ),
+        haptic = haptic,
         theme = theme,
     )
 

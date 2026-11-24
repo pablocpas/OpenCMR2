@@ -27,6 +27,7 @@
     <string name="controllers_title">Controles</string>
     <string name="controllers_intro">Los mandos se detectan automáticamente. Pruébalo aquí o toca un control para corregir su asignación. Los cambios se guardan para este dispositivo; los demás controles mantienen la detección automática.</string>
     <string name="controllers_touch">Mostrar siempre los controles táctiles</string>
+    <string name="controllers_touch_vibration">Vibrar con los controles táctiles</string>
     <string name="controllers_connect">Conecta un mando para probarlo o configurarlo. También puedes usar los controles táctiles dentro del juego.</string>
     <string name="controllers_test">Pulsa botones o mueve un stick para comprobar la entrada.</string>
     <string name="controllers_automatic">Automático</string>

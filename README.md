@@ -222,7 +222,8 @@ the game. The launcher has a
 correct individual buttons, sticks or triggers. These corrections are saved by
 device and preserve the rest of SDL’s automatic layout and analog input.
 **Restore automatic mapping** removes the corrections. You can also keep the
-touch controls visible or choose to play with touch controls only. Android Back
+touch controls visible, turn off their vibration or choose to play with touch
+controls only. Android Back
 pauses the game; a controller’s Back/Select follows its SDL mapping.
 Controller firmware must expose its input to Android; buttons intercepted by
 system shortcuts cannot be mapped by the app.

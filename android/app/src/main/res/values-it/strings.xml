@@ -27,6 +27,7 @@
     <string name="controllers_title">Controlli</string>
     <string name="controllers_intro">I controller vengono rilevati automaticamente. Prova i comandi o tocca un controllo per modificarne la mappatura. Le modifiche vengono salvate per questo dispositivo; gli altri controlli mantengono la mappatura automatica.</string>
     <string name="controllers_touch">Mostra sempre i controlli touch</string>
+    <string name="controllers_touch_vibration">Vibrazione dei controlli touch</string>
     <string name="controllers_connect">Collega un controller per provarlo o configurarlo. Puoi sempre usare i controlli touch nel gioco.</string>
     <string name="controllers_test">Premi i pulsanti o muovi uno stick per provare i comandi.</string>
     <string name="controllers_automatic">Automatico</string>

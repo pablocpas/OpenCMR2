@@ -33,6 +33,7 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
     private var lastInput by mutableStateOf("")
     private var touch by mutableStateOf(false)
     private var touchOnly by mutableStateOf(false)
+    private var vibration by mutableStateOf(true)
     private val lastAxes = mutableMapOf<Pair<Int, Int>, Float>()
     private var baseline = emptyMap<Pair<Int, Int>, Float>()
     private val device get() = devices.firstOrNull { it.id == selected }
@@ -49,6 +50,7 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
         enableEdgeToEdge()
         touch = ControllerProfiles.showTouch(this)
         touchOnly = ControllerProfiles.touchOnly(this)
+        vibration = ControllerProfiles.touchVibration(this)
         refresh()
         setContent {
             SetupTheme {
@@ -64,6 +66,10 @@ class ControllerActivity : ComponentActivity(), InputManager.InputDeviceListener
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(checked = touch, onCheckedChange = { touch = it; ControllerProfiles.showTouch(this@ControllerActivity, it) })
                             Text(stringResource(R.string.controllers_touch), Modifier.padding(start = 12.dp))
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = vibration, onCheckedChange = { vibration = it; ControllerProfiles.touchVibration(this@ControllerActivity, it) })
+                            Text(stringResource(R.string.controllers_touch_vibration), Modifier.padding(start = 12.dp))
                         }
                         OutlinedButton(onClick = {
                             startActivity(Intent(this@ControllerActivity, TouchLayoutActivity::class.java))

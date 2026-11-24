@@ -33,6 +33,8 @@ object ControllerProfiles {
     fun touchOnly(context: Context, value: Boolean) { prefs(context).edit { putBoolean("touch_only", value) } }
     fun showTouch(context: Context) = prefs(context).getBoolean("show_touch", false)
     fun showTouch(context: Context, value: Boolean) { prefs(context).edit { putBoolean("show_touch", value) } }
+    fun touchVibration(context: Context) = prefs(context).getBoolean("touch_vibration", true)
+    fun touchVibration(context: Context, value: Boolean) { prefs(context).edit { putBoolean("touch_vibration", value) } }
 
     // SDL's Android driver normalizes the device name for some models. Match
     // an exact name first, then VID/PID only when there is a single candidate.
