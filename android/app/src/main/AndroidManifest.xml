@@ -55,5 +55,17 @@
             android:preferMinimalPostProcessing="true"
             android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:theme="@style/Theme.OpenCMR2.Game" />
+
+        <!-- The user folder (saves, settings) in the Files app and pickers. -->
+        <provider
+            android:name=".UserFilesProvider"
+            android:authorities="${applicationId}.user"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
     </application>
 </manifest>

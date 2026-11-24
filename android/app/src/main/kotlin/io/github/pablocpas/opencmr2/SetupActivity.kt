@@ -93,6 +93,7 @@ class SetupActivity : ComponentActivity() {
                         if (installation == GameData.Installation.Complete) startGame()
                     },
                     onControls = { startActivity(Intent(this, ControllerActivity::class.java)) },
+                    onUserFiles = { UserFilesProvider.open(this) },
                     onChangeFolder = { changing = true },
                 ) else {
                     val back = if (changing) ({ changing = false }) else null
@@ -258,7 +259,7 @@ private fun errorText(error: Throwable): String {
 }
 
 @Composable
-private fun LauncherScreen(onStart: () -> Unit, onControls: () -> Unit, onChangeFolder: () -> Unit) {
+private fun LauncherScreen(onStart: () -> Unit, onControls: () -> Unit, onUserFiles: () -> Unit, onChangeFolder: () -> Unit) {
     Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -266,6 +267,7 @@ private fun LauncherScreen(onStart: () -> Unit, onControls: () -> Unit, onChange
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
             Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.launcher_start)) }
             TextButton(onClick = onControls) { Text(stringResource(R.string.controllers_title)) }
+            TextButton(onClick = onUserFiles) { Text(stringResource(R.string.launcher_user_files)) }
             TextButton(onClick = onChangeFolder) { Text(stringResource(R.string.launcher_change_folder)) }
         }
     }

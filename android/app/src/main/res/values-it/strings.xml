@@ -24,6 +24,9 @@
     <string name="touch_gear_down">Marcia giù</string>
     <string name="launcher_start">Avvia gioco</string>
     <string name="launcher_change_folder">Cambia cartella del gioco</string>
+    <string name="launcher_user_files">Salvataggi e impostazioni</string>
+    <string name="user_files_summary">Partite salvate, impostazioni e comandi</string>
+    <string name="user_files_no_manager">Nessun gestore di file ha aperto la cartella. Apri l\'app File e scegli OpenCMR2 nel suo menu.</string>
     <string name="controllers_title">Controlli</string>
     <string name="controllers_intro">I controller vengono rilevati automaticamente. Prova i comandi o tocca un controllo per modificarne la mappatura. Le modifiche vengono salvate per questo dispositivo; gli altri controlli mantengono la mappatura automatica.</string>
     <string name="controllers_touch">Mostra sempre i controlli touch</string>

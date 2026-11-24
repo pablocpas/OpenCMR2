@@ -228,6 +228,12 @@ pauses the game; a controller’s Back/Select follows its SDL mapping.
 Controller firmware must expose its input to Android; buttons intercepted by
 system shortcuts cannot be mapped by the app.
 
+The saves, settings and log are kept in the app's own storage. The launcher's
+**Saves and settings** opens that folder in the system Files app, where it is
+also listed as OpenCMR2, to back it up or bring saves from another device. Apps that
+pick files or folders through the system can use it too. Android's own app
+backup includes it, without the copied game files.
+
 In the game's **Options > Controllers** the touch controls are listed with
 nothing to change: they are set up in the launcher, and each button shows the
 action it presses. They steer as keys do, with the car's progressive
@@ -278,7 +284,8 @@ Intermediate and Expert. Novice has three arcade tracks by design.
 
 Settings are stored in `opencmr2.ini` in the user directory
 (`~/.local/share/OpenCMR2/` on Linux,
-`%APPDATA%\OpenCMR2\` on Windows; files from the older
+`%APPDATA%\OpenCMR2\` on Windows, the app's storage on Android, opened from
+the launcher's **Saves and settings**; files from the older
 `OpenCMR2/OpenCMR2` folder are moved there).
 It is created with comments on first launch. The Screen page of the
 graphics options sets `hud_scale`, `menu_scale`, `vsync` and `fullscreen` in

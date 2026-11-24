@@ -25,6 +25,9 @@
     <string name="touch_gear_down">Gear down</string>
     <string name="launcher_start">Start game</string>
     <string name="launcher_change_folder">Change game folder</string>
+    <string name="launcher_user_files">Saves and settings</string>
+    <string name="user_files_summary">Saved games, settings and controls</string>
+    <string name="user_files_no_manager">No file manager opened the folder. Open the Files app and choose OpenCMR2 in its menu.</string>
     <string name="controllers_title">Controls</string>
     <string name="controllers_intro">Controllers are detected automatically. Test yours here, or tap a control to correct its mapping. Changes are saved for this device; other controls keep their automatic mapping.</string>
     <string name="controllers_touch">Always show touch controls</string>

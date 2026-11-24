@@ -24,6 +24,9 @@
     <string name="touch_gear_down">Rapport inférieur</string>
     <string name="launcher_start">Jouer</string>
     <string name="launcher_change_folder">Changer le dossier du jeu</string>
+    <string name="launcher_user_files">Sauvegardes et réglages</string>
+    <string name="user_files_summary">Parties sauvegardées, réglages et commandes</string>
+    <string name="user_files_no_manager">Aucun gestionnaire de fichiers n\'a ouvert le dossier. Ouvrez l\'application Fichiers et choisissez OpenCMR2 dans son menu.</string>
     <string name="controllers_title">Commandes</string>
     <string name="controllers_intro">Les manettes sont détectées automatiquement. Testez les commandes ou touchez une commande pour modifier son affectation. Les changements sont enregistrés pour cet appareil ; les autres commandes conservent leur affectation automatique.</string>
     <string name="controllers_touch">Toujours afficher les commandes tactiles</string>

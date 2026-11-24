@@ -24,6 +24,9 @@
     <string name="touch_gear_down">Herunterschalten</string>
     <string name="launcher_start">Spiel starten</string>
     <string name="launcher_change_folder">Spielordner ändern</string>
+    <string name="launcher_user_files">Spielstände und Einstellungen</string>
+    <string name="user_files_summary">Spielstände, Einstellungen und Steuerung</string>
+    <string name="user_files_no_manager">Kein Dateimanager hat den Ordner geöffnet. Öffne die App Dateien und wähle OpenCMR2 in ihrem Menü.</string>
     <string name="controllers_title">Steuerung</string>
     <string name="controllers_intro">Controller werden automatisch erkannt. Teste hier die Eingaben oder tippe auf eine Steuerung, um ihre Belegung zu ändern. Änderungen werden für dieses Gerät gespeichert. Andere Eingaben behalten ihre automatische Belegung.</string>
     <string name="controllers_touch">Touch-Steuerung immer anzeigen</string>

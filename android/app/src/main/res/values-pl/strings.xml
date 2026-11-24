@@ -24,6 +24,9 @@
     <string name="touch_gear_down">Bieg w dół</string>
     <string name="launcher_start">Rozpocznij grę</string>
     <string name="launcher_change_folder">Zmień folder gry</string>
+    <string name="launcher_user_files">Zapisy i ustawienia</string>
+    <string name="user_files_summary">Zapisane gry, ustawienia i sterowanie</string>
+    <string name="user_files_no_manager">Żaden menedżer plików nie otworzył folderu. Otwórz aplikację Pliki i wybierz OpenCMR2 w jej menu.</string>
     <string name="controllers_title">Sterowanie</string>
     <string name="controllers_intro">Kontrolery są wykrywane automatycznie. Sprawdź przyciski lub dotknij elementu sterowania, aby zmienić przypisanie. Zmiany są zapisywane dla tego urządzenia; pozostałe elementy zachowują przypisanie automatyczne.</string>
     <string name="controllers_touch">Zawsze pokazuj sterowanie dotykowe</string>

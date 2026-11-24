@@ -24,6 +24,9 @@
     <string name="touch_gear_down">Bajar marcha</string>
     <string name="launcher_start">Iniciar juego</string>
     <string name="launcher_change_folder">Cambiar la carpeta del juego</string>
+    <string name="launcher_user_files">Partidas y ajustes</string>
+    <string name="user_files_summary">Partidas guardadas, ajustes y controles</string>
+    <string name="user_files_no_manager">Ningún gestor de archivos abrió la carpeta. Abre la app Archivos y elige OpenCMR2 en su menú.</string>
     <string name="controllers_title">Controles</string>
     <string name="controllers_intro">Los mandos se detectan automáticamente. Pruébalo aquí o toca un control para corregir su asignación. Los cambios se guardan para este dispositivo; los demás controles mantienen la detección automática.</string>
     <string name="controllers_touch">Mostrar siempre los controles táctiles</string>
