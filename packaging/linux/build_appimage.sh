@@ -78,6 +78,7 @@ fi
 
 APPDIR="$(mktemp -d "${TMPDIR:-/tmp}/opencmr2-appdir.XXXXXX")"
 trap 'rm -rf "$APPDIR"' EXIT
+chmod 0755 "$APPDIR"
 
 DESTDIR="$APPDIR" cmake --install "$BUILD_DIR" --prefix /usr
 
@@ -96,6 +97,7 @@ chmod 0755 "$APPDIR/AppRun"
 ln -sf "usr/share/applications/${APP_ID}.desktop" "$APPDIR/${APP_ID}.desktop"
 ln -sf "usr/share/icons/hicolor/256x256/apps/${APP_ID}.png" "$APPDIR/${APP_ID}.png"
 ln -sf "${APP_ID}.png" "$APPDIR/.DirIcon"
+chmod -R a+rX "$APPDIR"
 
 mkdir -p "$(dirname "$OUTPUT")"
 rm -f "$OUTPUT" "${OUTPUT}.sha256"
