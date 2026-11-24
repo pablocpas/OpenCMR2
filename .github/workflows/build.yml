@@ -74,6 +74,64 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # Portable AppImage built on Debian 12 (glibc 2.36) so it runs across
+  # older and newer Linux distributions without needing Flatpak or FUSE2.
+  linux-appimage:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            appimage_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            appimage_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: debian:bookworm
+    steps:
+      - name: Install build and packaging dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl file git python3 \
+            clang-16 cmake ninja-build glslang-tools pkg-config \
+            desktop-file-utils appstream \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libegl1-mesa-dev libdecor-0-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libudev-dev libdbus-1-dev
+      - uses: actions/checkout@v4
+      - name: Validate Linux desktop metadata
+        run: |
+          desktop-file-validate packaging/linux/io.github.pablocpas.OpenCMR2.desktop
+          appstreamcli validate --no-net packaging/linux/io.github.pablocpas.OpenCMR2.metainfo.xml
+      - name: Configure and build
+        run: |
+          cmake --preset linux \
+            -DCMAKE_C_COMPILER=clang-16 \
+            -DCMAKE_CXX_COMPILER=clang++-16 \
+            -DOPENCMR2_VENDORED_SDL=ON
+          cmake --build --preset linux
+      - name: Test
+        run: ctest --preset linux
+      - name: Package AppImage
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage" \
+            -o /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          packaging/linux/build_appimage.sh \
+            --build-dir build/linux \
+            --arch "${{ matrix.appimage_arch }}" \
+            --appimagetool /tmp/appimagetool \
+            --output "dist/OpenCMR2-Linux-${{ matrix.arch }}.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenCMR2-Linux-AppImage-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
   macos:
     runs-on: macos-15
     steps:
@@ -175,7 +233,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux-x86, linux, macos, windows, android]
+    needs: [linux-x86, linux, linux-appimage, macos, windows, android]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

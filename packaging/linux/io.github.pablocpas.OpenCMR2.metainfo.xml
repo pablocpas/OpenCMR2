@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.pablocpas.OpenCMR2</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+
+  <name>OpenCMR2</name>
+  <summary>Native port of Colin McRae Rally 2.0</summary>
+
+  <developer id="io.github.pablocpas">
+    <name>Pablo Caño</name>
+  </developer>
+
+  <description>
+    <p>
+      OpenCMR2 is a native open-source port of Colin McRae Rally 2.0 (PC, 2000)
+      built on the CMR2Decomp decompilation. It runs the original game code
+      natively on Linux with SDL3, Vulkan or OpenGL 3.3, without emulation or
+      Wine.
+    </p>
+    <p>
+      No game assets are included. You need your own copy of the original PC
+      version of Colin McRae Rally 2.0; on first launch, OpenCMR2 asks you to
+      select your installation folder.
+    </p>
+    <ul>
+      <li>Widescreen resolutions, configurable field of view, and high frame rates with original physics parity</li>
+      <li>Keyboard, gamepad, and steering wheel support with rumble and force feedback</li>
+      <li>Built-in Bink video playback and LAN/internet multiplayer over UDP</li>
+      <li>Sharpened UI icons, flags, maps, and outline text that scale cleanly on modern displays</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.pablocpas.OpenCMR2.desktop</launchable>
+
+  <url type="homepage">https://github.com/pablocpas/OpenCMR2</url>
+  <url type="bugtracker">https://github.com/pablocpas/OpenCMR2/issues</url>
+  <url type="vcs-browser">https://github.com/pablocpas/OpenCMR2</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Arcade race starting grid running natively on Linux in widescreen</caption>
+      <image type="source" width="1152" height="720">https://raw.githubusercontent.com/pablocpas/OpenCMR2/v1.9.2/docs/screenshots/race-start.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Widescreen stage racing with scaled HUD and modern rendering</caption>
+      <image type="source" width="1152" height="720">https://raw.githubusercontent.com/pablocpas/OpenCMR2/v1.9.2/docs/screenshots/race-action.png</image>
+    </screenshot>
+  </screenshots>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#d6e4f0</color>
+    <color type="primary" scheme_preference="dark">#1b365d</color>
+  </branding>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <recommends>
+    <control>gamepad</control>
+    <display_length compare="ge">768</display_length>
+  </recommends>
+
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">moderate</content_attribute>
+  </content_rating>
+
+  <releases>
+    <release version="1.9.2" date="2026-11-24">
+      <url type="details">https://github.com/pablocpas/OpenCMR2/releases/tag/v1.9.2</url>
+      <description>
+        <p>Add Linux desktop metadata, CMake install rules, portable AppImage builds, and Flatpak packaging.</p>
+      </description>
+    </release>
+    <release version="1.9.1" date="2026-11-24">
+      <url type="details">https://github.com/pablocpas/OpenCMR2/releases/tag/v1.9.1</url>
+    </release>
+    <release version="1.9.0" date="2026-11-12">
+      <url type="details">https://github.com/pablocpas/OpenCMR2/releases/tag/v1.9.0</url>
+    </release>
+    <release version="1.8.7" date="2026-11-07">
+      <url type="details">https://github.com/pablocpas/OpenCMR2/releases/tag/v1.8.7</url>
+    </release>
+  </releases>
+</component>

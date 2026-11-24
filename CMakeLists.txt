@@ -21,6 +21,7 @@ endif()
 
 option(OPENCMR2_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
 option(OPENCMR2_VENDORED_SDL "Download and build SDL3 instead of using an installed one" ${ANDROID})
+option(OPENCMR2_BUILD_TESTS "Build the test suite" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,6 +63,7 @@ if(NOT TARGET SDL3::SDL3)
     include(FetchContent)
     set(SDL_SHARED ON CACHE BOOL "" FORCE)
     set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(SDL3
@@ -79,7 +81,7 @@ endif()
 add_subdirectory(src)
 
 # The tests run on the build machine; the Android build is the game alone.
-if(NOT ANDROID)
+if(NOT ANDROID AND OPENCMR2_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()

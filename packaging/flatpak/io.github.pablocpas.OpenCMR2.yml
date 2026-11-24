@@ -1,0 +1,105 @@
+# Local Flatpak manifest for OpenCMR2 (builds from this working tree).
+#
+# Build and install locally:
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#     packaging/flatpak/io.github.pablocpas.OpenCMR2.yml
+#
+# For the Flathub PR, use packaging/flatpak/flathub/io.github.pablocpas.OpenCMR2.yml.
+
+id: io.github.pablocpas.OpenCMR2
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm23
+command: opencmr2
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # --device=all provides GPU access (Vulkan/OpenGL) plus gamepads and
+  # steering wheels with force feedback (evdev/hidraw).
+  - --device=all
+  # LAN and internet UDP multiplayer.
+  - --share=network
+  # No broad filesystem access is needed: OpenCMR2 uses xdg-desktop-portal
+  # (SDL_ShowOpenFolderDialog) to select the user's original CMR2 folder,
+  # and SDL3 uses org.freedesktop.portal.Inhibit for screensaver inhibition.
+
+build-options:
+  append-path: /usr/lib/sdk/llvm23/bin
+  prepend-ld-library-path: /usr/lib/sdk/llvm23/lib
+
+modules:
+  # Build-time shader compiler (GLSL -> SPIR-V); stripped from the final Flatpak.
+  - name: glslang
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DBUILD_EXTERNAL=OFF
+      - -DALLOW_EXTERNAL_SPIRV_TOOLS=OFF
+      - -DENABLE_OPT=OFF
+      - -DENABLE_HLSL=OFF
+      - -DGLSLANG_TESTS=OFF
+    cleanup:
+      - '*'
+    sources:
+      - type: git
+        url: https://github.com/KhronosGroup/glslang.git
+        tag: '15.2.0'
+        commit: 99ee11b0106b48f06fb9e2a324ba928b8316cc33
+
+  # Build-time shader translator (SPIR-V -> GLSL 330 for the OpenGL renderer);
+  # stripped from the final Flatpak.
+  - name: spirv-cross
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSPIRV_CROSS_CLI=ON
+      - -DSPIRV_CROSS_STATIC=ON
+      - -DSPIRV_CROSS_SHARED=OFF
+      - -DSPIRV_CROSS_ENABLE_C_API=OFF
+      - -DSPIRV_CROSS_ENABLE_TESTS=OFF
+    cleanup:
+      - '*'
+    sources:
+      - type: git
+        url: https://github.com/KhronosGroup/SPIRV-Cross.git
+        tag: vulkan-sdk-1.4.363.0
+        commit: f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7
+
+  # SDL3 runtime library (matches CMakeLists.txt).
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_SHARED=ON
+      - -DSDL_STATIC=OFF
+      - -DSDL_TEST_LIBRARY=OFF
+      - -DSDL_EXAMPLES=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /lib/libSDL3.so
+      - /share/licenses/SDL3
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-3.4.18
+        commit: 829a65d769d935c4852f8159e964312c0957260a
+
+  - name: opencmr2
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_C_COMPILER=clang
+      - -DCMAKE_CXX_COMPILER=clang++
+      - -DOPENCMR2_VENDORED_SDL=OFF
+      - -DOPENCMR2_BUILD_TESTS=OFF
+    sources:
+      - type: dir
+        path: ../..

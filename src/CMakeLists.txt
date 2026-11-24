@@ -265,3 +265,40 @@ endif()
 target_include_directories(opencmr2_platform PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${PROJECT_SOURCE_DIR}/third_party/stb)
 target_link_libraries(opencmr2_platform PRIVATE opencmr2_bink opencmr2_net)
+
+# ---- installation (Linux desktop, Flatpak, AppImage, distro packages) -----------
+if(NOT ANDROID)
+    include(GNUInstallDirs)
+    install(TARGETS opencmr2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(UNIX AND NOT APPLE)
+        set(OPENCMR2_APP_ID "io.github.pablocpas.OpenCMR2")
+        install(FILES ${PROJECT_SOURCE_DIR}/packaging/linux/${OPENCMR2_APP_ID}.desktop
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+        install(FILES ${PROJECT_SOURCE_DIR}/packaging/linux/${OPENCMR2_APP_ID}.metainfo.xml
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+        install(FILES ${PROJECT_SOURCE_DIR}/res/opencmr2_256.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+            RENAME ${OPENCMR2_APP_ID}.png)
+        install(FILES ${PROJECT_SOURCE_DIR}/LICENSE
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/opencmr2 RENAME OpenCMR2-LICENSE)
+        install(FILES ${PROJECT_SOURCE_DIR}/third_party/enet/LICENSE
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/opencmr2 RENAME ENet-LICENSE)
+        install(FILES ${PROJECT_SOURCE_DIR}/third_party/potrace/COPYING
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/opencmr2 RENAME Potrace-COPYING)
+        install(FILES ${PROJECT_SOURCE_DIR}/src/video/COPYING.LGPLv2.1
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/opencmr2 RENAME Bink-decoder-COPYING.LGPLv2.1)
+        install(FILES ${PROJECT_SOURCE_DIR}/third_party/tex-gyre-heros/GUST-FONT-LICENSE.txt
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/opencmr2 RENAME TeX-Gyre-Heros-GUST-FONT-LICENSE.txt)
+        if(OPENCMR2_BUILT_SDL)
+            set_property(TARGET opencmr2 APPEND PROPERTY INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+            install(FILES $<TARGET_FILE:SDL3::SDL3>
+                DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                RENAME $<TARGET_SONAME_FILE_NAME:SDL3::SDL3>)
+            if(DEFINED sdl3_SOURCE_DIR AND EXISTS "${sdl3_SOURCE_DIR}/LICENSE.txt")
+                install(FILES "${sdl3_SOURCE_DIR}/LICENSE.txt"
+                    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/opencmr2
+                    RENAME SDL3-LICENSE.txt)
+            endif()
+        endif()
+    endif()
+endif()

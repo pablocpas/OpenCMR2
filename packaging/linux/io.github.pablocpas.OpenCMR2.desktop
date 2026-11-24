@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OpenCMR2
+GenericName=Rally Game
+Comment=Native port of Colin McRae Rally 2.0 (requires original game files)
+Exec=opencmr2
+Icon=io.github.pablocpas.OpenCMR2
+Terminal=false
+Categories=Game;SportsGame;
+Keywords=rally;racing;colin;mcrae;cmr2;
+StartupWMClass=io.github.pablocpas.OpenCMR2

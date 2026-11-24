@@ -1,4 +1,5 @@
 /build*/
+/.flatpak-builder/
 /out/
 /dist/
 # Local CMake overrides and Python caches.
